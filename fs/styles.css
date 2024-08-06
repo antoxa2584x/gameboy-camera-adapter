@@ -64,16 +64,17 @@ p {
   border: 1px solid #00a550; /* Green border */
   border-radius: 5px;
   color: #004d25; /* Darker green for the text */
-  font-family: 'Press Start 2P', cursive; /* Pixelated font */
+  font-family: 'Press Start 2P', cursive; /* Default font */
 }
 
 .gallery-image {
   padding: 10px;
   margin: 10px;
-  background-color: #ffffff80;
+  background-color: #3f3f3f;
   border: 1px solid #004d25; /* Darker green for the border */
   border-radius: 5px;
   box-sizing: border-box;
+  position: relative;
 }
 
 #gallery {
@@ -95,7 +96,7 @@ footer {
 footer p {
   margin: 5px 0;
   color: white; /* White color for the text */
-  font-family: 'Press Start 2P', cursive; /* Pixelated font */
+  font-family: 'Press Start 2P', cursive; /* Default font */
   max-width: 90%;
   text-align: center;
   line-height: 1.6; /* Added line-height for more vertical spacing */
@@ -104,7 +105,7 @@ footer p {
 footer a {
   color: #00a550; /* Green color for the links */
   text-decoration: none;
-  font-family: 'Press Start 2P', cursive; /* Pixelated font */
+  font-family: 'Press Start 2P', cursive; /* Default font */
   max-width: 90%;
   text-align: center;
 }
@@ -121,10 +122,63 @@ footer a:hover {
   margin-right: 10px;
   font-size: 0.8rem; /* Adjusted size to fit the retro style */
   color: white; /* White color for the label text */
-  font-family: 'Press Start 2P', cursive; /* Pixelated font */
+  font-family: 'Press Start 2P', cursive; /* Default font */
 }
 
 .container {
+  max-width: 75%; /* Set the maximum width for the container */
   margin: 0 auto; /* Center the container */
   text-align: center; /* Ensure text is centered */
+}
+@media (min-width:320px) {
+	.container {
+		max-width: 90%; /* Set the maximum width for the container */
+		margin: 0 auto; /* Center the container */
+		text-align: center; /* Ensure text is centered */
+	}
+	.gallery-image img {
+		width: 100%;
+	}
+
+	.gallery-image {
+	    flex: 1;
+	}
+}
+
+.gallery-image label {
+  display: block;
+  cursor: pointer;
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
+
+.gallery-image input[type="checkbox"] {
+  display: none;
+}
+
+.gallery-image input[type="checkbox"]:checked + label::after {
+  content: "✔";
+  font-size: 2rem;
+  color: white;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+
+.gallery-image input[type="checkbox"]:checked + label::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5); /* Transparent dark tint */
+  z-index: 1;
+}
+
+.gallery-image button {
+  margin-top: 10px; /* Ensure consistent spacing around buttons */
 }
