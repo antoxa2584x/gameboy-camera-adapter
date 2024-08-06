@@ -1,0 +1,130 @@
+body {
+  font-family: 'Press Start 2P', cursive; /* Pixelated font */
+  text-align: center;
+  background-color: #d5e8d4; /* Mint green background */
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+#content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+button {
+  padding: 10px 20px;
+  margin: 5px;
+  font-size: 1rem;
+  border: none;
+  border-radius: 5px;
+  background-color: #00a550; /* Green color from the "R" */
+  color: white;
+  cursor: pointer;
+  font-family: 'Press Start 2P', cursive; /* Pixelated font */
+  transition: background-color 0.2s; /* Smooth transition for background color */
+}
+
+button:disabled {
+  background-color: #a1d99b; /* Lighter green for disabled state */
+  cursor: not-allowed;
+}
+
+button:active {
+  background-color: #00823c; /* Darker green for active state */
+}
+
+h1 {
+  font-size: 1.5rem; /* Adjusted size to fit the retro style */
+  color: #004d25; /* Darker green for the header text */
+  margin-top: 20px;
+  max-width: 90%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+p {
+  font-size: 0.8rem; /* Adjusted size to fit the retro style */
+  color: #004d25; /* Darker green for the paragraph text */
+  max-width: 90%;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.6; /* Added line-height for more vertical spacing */
+}
+
+#language_select {
+  margin: 10px;
+  padding: 5px;
+  font-size: 0.8rem; /* Adjusted size to fit the retro style */
+  background-color: #a1d99b; /* Lighter green for the dropdown */
+  border: 1px solid #00a550; /* Green border */
+  border-radius: 5px;
+  color: #004d25; /* Darker green for the text */
+  font-family: 'Press Start 2P', cursive; /* Pixelated font */
+}
+
+.gallery-image {
+  padding: 10px;
+  margin: 10px;
+  background-color: #ffffff80;
+  border: 1px solid #004d25; /* Darker green for the border */
+  border-radius: 5px;
+  box-sizing: border-box;
+}
+
+#gallery {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+footer {
+  padding: 10px 20px;
+  background-color: #004d25; /* Darker green for the footer */
+  color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+footer p {
+  margin: 5px 0;
+  color: white; /* White color for the text */
+  font-family: 'Press Start 2P', cursive; /* Pixelated font */
+  max-width: 90%;
+  text-align: center;
+  line-height: 1.6; /* Added line-height for more vertical spacing */
+}
+
+footer a {
+  color: #00a550; /* Green color for the links */
+  text-decoration: none;
+  font-family: 'Press Start 2P', cursive; /* Pixelated font */
+  max-width: 90%;
+  text-align: center;
+}
+
+footer a:hover {
+  text-decoration: underline;
+}
+
+.language-select {
+  margin-top: 5px;
+}
+
+.language-select label {
+  margin-right: 10px;
+  font-size: 0.8rem; /* Adjusted size to fit the retro style */
+  color: white; /* White color for the label text */
+  font-family: 'Press Start 2P', cursive; /* Pixelated font */
+}
+
+.container {
+  margin: 0 auto; /* Center the container */
+  text-align: center; /* Ensure text is centered */
+}
