@@ -1,7 +1,7 @@
 body {
 font-family: 'Press Start 2P', cursive; /* Pixelated font */
 text-align: center;
-background-color: #d5e8d4; /* Mint green background */
+background-color: #20AD51; /* Mint green background */
 margin: 0;
 padding: 0;
 display: flex;
@@ -177,6 +177,7 @@ z-index: 1;
 margin-top: 10px; /* Ensure consistent spacing around buttons */
 }
 #description {
+color: white;
 justify-content: center;
 align-items: center;
 text-align: center;

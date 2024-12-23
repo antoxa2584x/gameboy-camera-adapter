@@ -38,7 +38,6 @@ document.getElementById('language_select').addEventListener('change', (event) =>
 });
 
 function translatePage(language) {
-    document.getElementById('title').textContent = translations[language].title;
     document.getElementById('description').textContent = translations[language].description;
     document.getElementById('get_image_btn').textContent = translations[language].getImageBtn;
     document.getElementById('tear_btn').textContent = translations[language].tearBtn;
