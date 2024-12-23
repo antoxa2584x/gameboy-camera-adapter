@@ -1,7 +1,7 @@
 const translations = {
     en: {
         title: "GameBoy Camera Adapter",
-        description: "Start printing on your Game Boy. When the transfer complete, press the \"Get Images\" button.",
+        description: "Start printing on your Game Boy. Photos will appear on this page",
         getImageBtn: "Get Images",
         tearBtn: "Tear",
         selectAllBtn: "Select All",
@@ -10,7 +10,7 @@ const translations = {
     },
     uk: {
         title: "Адаптер камери GameBoy",
-        description: "Почніть друкувати на своєму Game Boy. Коли передача закінчиться, натисніть кнопку «Отримати зображення».",
+        description: "Почніть друкувати на своєму Game Boy. Фото з'являться на цій сторінці автоматично",
         getImageBtn: "Отримати зображення",
         tearBtn: "Очистити",
         selectAllBtn: "Вибрати все",
@@ -184,56 +184,82 @@ async function get_camera_image(canvas, binPath) {
     let idx = 0;
     let len = 0;
     while (idx < data_size) {
-        const command = resData[idx++];
-        switch (command) {
-            case COMMAND_INIT:
-                break;
-            case COMMAND_PRINT:
-                if ((len = resData[idx++] | (resData[idx++] << 8)) != 4) {
-                    idx = data_size;
-                    break;
-                }
-                let sheets = resData[idx++];
-                let margins = resData[idx++];
-                let palette = resData[idx++];
-                let exposure = Math.min(0xFF, 0x80 + resData[idx++]);
+    const command = resData[idx++];
+    console.log(`Processing command: ${command.toString(16)}`); // Log the current command in hex format
 
-                palette = (palette) ? palette : 0xE4;
+    switch (command) {
+        case COMMAND_INIT:
+            console.log("COMMAND_INIT: Initialization command received.");
+            break;
 
-                if (render(canvas, processed_data, buffer_start, ptr, PRINTER_WIDTH, sheets, margins, palette, exposure)) {
-                    addCanvasToGallery(canvas);
-                    reset_canvas(canvas);
-                }
-                buffer_start = ptr;
-
-                break;
-            case COMMAND_TRANSFER: {
-                len = resData[idx++] | (resData[idx++] << 8);
-                let current_image_start = ptr;
-                ptr = decode(false, resData, data_size, len, idx, processed_data, ptr);
-                idx += len;
-                render(canvas, processed_data, current_image_start, ptr, CAMERA_WIDTH, 1, 0x03, 0xE4, 0xFF);
-                addCanvasToGallery(canvas);
-                reset_canvas(canvas);
-                buffer_start = ptr;
-                break;
-            }
-            case COMMAND_DATA: {
-                const compression = resData[idx++];
-                len = resData[idx++] | (resData[idx++] << 8);
-                ptr = decode(compression, resData, data_size, len, idx, processed_data, ptr);
-                idx += len;
-                break;
-            }
-            default:
+        case COMMAND_PRINT:
+            console.log("COMMAND_PRINT: Processing print command...");
+            if ((len = resData[idx++] | (resData[idx++] << 8)) != 4) {
+                console.warn(`Unexpected length for COMMAND_PRINT: ${len}. Skipping to end.`);
                 idx = data_size;
                 break;
+            }
+
+            let sheets = resData[idx++];
+            let margins = resData[idx++];
+            let palette = resData[idx++];
+            let exposure = Math.min(0xFF, 0x80 + resData[idx++]);
+            palette = (palette) ? palette : 0xE4;
+
+            console.log(`COMMAND_PRINT details: sheets=${sheets}, margins=${margins}, palette=${palette.toString(16)}, exposure=${exposure}`);
+
+            if (render(canvas, processed_data, buffer_start, ptr, PRINTER_WIDTH, sheets, margins, palette, exposure)) {
+                console.log("Rendering completed, adding canvas to gallery...");
+                addCanvasToGallery(canvas);
+                reset_canvas(canvas);
+
+                const description = document.getElementById("description");
+                if (description) {
+                    description.style.display = "none";
+                    console.log("Description hidden as gallery is not empty.");
+                }
+            }
+            buffer_start = ptr;
+            break;
+
+        case COMMAND_TRANSFER: {
+            console.log("COMMAND_TRANSFER: Processing transfer command...");
+            len = resData[idx++] | (resData[idx++] << 8);
+            console.log(`Transfer length: ${len}`);
+            let current_image_start = ptr;
+            ptr = decode(false, resData, data_size, len, idx, processed_data, ptr);
+            idx += len;
+
+            console.log("Rendering transfer image...");
+            render(canvas, processed_data, current_image_start, ptr, CAMERA_WIDTH, 1, 0x03, 0xE4, 0xFF);
+            addCanvasToGallery(canvas);
+            reset_canvas(canvas);
+            buffer_start = ptr;
+            break;
         }
+
+        case COMMAND_DATA: {
+            console.log("COMMAND_DATA: Processing data command...");
+            const compression = resData[idx++];
+            len = resData[idx++] | (resData[idx++] << 8);
+            console.log(`Data length: ${len}, Compression: ${compression}`);
+            ptr = decode(compression, resData, data_size, len, idx, processed_data, ptr);
+            idx += len;
+            break;
+        }
+
+        default:
+            console.warn(`Unknown command: ${command.toString(16)}. Skipping to end.`);
+            idx = data_size;
+            break;
     }
+}
+
     if (canvas.height > 1) {
         addCanvasToGallery(canvas);
         reset_canvas(canvas);
     }
+    return res.ok
 }
 
 function addCanvasToGallery(canvas) {
@@ -251,7 +277,7 @@ function addCanvasToGallery(canvas) {
         input.setAttribute("type", "checkbox");
         input.setAttribute("id", `checkbox-${gallery.children.length}`);
         input.style.display = "none";
-        input.checked = false
+        input.checked = false;
         div.appendChild(input);
 
         const label = document.createElement("label");
@@ -260,7 +286,7 @@ function addCanvasToGallery(canvas) {
         label.appendChild(img);
         div.appendChild(label);
 
-        label.addEventListener("click", function() {
+        label.addEventListener("click", function () {
             const inp = div.querySelector("input[type='checkbox']");
             inp.checked = !inp.checked;
             div.markedForAction = inp.checked;
@@ -268,16 +294,69 @@ function addCanvasToGallery(canvas) {
         });
 
         const btn = document.createElement("button");
-        btn.textContent = "Save";
-        btn.addEventListener("click", function() {
+        btn.textContent = "SAVE";
+        btn.classList.add("shake");
+        btn.addEventListener("click", function () {
             downloadImage(img);
         });
+
+        img.addEventListener("click", function () {
+            showPopupWithUpscaledImage(img);
+        });
+
         div.appendChild(btn);
 
         gallery.appendChild(div);
         selectAllBtn.disabled = false;
     }
 }
+function showPopupWithUpscaledImage(image) {
+    // Create overlay
+    const overlay = document.createElement("div");
+    overlay.id = "image-popup-overlay";
+    overlay.classList.add("popup-overlay");
+
+    // Create popup container
+    const popup = document.createElement("div");
+    popup.classList.add("popup-container");
+
+    // Create canvas for upscaled image
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    // Load the image
+    const img = new Image();
+    img.crossOrigin = "Anonymous"; // This enables CORS
+    img.src = image.src;
+    img.onload = function() {
+        // Set canvas dimensions to 10 times the image dimensions
+        canvas.width = img.width * 10;
+        canvas.height = img.height * 10;
+
+        // Disable image smoothing for Nearest Neighbor scaling
+        ctx.imageSmoothingEnabled = false;
+
+        // Draw the image scaled up by 10 times
+        ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, canvas.width, canvas.height);
+    };
+
+    popup.appendChild(canvas);
+
+    // Create close button
+    const closeButton = document.createElement("button");
+    closeButton.textContent = "X";
+    closeButton.classList.add("popup-close-button");
+        closeButton.classList.add("shake");
+
+    closeButton.onclick = () => {
+        document.body.removeChild(overlay);
+    };
+
+    popup.appendChild(closeButton);
+    overlay.appendChild(popup);
+    document.body.appendChild(overlay);
+}
+
 
 function updateButtonStates() {
     const items = gallery.children;
@@ -296,7 +375,6 @@ function updateButtonStates() {
 document.addEventListener('DOMContentLoaded', () => {
     detectLanguage();
 });
-
 
 async function downloadImage(image) {
     downloadIndex += 1;
@@ -372,14 +450,14 @@ tearBtn.addEventListener("click", async function() {
             return response.json();
         })
         .then((data) => {
-                if (data.result != "ok") return;
-                else {
-                    var items = gallery.children;
-                    for (var i = items.length - 1; i >= 0; i--) {
-                        items[i].remove();
-                    }
-                };
-                getImageBtn.click();            
+            if (data.result != "ok") return;
+            else {
+                var items = gallery.children;
+                for (var i = items.length - 1; i >= 0; i--) {
+                    items[i].remove();
+                }
+            };
+            getImageBtn.click();
         });
 
 });
@@ -436,3 +514,48 @@ averageSelectedBtn.addEventListener("click", function() {
     avgCtx.putImageData(avgImgData, 0, 0);
     addCanvasToGallery(avgCanvas);
 });
+// auto fetch images
+var fetch_skip = false;
+var fetch_ok = false;
+
+function periodic_fetch() {
+    if (!fetch_skip) {
+        fetch_skip = true;
+        void(async () => {
+            fetch_ok = await get_camera_image(canvas, imageBinPath).catch(
+                function(err) {
+                    fetch_ok = false;
+                }
+            );
+            fetch_skip = false;
+            clearInterval(fetch_interval);
+            fetch_interval = setInterval(periodic_fetch, (fetch_ok) ? 10 : 1000);
+        })();
+    }
+}
+var fetch_interval = setInterval(periodic_fetch, 1000);
+
+function generateExampleImage() {
+    // Create a canvas
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    // Set canvas dimensions
+    canvas.width = 160;
+    canvas.height = 160;
+
+    // Draw a background color
+    ctx.fillStyle = "#004d25";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw some text
+    ctx.fillStyle = "white";
+    ctx.font = "20px 'Press Start 2P'";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("Example", canvas.width / 2, canvas.height / 2 - 20);
+    ctx.fillText("Image", canvas.width / 2, canvas.height / 2 + 20);
+
+    // Add the generated canvas to the gallery    addCanvasToGallery(canvas);
+	addCanvasToGallery(canvas)
+}
