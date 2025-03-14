@@ -1,54 +1,3 @@
-const translations = {
-    en: {
-        title: "GameBoy Camera Adapter",
-        description: "Start printing on your Game Boy. Photos will appear on this page",
-        getImageBtn: "Get Images",
-        tearBtn: "Tear",
-        selectAllBtn: "Select All",
-        deleteSelectedBtn: "Delete",
-        averageSelectedBtn: "Average"
-    },
-    uk: {
-        title: "Адаптер камери GameBoy",
-        description: "Почніть друкувати на своєму Game Boy. Фото з'являться на цій сторінці автоматично",
-        getImageBtn: "Отримати зображення",
-        tearBtn: "Очистити",
-        selectAllBtn: "Вибрати все",
-        deleteSelectedBtn: "Видалити",
-        averageSelectedBtn: "Середнє"
-    }
-};
-
-function detectLanguage() {
-    const userLang = navigator.language || navigator.userLanguage;
-    if (userLang.startsWith('ru') || userLang.startsWith('uk')) {
-        document.documentElement.lang = 'uk';
-        document.getElementById('language_select').value = 'uk';
-        translatePage('uk');
-    } else {
-        document.documentElement.lang = 'en';
-        translatePage('en');
-    }
-}
-
-document.getElementById('language_select').addEventListener('change', (event) => {
-    const selectedLanguage = event.target.value;
-    document.documentElement.lang = selectedLanguage;
-    translatePage(selectedLanguage);
-});
-
-function translatePage(language) {
-    document.getElementById('description').textContent = translations[language].description;
-    document.getElementById('get_image_btn').textContent = translations[language].getImageBtn;
-    document.getElementById('tear_btn').textContent = translations[language].tearBtn;
-    document.getElementById('select_all_btn').textContent = translations[language].selectAllBtn;
-    document.getElementById('delete_selected_btn').textContent = translations[language].deleteSelectedBtn;
-    document.getElementById('average_selected_btn').textContent = translations[language].averageSelectedBtn;
-}
-
-// Initialize the page with the default language
-detectLanguage();
-
 const COMMAND_INIT = 0x01;
 const COMMAND_PRINT = 0x02;
 const COMMAND_DATA = 0x04;
@@ -371,10 +320,6 @@ function updateButtonStates() {
     selectAllBtn.disabled = items.length === 0;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    detectLanguage();
-});
-
 async function downloadImage(image) {
     downloadIndex += 1;
     var datetime = new Date();
@@ -555,6 +500,53 @@ function generateExampleImage() {
     ctx.fillText("Example", canvas.width / 2, canvas.height / 2 - 20);
     ctx.fillText("Image", canvas.width / 2, canvas.height / 2 + 20);
 
-    // Add the generated canvas to the gallery    addCanvasToGallery(canvas);
-	addCanvasToGallery(canvas)
+    addCanvasToGallery(canvas);
 }
+
+const colorSchemes = {
+    "grayscale": ['#000000', '#686868', '#b0b0b0', '#ffffff'],
+    "green-yellow": ['#244624', '#545854', '#78a46a', '#d0d93c'],
+    "sepia": ['#1e1e1e', '#705834', '#dac46a', '#f0f0f0'],
+    "red-tone": ['#1e1e1e', '#884e4e', '#dca0a0', '#f0f0f0'],
+    "green-blue": ['#1e1e1e', '#3a6084', '#86c864', '#f0f0f0']
+};
+
+function applyColorScheme(scheme) {
+    const selectedColors = colorSchemes[scheme];
+    if (!selectedColors) return;
+    
+    const images = document.querySelectorAll(".gallery-image img");
+    images.forEach(img => {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        
+        const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+        gradient.addColorStop(0.0, selectedColors[0]);
+        gradient.addColorStop(0.25, selectedColors[0]);
+        gradient.addColorStop(0.25, selectedColors[1]);
+        gradient.addColorStop(0.50, selectedColors[1]);
+        gradient.addColorStop(0.50, selectedColors[2]);
+        gradient.addColorStop(0.75, selectedColors[2]);
+        gradient.addColorStop(0.75, selectedColors[3]);
+        gradient.addColorStop(1.0, selectedColors[3]);
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        img.src = canvas.toDataURL();
+    });
+}
+
+document.querySelectorAll(".color-circle").forEach(circle => {
+    circle.addEventListener("click", () => {
+        document.querySelectorAll(".color-circle").forEach(c => c.classList.remove("active"));
+        circle.classList.add("active");
+        applyColorScheme(circle.dataset.scheme);
+    });
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+    applyColorScheme("grayscale");
+});
+
