@@ -1,7 +1,11 @@
 cmake_minimum_required(VERSION 3.13)
 
+# Enable fetching the Pico SDK from Git if it's not found locally
+set(PICO_SDK_FETCH_FROM_GIT TRUE)
+
 include(pico_sdk_import.cmake)
 project(pico_gb_printer)
+
 #set(PICO_CXX_ENABLE_EXCEPTIONS 1)
 pico_sdk_init()
 
