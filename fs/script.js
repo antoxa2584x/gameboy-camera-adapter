@@ -614,8 +614,32 @@ document.querySelectorAll(".color-circle").forEach(circle => {
 	});
 });
 
+// Function to observe changes in the gallery container
+function observeGalleryChanges() {
+    const gallery = document.getElementById("gallery");
+
+    if (!gallery) return;
+
+    let timeout = null; // Timeout variable to delay execution
+
+    const observer = new MutationObserver(() => {
+        // Clear any previous timeout to prevent multiple triggers
+        clearTimeout(timeout);
+        
+        // Set a delay of 1 second (1000ms) before applying the color scheme
+        timeout = setTimeout(() => {
+            console.log("Gallery updated! Applying color scheme...");
+            const activeScheme = document.querySelector(".color-circle.active")?.dataset.scheme || "grayscale";
+            applyColorScheme(activeScheme);
+        }, 200);
+    });
+
+    observer.observe(gallery, { childList: true });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
 	parseScheme();
+    	observeGalleryChanges();
 });
 
 document.querySelectorAll(".color-circle").forEach(circle => {
