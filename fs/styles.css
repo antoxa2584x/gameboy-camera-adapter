@@ -1,347 +1,393 @@
 body {
-     font-family: 'Press Start 2P', cursive;
-    /* Pixelated font */
-     text-align: center;
-     background-color: #266d3f;
-    /* Mint green background */
-     margin: 0;
-     padding: 0;
-     display: flex;
-     flex-direction: column;
-     min-height: 100vh;
+	font-family: 'Press Start 2P', cursive;
+	/* Pixelated font */
+	text-align: center;
+	background-color: #266d3f;
+	/* Mint green background */
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	min-height: 100vh;
 }
- #content {
-     flex: 1;
-     display: flex;
-     flex-direction: column;
-     align-items: center;
+
+#content {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
 }
- button {
-     padding:10px 20px;
-     margin-top:px;
-     font-size: 1rem;
-     border: none;
-     border-radius: 5px;
-     background-color: transparent;
-    /* Green color from the "R" */
-     color: white;
-     cursor: pointer;
-     font-family: 'Press Start 2P', cursive;
-    /* Pixelated font */
-     transition: background-color 0.2s;
-    /* Smooth transition for background color */
+
+button {
+	padding: 10px 20px;
+	margin-top: px;
+	font-size: 1rem;
+	border: none;
+	border-radius: 5px;
+	background-color: transparent;
+	/* Green color from the "R" */
+	color: white;
+	cursor: pointer;
+	font-family: 'Press Start 2P', cursive;
+	/* Pixelated font */
+	transition: background-color 0.2s;
+	/* Smooth transition for background color */
 }
- button:disabled {
-     background-color: #a1d99b;
-    /* Lighter green for disabled state */
-     cursor: not-allowed;
+
+button:disabled {
+	background-color: #a1d99b;
+	/* Lighter green for disabled state */
+	cursor: not-allowed;
 }
- button:active {
-     background-color: #00823c;
-    /* Darker green for active state */
+
+button:active {
+	background-color: #00823c;
+	/* Darker green for active state */
 }
- h1 {
-     font-size: 1.5rem;
-    /* Adjusted size to fit the retro style */
-     color: #004d25;
-    /* Darker green for the header text */
-     margin-top: 20px;
-     max-width: 90%;
-     margin-left: auto;
-     margin-right: auto;
+
+h1 {
+	font-size: 1.5rem;
+	/* Adjusted size to fit the retro style */
+	color: #004d25;
+	/* Darker green for the header text */
+	margin-top: 20px;
+	max-width: 90%;
+	margin-left: auto;
+	margin-right: auto;
 }
- p {
-     font-size: 1.1em;
-    /* Adjusted size to fit the retro style */
-     color: #004d25;
-    /* Darker green for the paragraph text */
-     max-width: 90%;
-     margin-left: auto;
-     margin-right: auto;
-     line-height: 1.6;
-    /* Added line-height for more vertical spacing */
+
+p {
+	font-size: 1.1em;
+	/* Adjusted size to fit the retro style */
+	color: #004d25;
+	/* Darker green for the paragraph text */
+	max-width: 90%;
+	margin-left: auto;
+	margin-right: auto;
+	line-height: 1.6;
+	/* Added line-height for more vertical spacing */
 }
- #language_select {
-     margin: 10px;
-     padding: 5px;
-     font-size: 0.8rem;
-    /* Adjusted size to fit the retro style */
-     background-color: #a1d99b;
-    /* Lighter green for the dropdown */
-     border: 1px solid #00a550;
-    /* Green border */
-     border-radius: 5px;
-     color: #004d25;
-    /* Darker green for the text */
-     font-family: 'Press Start 2P', cursive;
-    /* Default font */
+
+#language_select {
+	margin: 10px;
+	padding: 5px;
+	font-size: 0.8rem;
+	/* Adjusted size to fit the retro style */
+	background-color: #a1d99b;
+	/* Lighter green for the dropdown */
+	border: 1px solid #00a550;
+	/* Green border */
+	border-radius: 5px;
+	color: #004d25;
+	/* Darker green for the text */
+	font-family: 'Press Start 2P', cursive;
+	/* Default font */
 }
- .gallery-image {
-     width: 100%;
-     max-width: 190px;
-    /* Adjust based on your image size */
-     padding: 10px;
-     margin: 10px;
-     background-color: #3f3f3f;
-     border: 1px solid #004d25;
-    /* Darker green for the border */
-     border-radius: 5px;
-     box-sizing: border-box;
-     position: relative;
+
+.gallery-image {
+	width: 100%;
+	max-width: 190px;
+	/* Adjust based on your image size */
+	padding: 10px;
+	margin: 10px;
+	background-color: rgb(0 0 0 / 28%);
+	border: 1px solid #004d25;
+	/* Darker green for the border */
+	border-radius: 5px;
+	box-sizing: border-box;
+	position: relative;
 }
- #gallery {
-     max-width: 80%;
-     display: grid;
-     gap: 10px;
-     justify-content: center;
-     padding: 20px;
+
+#gallery {
+	max-width: 80%;
+	display: grid;
+	gap: 10px;
+	justify-content: center;
+	padding: 20px;
 }
- footer {
-     position: fixed;
-     left: 0;
-     bottom: 0;
-     width: 100%;
-     background-color: #004d25;
-     color: white;
-     padding: 10px;
-     text-align: center;
+
+footer {
+	position: fixed;
+	left: 0;
+	bottom: 0;
+	width: 100%;
+	background-color: #004d25;
+	color: white;
+	padding: 10px;
+	text-align: center;
 }
+
 /* Ensure the `.links` container inside the footer also stretches */
- footer .links {
-     width: 100%;
-     display: flex;
-     justify-content: center;
-    /* Centering icons */
-     gap: 15px;
-    /* Space between icons */
-     padding: 10px 0;
+footer .links {
+	width: 100%;
+	display: flex;
+	justify-content: center;
+	/* Centering icons */
+	gap: 15px;
+	/* Space between icons */
+	padding: 10px 0;
 }
+
 /* Ensure the icons scale properly */
- footer .links img {
-     width: 40px;
-    /* Adjust the icon size */
-     height: auto;
-     transition: transform 0.3s ease;
+footer .links img {
+	width: 40px;
+	/* Adjust the icon size */
+	height: auto;
+	transition: transform 0.3s ease;
 }
+
 /* Add hover effect */
- footer .links img:hover {
-     transform: scale(1.1);
+footer .links img:hover {
+	transform: scale(1.1);
 }
- .language-select {
-     margin-top: 5px;
+
+.language-select {
+	margin-top: 5px;
 }
- .language-select label {
-     margin-right: 10px;
-     font-size: 0.8rem;
-    /* Adjusted size to fit the retro style */
-     color: white;
-    /* White color for the label text */
-     font-family: 'Press Start 2P', cursive;
-    /* Default font */
+
+.language-select label {
+	margin-right: 10px;
+	font-size: 0.8rem;
+	/* Adjusted size to fit the retro style */
+	color: white;
+	/* White color for the label text */
+	font-family: 'Press Start 2P', cursive;
+	/* Default font */
 }
- .container {
-     max-width: 75%;
-    /* Set the maximum width for the container */
-     margin: 0 auto;
-    /* Center the container */
-     text-align: center;
-    /* Ensure text is centered */
+
+.container {
+	max-width: 75%;
+	/* Set the maximum width for the container */
+	margin: 0 auto;
+	/* Center the container */
+	text-align: center;
+	/* Ensure text is centered */
 }
- @media (min-width:320px) {
-     .container {
-         max-width: 90%;
-        /* Set the maximum width for the container */
-         margin: 0 auto;
-        /* Center the container */
-         text-align: center;
-        /* Ensure text is centered */
-    }
-     .gallery-image img {
-         width: 160px;
-    }
-     .gallery-image {
-         flex: 1;
-    }
+
+@media (min-width:320px) {
+	.container {
+		max-width: 90%;
+		/* Set the maximum width for the container */
+		margin: 0 auto;
+		/* Center the container */
+		text-align: center;
+		/* Ensure text is centered */
+	}
+
+	.gallery-image img {
+		width: 160px;
+	}
+
+	.gallery-image {
+		flex: 1;
+	}
 }
- .gallery-image label {
-     display: block;
-     cursor: pointer;
-     position: relative;
-     height: 100%;
-     width: 100%;
+
+.gallery-image label {
+	display: block;
+	cursor: pointer;
+	position: relative;
+	height: 100%;
+	width: 100%;
 }
- .gallery-image input[type="checkbox"] {
-     display: none;
+
+.gallery-image input[type="checkbox"] {
+	display: none;
 }
- .gallery-image input[type="checkbox"]:checked + label::after {
-     content: "✔";
-     font-size: 2rem;
-     color: white;
-     position: absolute;
-     top: 50%;
-     left: 50%;
-     transform: translate(-50%, -50%);
-     z-index: 2;
+
+.gallery-image input[type="checkbox"]:checked+label::after {
+	content: "✔";
+	font-size: 2rem;
+	color: white;
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	z-index: 2;
 }
- .gallery-image input[type="checkbox"]:checked + label::before {
-     content: "";
-     position: absolute;
-     top: 0;
-     left: 0;
-     width: 100%;
-     height: 100%;
-     background: rgba(0, 0, 0, 0.5);
-    /* Transparent dark tint */
-     z-index: 1;
+
+.gallery-image input[type="checkbox"]:checked+label::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background: rgba(0, 0, 0, 0.5);
+	/* Transparent dark tint */
+	z-index: 1;
 }
- .gallery-image button {
-     margin-top: 10px;
-    /* Ensure consistent spacing around buttons */
+
+.gallery-image button {
+	margin-top: 10px;
+	/* Ensure consistent spacing around buttons */
 }
- #description {
-     color: white;
-     justify-content: center;
-     align-items: center;
-     text-align: center;
-     min-height: 30vh;
-    /* Vertically center the description */
-     margin: auto;
+
+#description {
+	color: white;
+	justify-content: center;
+	align-items: center;
+	text-align: center;
+	min-height: 50vh;
+	/* Vertically center the description */
+	margin: auto;
 }
- #gallery {
-     display: flex;
-     flex-wrap: wrap;
-     justify-content: center;
-     align-items: flex-start;
+
+#gallery {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	align-items: flex-start;
 }
- #image-link {
-     bottom: 10px;
-    /* Space from the bottom of the screen */
-     right: 10px;
-    /* Space from the right of the screen */
-     z-index: 1000;
-    /* Ensure it appears above other elements */
-     display: flex;
-     align-items: center;
-     justify-content: center;
-     width: 50px;
-    /* Size of the clickable area */
-     height: 50px;
+
+#image-link {
+	bottom: 10px;
+	/* Space from the bottom of the screen */
+	right: 10px;
+	/* Space from the right of the screen */
+	z-index: 1000;
+	/* Ensure it appears above other elements */
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 50px;
+	/* Size of the clickable area */
+	height: 50px;
 }
- #image-link img {
-     width: 100%;
-    /* Fit the container */
-     height: auto;
-    /* Maintain aspect ratio */
-     filter: brightness(0) invert(1);
-    /* White filter for the black icon */
-     transition: transform 0.3s ease, filter 0.3s ease;
-    /* Hover effect */
+
+#image-link img {
+
+	/* Fit the container */
+	height: auto;
+	/* Maintain aspect ratio */
+	filter: brightness(0) invert(1);
+	/* White filter for the black icon */
+	transition: transform 0.3s ease, filter 0.3s ease;
+	/* Hover effect */
 }
- #image-link img:hover {
-     transform: scale(1.1);
-    /* Slightly enlarge on hover */
-     filter: brightness(1) invert(0.8);
-    /* Slight hover filter adjustment */
+
+#image-link img:hover {
+	transform: scale(1.1);
+	/* Slightly enlarge on hover */
+	filter: brightness(1) invert(0.8);
+	/* Slight hover filter adjustment */
 }
- @keyframes shake {
-     0% {
-         transform: translateY(1px);
-    }
-     25% {
-         transform: translateX(-1px);
-    }
-     50% {
-         transform: translateX(1px);
-    }
-     75% {
-         transform: translateY(-1px);
-    }
-     100% {
-         transform: translateX(0);
-    }
+
+@keyframes shake {
+	0% {
+		transform: translateY(1px);
+	}
+
+	25% {
+		transform: translateX(-1px);
+	}
+
+	50% {
+		transform: translateX(1px);
+	}
+
+	75% {
+		transform: translateY(-1px);
+	}
+
+	100% {
+		transform: translateX(0);
+	}
 }
- .shake {
-     animation: shake 0.1s infinite;
-    /* 0.5 seconds duration, infinite loop */
+
+.shake {
+	animation: shake 0.1s infinite;
+	/* 0.5 seconds duration, infinite loop */
 }
+
 /* Overlay Styles */
 /* Overlay Styles */
- .popup-overlay {
-     position: fixed;
-     top: 0;
-     left: 0;
-     width: 100vw;
-     height: 100vh;
-     background-color: rgba(0, 0, 0, 0.8);
-     display: flex;
-     justify-content: center;
-     align-items: center;
-     z-index: 1000;
-     overflow: hidden;
-    /* Prevent scrolling */
+.popup-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100vw;
+	height: 100vh;
+	background-color: rgba(0, 0, 0, 0.8);
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	z-index: 1000;
+	overflow: hidden;
+	/* Prevent scrolling */
 }
+
 /* Popup Container Styles */
- .popup-container {
-     position: relative;
-     max-width: 90vw;
-    /* Ensures the container doesn't overflow the viewport width */
-     max-height: 90vh;
-    /* Ensures the container doesn't overflow the viewport height */
-     display: flex;
-     justify-content: center;
-     align-items: center;
+.popup-container {
+	position: relative;
+	max-width: 90vw;
+	/* Ensures the container doesn't overflow the viewport width */
+	max-height: 90vh;
+	/* Ensures the container doesn't overflow the viewport height */
+	display: flex;
+	justify-content: center;
+	align-items: center;
 }
+
 /* Canvas Styles */
- .popup-container canvas {
-     max-width: 90vw;
-    /* Fit within the viewport width */
-     max-height: 90vh;
-    /* Fit within the viewport height */
-     width: auto;
-    /* Maintain aspect ratio */
-     height: auto;
-    /* Maintain aspect ratio */
+.popup-container canvas {
+	max-width: 90vw;
+	/* Fit within the viewport width */
+	max-height: 90vh;
+	/* Fit within the viewport height */
+	width: auto;
+	/* Maintain aspect ratio */
+	height: auto;
+	/* Maintain aspect ratio */
 }
+
 /* Close Button Styles */
- .popup-close-button {
-     position: absolute;
-     top: 10px;
-     right: 10px;
-     width: 40px;
-    /* Set a fixed width */
-     height: 40px;
-    /* Set a fixed height */
-     background-color: red;
-     color: white;
-     border: none;
-     cursor: pointer;
-     font-size: 1rem;
-     font-family: 'Press Start 2P', cursive;
-     border-radius: 50%;
-    /* Makes the button circular */
-     display: flex;
-     justify-content: center;
-     align-items: center;
-    /* Center the text/icon inside the circle */
-     padding: 0;
-    /* Remove extra padding */
+.popup-close-button {
+	position: absolute;
+	top: 10px;
+	right: 10px;
+	width: 40px;
+	/* Set a fixed width */
+	height: 40px;
+	/* Set a fixed height */
+	background-color: red;
+	color: white;
+	border: none;
+	cursor: pointer;
+	font-size: 1rem;
+	font-family: 'Press Start 2P', cursive;
+	border-radius: 50%;
+	/* Makes the button circular */
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	/* Center the text/icon inside the circle */
+	padding: 0;
+	/* Remove extra padding */
 }
- #color-selector {
-     display: flex;
-     justify-content: center;
-     margin: 10px auto;
-     gap: 20px;
+
+#color-selector {
+	display: none;
+	justify-content: center;
+	margin: 10px auto;
+	gap: 20px;
 }
- .color-circle {
-     width: 40px;
-     height: 40px;
-     border-radius: 50%;
-     cursor: pointer;
-     transition: transform 0.2s ease;
-     border: 2px solid #ffffff;
-    /* White border for better visibility */
-     background-size: 100% 100%;
+
+.color-circle {
+	width: 40px;
+	height: 40px;
+	border-radius: 50%;
+	cursor: pointer;
+	transition: transform 0.2s ease;
+	border: 2px solid #ffffff;
+	/* White border for better visibility */
+	background-size: 100% 100%;
 }
- .color-circle:hover {
-     transform: scale(1.2);
+
+.color-circle:hover {
+	transform: scale(1.2);
+}
+
+.color-circle.active {
+	transform: scale(1.2);
 }
