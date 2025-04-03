@@ -138,7 +138,7 @@ static const char *cgi_reset_usb_boot(int iIndex, int iNumParams, char *pcParam[
 
 static const tCGI cgi_handlers[] = {
     // { "/options",           cgi_options },
-    // { "/download",          cgi_download },
+    { "/download",          cgi_download },
     // { "/dumps/list",        cgi_list },
     { "/update",            cgi_update },
     // { "/reset_usb_boot",    cgi_reset_usb_boot }
