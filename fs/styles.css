@@ -319,6 +319,7 @@ footer .links img:hover {
 
 /* Popup Container Styles */
 .popup-container {
+	animation: fadeInPop 0.3s ease-out;
 	position: relative;
 	max-width: 90vw;
 	/* Ensures the container doesn't overflow the viewport width */
@@ -390,4 +391,15 @@ footer .links img:hover {
 
 .color-circle.active {
 	transform: scale(1.2);
+}
+/* Popup Animation */
+@keyframes fadeInPop {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }

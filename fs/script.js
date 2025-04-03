@@ -658,3 +658,25 @@ document.querySelectorAll(".color-circle").forEach(circle => {
 		applyColorScheme(selectedScheme);
 	});
 });
+function showFirmwarePopup() {
+  const popup = document.getElementById('fw-popup');
+  popup.style.display = 'flex';
+}
+
+function closeFirmwarePopup() {
+  const popup = document.getElementById('fw-popup');
+  popup.style.display = 'none';
+}
+
+function checkForUpdate() {
+  window.open("https://github.com/antoxa2584x/gameboy-camera-adapter/releases", "_blank");
+}
+
+function startUpdate() {
+  if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+    alert("⚠️ Update is only available on macOS or Windows.");
+    return;
+  }
+
+  window.location.href = "http://192.168.7.1/update";
+}
