@@ -118,17 +118,30 @@ static const char *cgi_reset(int iIndex, int iNumParams, char *pcParam[], char *
     return STATUS_FILE;
 }
 
+// Callback that runs later (outside of CGI handler)
+int64_t reboot_callback(alarm_id_t id, void *user_data) {
+    reset_usb_boot(0, 0);
+    return 0; // 0 = don’t repeat
+}
+
+const char* cgi_update(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
+    // Schedule reboot in 300ms, which gives time for browser to receive response
+    add_alarm_in_ms(300, reboot_callback, NULL, false);
+
+    return "/updating.html";
+}
+
 static const char *cgi_reset_usb_boot(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
     if (debug_enable) reset_usb_boot(0, 0);
     return ROOT_PAGE;
 }
 
 static const tCGI cgi_handlers[] = {
-    { "/options",           cgi_options },
-    { "/download",          cgi_download },
-    { "/dumps/list",        cgi_list },
-    { "/reset",             cgi_reset },
-    { "/reset_usb_boot",    cgi_reset_usb_boot }
+    // { "/options",           cgi_options },
+    // { "/download",          cgi_download },
+    // { "/dumps/list",        cgi_list },
+    { "/update",            cgi_update },
+    // { "/reset_usb_boot",    cgi_reset_usb_boot }
 };
 
 int fs_open_custom(struct fs_file *file, const char *name) {
