@@ -64,8 +64,8 @@ You can use the installation script written for Raspberry Pi, it works. Your com
 ## Build instructions
 
 ```
-git clone --depth 1 https://github.com/untoxa/pico-gb-printer
-cd pico-gb-printer
+git clone --depth 1 https://github.com/antoxa2584x/gameboy-camera-adapter
+cd gameboy-camera-adapter
 git submodule update --init
 mkdir -p build
 cd build
