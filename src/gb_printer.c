@@ -3,6 +3,7 @@
 
 #include "gb_printer.h"
 #include "globals.h"
+#include "ws2812.pio.h"
 
 volatile enum printer_state printer_state = PRN_STATE_WAIT_FOR_SYNC_1;
 
@@ -39,6 +40,7 @@ uint8_t protocol_data_process(uint8_t data_in) {
             if (data_in == 0x33) printer_state = PRN_STATE_COMMAND; else PRINTER_RESET;
             break;
         case PRN_STATE_COMMAND:
+            setRGB(0, 0, 0xff);
             printer_command = data_in;
             printer_state = PRN_STATE_COMPRESSION_INDICATOR;
             printer_status = next_printer_status;
@@ -94,6 +96,9 @@ uint8_t protocol_data_process(uint8_t data_in) {
 #ifdef PRINT_PROGRESS_LED
             if ((receive_byte_counter & 0x3F) == 0) LED_TOGGLE;
 #endif
+            if ((receive_byte_counter & 0x3F) == 0){
+                setRGB(0, 0, 0xff);
+            }
             if(++receive_byte_counter == packet_data_length) printer_state = PRN_STATE_CHECKSUM_1;
             receive_data_write(data_in);
             switch (printer_command) {
@@ -113,6 +118,7 @@ uint8_t protocol_data_process(uint8_t data_in) {
 #ifdef PRINT_PROGRESS_LED
             LED_OFF;
 #endif
+            setRGB(0, 0, 0);
             break;
         case PRN_STATE_CHECKSUM_2:
             printer_checksum |= ((uint16_t)data_in << 8);

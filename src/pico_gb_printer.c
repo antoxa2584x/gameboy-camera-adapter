@@ -16,6 +16,8 @@
 #include "linkcable.h"
 #include "datablocks.h"
 
+#include "ws2812.pio.h"
+
 bool debug_enable = ENABLE_DEBUG;
 bool speed_240_MHz = false;
 
@@ -236,11 +238,39 @@ int main(void) {
 
     LED_OFF;
 
+    // RGB LED
+
+    setupOnboardRGB();
+
+    // setRGB(0, 0xff, 0);
+
+    uint64_t last_blink = time_us_64();
+    bool led_on = false;
+
+    setRGB(0xFF, 0x45, 0x00);
+
+    // END of RGB LED
+
     while (true) {
+        // setRGB(0, 0, 0);
         // process USB
         tud_task();
         // process WEB
         service_traffic();
+
+        uint64_t now = time_us_64();
+
+        if (!led_on && (now - last_blink >= 2000000)) {
+            setRGB(0, 0xFF, 0);
+            led_on = true;
+            last_blink = now;
+        }
+
+        if (led_on && (now - last_blink >= 100000)) {
+            setRGB(0, 0, 0);
+            led_on = false;
+            last_blink = now;
+        }
     }
 
     return 0;
