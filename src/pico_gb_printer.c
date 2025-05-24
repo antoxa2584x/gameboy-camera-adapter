@@ -244,12 +244,19 @@ int main(void) {
 
     // setRGB(0, 0xff, 0);
 
-    uint64_t last_blink = time_us_64();
     bool led_on = false;
 
-    setRGB(0xFF, 0x45, 0x00);
+    setRGB(0xFF, 0, 0);
 
     // END of RGB LED
+
+    uint8_t green_levels[15] = {
+    0x10, 0x30, 0x50, 0x70, 0x90, 0xB0,   // up
+    0xD0, 0xB0, 0x90, 0x70, 0x50, 0x30, 0x10         // down
+    };
+    uint8_t current_level = 0;
+    uint32_t last_blink = 0;
+    const uint32_t interval = 100000; // 100 ms
 
     while (true) {
         // setRGB(0, 0, 0);
@@ -260,17 +267,13 @@ int main(void) {
 
         uint64_t now = time_us_64();
 
-        if (!led_on && (now - last_blink >= 2000000)) {
-            setRGB(0, 0xFF, 0);
-            led_on = true;
+        if (now - last_blink >= interval) {
+            setRGB(green_levels[current_level], 0, 0);
+            current_level = (current_level + 1) % 13;
+        
             last_blink = now;
         }
 
-        if (led_on && (now - last_blink >= 100000)) {
-            setRGB(0, 0, 0);
-            led_on = false;
-            last_blink = now;
-        }
     }
 
     return 0;
