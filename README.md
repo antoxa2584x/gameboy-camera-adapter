@@ -30,51 +30,15 @@ This is the example of the ready-to-use device:
 
 As finding which is SIN and SOUT is sometimes tricky as signals are crossed within the serial cable, you can also make your own PCB with a Pi Zero and a GBC/GBA serial socket [following the guide here](https://github.com/Raphael-Boichot/Collection-of-PCB-for-Game-Boy-Printer-Emulators). Just [route the LED to GPIO 8](https://github.com/Raphael-Boichot/pico-gb-printer/blob/c10a31e7458818ecd8ce3af9a09c53344a659cd4/include/globals.h#L8C33-L8C35) and the [Pushbutton to GPIO9](https://github.com/Raphael-Boichot/pico-gb-printer/blob/c10a31e7458818ecd8ce3af9a09c53344a659cd4/include/globals.h#L21) to make it shine and cut paper !
 
-## Build dependencies
-
-### On Debian:
-
-```
-sudo apt install git build-essential cmake gcc-arm-none-eabi
-```
-
-Your Linux distribution does need to provide a recent CMake (3.13+).
-If not, compile [CMake from source](https://cmake.org/download/#latest) first.
-
-### On OSX:
+### 🐳 Docker Build (Cross-platform, no local dependencies)
 
 ```bash
-brew install cmake doxygen 
-brew tap ArmMbed/homebrew-formulae
-brew install arm-none-eabi-gcc
-```
-
-- Install the [Pi Pico SDK](https://github.com/raspberrypi/pico-sdk) and make sure to add the location to your path. 
-### On Windows:
-
-Windows is not a friendly system to compile the pico sdk. Unless you want to loose your precious time, use the following method:
-- Install [WSL (Windows Subsystem for Linux)](https://learn.microsoft.com/en-us/windows/wsl/install) (Ubuntu is default install) and update it
-```
-sudo apt update && sudo apt full-upgrade
-```
-- Install the pico SDK by following the ["Quick Pico Setup"](https://datasheets.raspberrypi.com/pico/getting-started-with-pico.pdf)
-You can use the installation script written for Raspberry Pi, it works. Your computer may require a boot at this step.
-- Continue installation like below.
-
-## Build instructions
-
-```
 git clone --depth 1 https://github.com/antoxa2584x/gameboy-camera-adapter
 cd gameboy-camera-adapter
 git submodule update --init
-mkdir -p build
-cd build
-cmake ..
-make
+./build.sh
 ```
 
-Copy the resulting pico_gb_printer.uf2 file to the Pi Pico mass storage device manually.
-Webserver will be available at http://192.168.7.1/
-
-Content it is serving is in /fs
-If you change any files there, run ./regen-fsdata.sh
+This will build the firmware inside a Docker container.  
+The final `pico_gb_printer.uf2` file will be placed in the `build/` directory.  
+Just drag and drop it to your Pi Pico device.
