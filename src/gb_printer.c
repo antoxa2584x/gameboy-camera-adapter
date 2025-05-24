@@ -40,7 +40,7 @@ uint8_t protocol_data_process(uint8_t data_in) {
             if (data_in == 0x33) printer_state = PRN_STATE_COMMAND; else PRINTER_RESET;
             break;
         case PRN_STATE_COMMAND:
-            setRGB(0xFF, 0, 0);
+            setRGB(0, 0xFF, 0);
             printer_command = data_in;
             printer_state = PRN_STATE_COMPRESSION_INDICATOR;
             printer_status = next_printer_status;
@@ -97,7 +97,7 @@ uint8_t protocol_data_process(uint8_t data_in) {
             if ((receive_byte_counter & 0x3F) == 0) LED_TOGGLE;
 #endif
             if ((receive_byte_counter & 0x3F) == 0){
-                setRGB(0xFF, 0, 0);
+                setRGB(0, 0xFF, 0);
             }
             if(++receive_byte_counter == packet_data_length) printer_state = PRN_STATE_CHECKSUM_1;
             receive_data_write(data_in);
