@@ -91,7 +91,7 @@
  }
 
  void setRGB(uint8_t r, uint8_t g, uint8_t b){
-    put_pixel(pio, sm, urgb_u32(r, g, b));
+    put_pixel(pio, sm, urgb_u32(g, r, b));
  }
  
  void pattern_random(PIO pio, uint sm, uint len, uint t) {

@@ -246,7 +246,7 @@ int main(void) {
 
     bool led_on = false;
 
-    setRGB(0xFF, 0, 0);
+    setRGB(0, 0xFF, 0);
 
     // END of RGB LED
 
@@ -268,7 +268,7 @@ int main(void) {
         uint64_t now = time_us_64();
 
         if (now - last_blink >= interval) {
-            setRGB(green_levels[current_level], 0, 0);
+            setRGB(0, green_levels[current_level], 0);
             current_level = (current_level + 1) % 13;
         
             last_blink = now;
