@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <title>GameBoy Camera Adapter</title>
-    <button onclick="showFirmwarePopup()" style="color:white;position:absolute;margin:1rem;right:0;top:0;">FW:v1.4</button>
+    <button id="firmware-version-btn" onclick="showFirmwarePopup()" style="color:white;position:absolute;margin:1rem;right:0;top:0;">FW:v?</button>
     <link rel="icon" type="image/png" href="favicon-96x96.png" sizes="96x96">
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="shortcut icon" href="/favicon.ico">
@@ -49,6 +49,9 @@
     </div>
     <div id="content" class="container">
       <div id="header">
+        <div id="update-alert" style="display:none; color: yellow; font-size: 12px; text-align: center; padding: 10px;">
+  🔔 Update available: <span id="latest-version"></span>
+</div>
         <img src="logo.webp" alt="logo" style="padding:10%;width:80%;flex:auto;">
         <button style="display:none" id="get_image_btn">Get Images</button>
         <button style="display:none" id="tear_btn">Tear</button>
