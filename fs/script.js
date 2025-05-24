@@ -637,7 +637,7 @@ function observeGalleryChanges() {
     observer.observe(gallery, { childList: true });
 }
 
-const CURRENT_VERSION = "1.4";
+const CURRENT_VERSION = "1.4.2";
 
 function isNewerVersion(latest, current) {
   const latestParts = latest.replace(/^v/, '').split('.').map(Number);
