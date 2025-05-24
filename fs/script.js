@@ -637,9 +637,55 @@ function observeGalleryChanges() {
     observer.observe(gallery, { childList: true });
 }
 
+const CURRENT_VERSION = "1.3";
+
+function isNewerVersion(latest, current) {
+  const latestParts = latest.replace(/^v/, '').split('.').map(Number);
+  const currentParts = current.replace(/^v/, '').split('.').map(Number);
+  const maxLen = Math.max(latestParts.length, currentParts.length);
+
+  for (let i = 0; i < maxLen; i++) {
+    const latestNum = latestParts[i] || 0;
+    const currentNum = currentParts[i] || 0;
+    if (latestNum > currentNum) return true;
+    if (latestNum < currentNum) return false;
+  }
+  return false;
+}
+
+async function checkGitHubRelease() {
+  try {
+    const response = await fetch('https://api.github.com/repos/antoxa2584x/gameboy-camera-adapter/releases/latest');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const release = await response.json();
+    const latestVersion = release.tag_name.replace(/^v/, '');
+    const releaseUrl = release.html_url;
+
+    if (isNewerVersion(latestVersion, CURRENT_VERSION)) {
+      const alertBox = document.getElementById("update-alert");
+      const versionSpan = document.getElementById("latest-version");
+
+      versionSpan.innerHTML = `<a href="${releaseUrl}" target="_blank" style="color:yellow;">v${latestVersion}</a>`;
+      alertBox.style.display = "block";
+    }
+  } catch (err) {
+    console.error("Failed to check for updates:", err);
+  }
+}
+
+
 document.addEventListener("DOMContentLoaded", () => {
-	parseScheme();
-    	observeGalleryChanges();
+  // Update version label dynamically
+  const versionBtn = document.getElementById("firmware-version-btn");
+  if (versionBtn) {
+    versionBtn.textContent = `FW:v${CURRENT_VERSION}`;
+  }
+
+  // Run on load
+  checkGitHubRelease();
+  parseScheme();
+  observeGalleryChanges();
 });
 
 document.querySelectorAll(".color-circle").forEach(circle => {
