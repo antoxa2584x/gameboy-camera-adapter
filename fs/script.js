@@ -676,10 +676,10 @@ async function checkGitHubRelease() {
 
 
 document.addEventListener("DOMContentLoaded", () => {
-  // Update version label dynamically
-  const versionBtn = document.getElementById("firmware-version-btn");
-  if (versionBtn) {
-    versionBtn.textContent = `FW:v${CURRENT_VERSION}`;
+  const versionText = document.getElementById("firmware-version-text");
+
+  if (versionText) {
+    versionText.textContent = `Current firmware is v${CURRENT_VERSION}`;
   }
 
   // Run on load
