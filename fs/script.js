@@ -659,7 +659,7 @@ async function checkGitHubRelease() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const release = await response.json();
-    const latestVersion = release.tag_name.replace(/^v/, '');
+    const latestVersion = release.name.replace(/^v/, '');
     const releaseUrl = release.html_url;
 
     if (isNewerVersion(latestVersion, CURRENT_VERSION)) {
