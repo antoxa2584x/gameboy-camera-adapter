@@ -707,6 +707,8 @@ document.querySelectorAll(".color-circle").forEach(circle => {
 function showFirmwarePopup() {
   const popup = document.getElementById('fw-popup');
   popup.style.display = 'flex';
+
+   loadLedStatus();
 }
 
 function closeFirmwarePopup() {
@@ -725,4 +727,33 @@ function startUpdate() {
   }
 
   window.location.href = "http://192.168.7.1/update";
+}
+
+function setLedColor() {
+  const hex = document.getElementById("ledColorPicker").value;
+  const mode = 'rgb';
+  const r = parseInt(hex.substr(1, 2), 16);
+  const g = parseInt(hex.substr(3, 2), 16);
+  const b = parseInt(hex.substr(5, 2), 16);
+  fetch(`/set_color?r=${r}&g=${g}&b=${b}&mode=${mode}`);
+}
+
+function updatePreview() {
+  const color = document.getElementById("ledColorPicker").value;
+  document.getElementById("colorPreview").style.backgroundColor = color;
+}
+
+document.getElementById("ledColorPicker").addEventListener("input", updatePreview);
+
+function loadLedStatus() {
+  fetch('/led_status')
+    .then(response => response.json())
+    .then(data => {
+      const { r, g, b, mode } = data;
+      const hex = "#" + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+      document.getElementById('ledColorPicker').value = hex;
+      document.getElementById('colorPreview').style.backgroundColor = hex;
+      // document.getElementById('colorMode').value = mode;
+    })
+    .catch(err => console.error("Failed to load LED status:", err));
 }

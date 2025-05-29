@@ -18,6 +18,11 @@
 
 #include "ws2812.pio.h"
 
+#include <string.h>
+
+#include "hardware/flash.h"
+#include "hardware/sync.h"
+
 bool debug_enable = ENABLE_DEBUG;
 bool speed_240_MHz = false;
 
@@ -26,6 +31,12 @@ uint8_t file_buffer[FILE_BUFFER_SIZE];              // buffer for rendering of s
 datafile_t * allocated_file = NULL;
 uint32_t last_file_len = 0;
 uint32_t picture_count = 0;
+
+uint8_t base_r = 0, base_g = 255, base_b = 0; // default green
+uint8_t wave_index = 0;
+uint8_t led_mode = 0; // 0 = wave, 1 = static
+
+extern void setRGB(uint8_t r, uint8_t g, uint8_t b);
 
 void receive_data_reset(void) {
     if (!allocated_file) return;
@@ -138,12 +149,105 @@ static const char *cgi_reset_usb_boot(int iIndex, int iNumParams, char *pcParam[
     return ROOT_PAGE;
 }
 
+#define FLASH_TARGET_OFFSET (256 * 1024) // adjust as needed (sector-aligned)
+
+uint8_t saved_color[3] = {0};
+
+void save_color_to_flash(uint8_t r, uint8_t g, uint8_t b) {
+    uint8_t buffer[FLASH_PAGE_SIZE] = {0};
+    buffer[0] = r;
+    buffer[1] = g;
+    buffer[2] = b;
+
+    uint32_t ints = save_and_disable_interrupts();
+    flash_range_erase(FLASH_TARGET_OFFSET, FLASH_SECTOR_SIZE);
+    flash_range_program(FLASH_TARGET_OFFSET, buffer, FLASH_PAGE_SIZE);
+    restore_interrupts(ints);
+}
+
+void load_color_from_flash() {
+    const uint8_t *flash_data = (const uint8_t *)(XIP_BASE + FLASH_TARGET_OFFSET);
+
+    // If flash contains 0xFF (erased), use default green
+    bool is_blank = (flash_data[0] == 0xFF && flash_data[1] == 0xFF && flash_data[2] == 0xFF);
+
+    if (is_blank) {
+        base_r = 0x00;
+        base_g = 0xFF;
+        base_b = 0x00;
+    } else {
+        base_r = flash_data[0];
+        base_g = flash_data[1];
+        base_b = flash_data[2];
+    }
+}
+
+
+#define WAVE_STEPS 15
+float wave_levels[WAVE_STEPS] = {
+    0.1f, 0.2f, 0.3f, 0.4f, 0.5f,
+    0.65f, 0.8f, 1.0f,
+    0.8f, 0.65f, 0.5f, 0.4f, 0.3f, 0.2f, 0.1f
+};
+
+int64_t soft_restart(alarm_id_t id, void *user_data) {
+    watchdog_enable(1, 1); // short timeout
+    while (1);             // wait for reset
+    return 0;
+}
+
+static const char *cgi_set_color(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
+    const char *color_mode = "grb";  // default
+
+    for (int i = 0; i < iNumParams; i++) {
+        if (strcmp(pcParam[i], "r") == 0) base_r = atoi(pcValue[i]);
+        if (strcmp(pcParam[i], "g") == 0) base_g = atoi(pcValue[i]);
+        if (strcmp(pcParam[i], "b") == 0) base_b = atoi(pcValue[i]);
+        if (strcmp(pcParam[i], "mode") == 0) color_mode = pcValue[i];
+    }
+
+    // Set color to LED immediately
+    if (strcmp(color_mode, "rgb") == 0)
+        setRGB(base_r, base_g, base_b);
+    else
+        setRGB(base_g, base_r, base_b); // GRB
+
+    save_color_to_flash(base_r, base_g, base_b);
+
+    // Schedule soft reboot after 300ms
+    add_alarm_in_ms(300, soft_restart, NULL, false);
+
+    return "/index.html";
+}
+
+void startGreenWave() {
+    led_mode = 0;
+}
+
+/* Example loop (call from main): */
+uint64_t last_blink = 0;
+const uint32_t interval = 150000; // 200ms
+
+void update_led_wave() {
+    uint64_t now = time_us_64();
+    if (led_mode == 0 && now - last_blink >= interval) {
+        float scale = wave_levels[wave_index];
+        uint8_t r = (uint8_t)(base_r * scale);
+        uint8_t g = (uint8_t)(base_g * scale);
+        uint8_t b = (uint8_t)(base_b * scale);
+
+        setRGB(r, g, b);
+
+        wave_index = (wave_index + 1) % WAVE_STEPS;
+        last_blink = now;
+    }
+}
+
+/* Add to CGI handler list */
 static const tCGI cgi_handlers[] = {
-    // { "/options",           cgi_options },
-    { "/download",          cgi_download },
-    // { "/dumps/list",        cgi_list },
-    { "/update",            cgi_update },
-    // { "/reset_usb_boot",    cgi_reset_usb_boot }
+    { "/download", cgi_download },
+    { "/update", cgi_update },
+    { "/set_color", cgi_set_color },
 };
 
 int fs_open_custom(struct fs_file *file, const char *name) {
@@ -194,6 +298,14 @@ int fs_open_custom(struct fs_file *file, const char *name) {
                                ((picture_count) ? "\"/image.bin\"" : ""));
         file->index = file->len;
         return 1;
+    } else if (!strcmp(name, "/led_status")) {
+        memset(file, 0, sizeof(struct fs_file));
+        file->data  = file_buffer;
+        file->len   = snprintf(file_buffer, sizeof(file_buffer),
+                               "{\"r\":%d,\"g\":%d,\"b\":%d,\"mode\":\"%s\"}",
+                               base_r, base_g, base_b, "grb");
+        file->index = file->len;
+        return 1;
     }
     return 0;
 }
@@ -240,23 +352,9 @@ int main(void) {
 
     // RGB LED
 
+    load_color_from_flash();
+
     setupOnboardRGB();
-
-    // setRGB(0, 0xff, 0);
-
-    bool led_on = false;
-
-    setRGB(0, 0xFF, 0);
-
-    // END of RGB LED
-
-    uint8_t green_levels[15] = {
-    0x10, 0x30, 0x50, 0x70, 0x90, 0xB0,   // up
-    0xD0, 0xB0, 0x90, 0x70, 0x50, 0x30, 0x10         // down
-    };
-    uint8_t current_level = 0;
-    uint32_t last_blink = 0;
-    const uint32_t interval = 100000; // 100 ms
 
     while (true) {
         // setRGB(0, 0, 0);
@@ -267,13 +365,7 @@ int main(void) {
 
         uint64_t now = time_us_64();
 
-        if (now - last_blink >= interval) {
-            setRGB(0, green_levels[current_level], 0);
-            current_level = (current_level + 1) % 13;
-        
-            last_blink = now;
-        }
-
+        update_led_wave();
     }
 
     return 0;
