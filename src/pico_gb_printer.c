@@ -159,7 +159,8 @@ void save_color_to_flash(uint8_t r, uint8_t g, uint8_t b, bool rgb_mode) {
     buffer[0] = r;
     buffer[1] = g;
     buffer[2] = b;
-    buffer[3] = rgb_mode ? 0x01 : 0x00; // 1 = rgb, 0 = grb
+    buffer[3] = 0xA5; // valid marker
+    buffer[4] = rgb_mode ? 0x01 : 0x00; // actual mode
 
     uint32_t ints = save_and_disable_interrupts();
     flash_range_erase(FLASH_TARGET_OFFSET, FLASH_SECTOR_SIZE);
@@ -171,18 +172,18 @@ void save_color_to_flash(uint8_t r, uint8_t g, uint8_t b, bool rgb_mode) {
 void load_color_from_flash() {
     const uint8_t *flash_data = (const uint8_t *)(XIP_BASE + FLASH_TARGET_OFFSET);
 
-    bool is_blank = (flash_data[0] == 0xFF && flash_data[1] == 0xFF && flash_data[2] == 0xFF);
-
-    if (is_blank) {
-        base_r = 0x00;
-        base_g = 0xFF;
-        base_b = 0x00;
-        use_rgb_mode = false; // default to RGB
-    } else {
+    bool is_valid = (flash_data[3] == 0xA5); // magic byte check
+    
+    if (is_valid) {
         base_r = flash_data[0];
         base_g = flash_data[1];
         base_b = flash_data[2];
-        use_rgb_mode = (flash_data[3] == 0x01);
+        use_rgb_mode = (flash_data[4] == 0x01);
+    } else {
+        base_r = 0x00;
+        base_g = 0xFF;
+        base_b = 0x00;
+        use_rgb_mode = true;
     }
 }
 
