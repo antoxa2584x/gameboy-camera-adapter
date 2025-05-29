@@ -297,7 +297,7 @@ footer .links img:hover {
 }
 
 .shake {
-	animation: shake 0.1s infinite;
+	/* animation: shake 0.1s infinite; */
 	/* 0.5 seconds duration, infinite loop */
 }
 

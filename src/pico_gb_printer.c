@@ -173,7 +173,7 @@ void load_color_from_flash() {
     const uint8_t *flash_data = (const uint8_t *)(XIP_BASE + FLASH_TARGET_OFFSET);
 
     bool is_valid = (flash_data[3] == 0xA5); // magic byte check
-    
+
     if (is_valid) {
         base_r = flash_data[0];
         base_g = flash_data[1];
