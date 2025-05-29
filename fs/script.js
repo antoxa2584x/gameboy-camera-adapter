@@ -731,11 +731,11 @@ function startUpdate() {
 
 function setLedColor() {
   const hex = document.getElementById("ledColorPicker").value;
-  const mode = 'rgb';
+  const useRGB = document.getElementById("colorMode").checked;
   const r = parseInt(hex.substr(1, 2), 16);
   const g = parseInt(hex.substr(3, 2), 16);
   const b = parseInt(hex.substr(5, 2), 16);
-  fetch(`/set_color?r=${r}&g=${g}&b=${b}&mode=${mode}`);
+  fetch(`/set_color?r=${r}&g=${g}&b=${b}&use_rgb=${useRGB}`);
 }
 
 function updatePreview() {
@@ -753,7 +753,7 @@ function loadLedStatus() {
       const hex = "#" + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
       document.getElementById('ledColorPicker').value = hex;
       document.getElementById('colorPreview').style.backgroundColor = hex;
-      // document.getElementById('colorMode').value = mode;
+      document.getElementById('colorMode').checked = mode;
     })
     .catch(err => console.error("Failed to load LED status:", err));
 }

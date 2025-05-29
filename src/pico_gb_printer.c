@@ -36,6 +36,9 @@ uint8_t base_r = 0, base_g = 255, base_b = 0; // default green
 uint8_t wave_index = 0;
 uint8_t led_mode = 0; // 0 = wave, 1 = static
 
+uint8_t saved_color[3] = {0};
+bool use_rgb_mode = true; // default mode string
+
 extern void setRGB(uint8_t r, uint8_t g, uint8_t b);
 
 void receive_data_reset(void) {
@@ -151,13 +154,12 @@ static const char *cgi_reset_usb_boot(int iIndex, int iNumParams, char *pcParam[
 
 #define FLASH_TARGET_OFFSET (256 * 1024) // adjust as needed (sector-aligned)
 
-uint8_t saved_color[3] = {0};
-
-void save_color_to_flash(uint8_t r, uint8_t g, uint8_t b) {
+void save_color_to_flash(uint8_t r, uint8_t g, uint8_t b, bool rgb_mode) {
     uint8_t buffer[FLASH_PAGE_SIZE] = {0};
     buffer[0] = r;
     buffer[1] = g;
     buffer[2] = b;
+    buffer[3] = rgb_mode ? 0x01 : 0x00; // 1 = rgb, 0 = grb
 
     uint32_t ints = save_and_disable_interrupts();
     flash_range_erase(FLASH_TARGET_OFFSET, FLASH_SECTOR_SIZE);
@@ -165,29 +167,31 @@ void save_color_to_flash(uint8_t r, uint8_t g, uint8_t b) {
     restore_interrupts(ints);
 }
 
+
 void load_color_from_flash() {
     const uint8_t *flash_data = (const uint8_t *)(XIP_BASE + FLASH_TARGET_OFFSET);
 
-    // If flash contains 0xFF (erased), use default green
     bool is_blank = (flash_data[0] == 0xFF && flash_data[1] == 0xFF && flash_data[2] == 0xFF);
 
     if (is_blank) {
         base_r = 0x00;
         base_g = 0xFF;
         base_b = 0x00;
+        use_rgb_mode = false; // default to RGB
     } else {
         base_r = flash_data[0];
         base_g = flash_data[1];
         base_b = flash_data[2];
+        use_rgb_mode = (flash_data[3] == 0x01);
     }
 }
 
 
-#define WAVE_STEPS 15
+#define WAVE_STEPS 13
 float wave_levels[WAVE_STEPS] = {
-    0.1f, 0.2f, 0.3f, 0.4f, 0.5f,
+    0.2f, 0.3f, 0.4f, 0.5f,
     0.65f, 0.8f, 1.0f,
-    0.8f, 0.65f, 0.5f, 0.4f, 0.3f, 0.2f, 0.1f
+    0.8f, 0.65f, 0.5f, 0.4f, 0.3f, 0.2f
 };
 
 int64_t soft_restart(alarm_id_t id, void *user_data) {
@@ -197,22 +201,14 @@ int64_t soft_restart(alarm_id_t id, void *user_data) {
 }
 
 static const char *cgi_set_color(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
-    const char *color_mode = "grb";  // default
-
     for (int i = 0; i < iNumParams; i++) {
         if (strcmp(pcParam[i], "r") == 0) base_r = atoi(pcValue[i]);
-        if (strcmp(pcParam[i], "g") == 0) base_g = atoi(pcValue[i]);
-        if (strcmp(pcParam[i], "b") == 0) base_b = atoi(pcValue[i]);
-        if (strcmp(pcParam[i], "mode") == 0) color_mode = pcValue[i];
+        else if (strcmp(pcParam[i], "g") == 0) base_g = atoi(pcValue[i]);
+        else if (strcmp(pcParam[i], "b") == 0) base_b = atoi(pcValue[i]);
+        else if (strcmp(pcParam[i], "use_rgb") == 0) use_rgb_mode = (strcmp(pcValue[i], "true") == 0);
     }
 
-    // Set color to LED immediately
-    if (strcmp(color_mode, "rgb") == 0)
-        setRGB(base_r, base_g, base_b);
-    else
-        setRGB(base_g, base_r, base_b); // GRB
-
-    save_color_to_flash(base_r, base_g, base_b);
+    save_color_to_flash(base_r, base_g, base_b, use_rgb_mode);
 
     // Schedule soft reboot after 300ms
     add_alarm_in_ms(300, soft_restart, NULL, false);
@@ -236,7 +232,10 @@ void update_led_wave() {
         uint8_t g = (uint8_t)(base_g * scale);
         uint8_t b = (uint8_t)(base_b * scale);
 
-        setRGB(r, g, b);
+        if (use_rgb_mode)
+            setRGB(r, g, b);
+        else
+            setRGB(g, r, b);
 
         wave_index = (wave_index + 1) % WAVE_STEPS;
         last_blink = now;
@@ -301,9 +300,9 @@ int fs_open_custom(struct fs_file *file, const char *name) {
     } else if (!strcmp(name, "/led_status")) {
         memset(file, 0, sizeof(struct fs_file));
         file->data  = file_buffer;
-        file->len   = snprintf(file_buffer, sizeof(file_buffer),
-                               "{\"r\":%d,\"g\":%d,\"b\":%d,\"mode\":\"%s\"}",
-                               base_r, base_g, base_b, "grb");
+        file->len = snprintf(file_buffer, sizeof(file_buffer),
+            "{\"r\":%d,\"g\":%d,\"b\":%d,\"use_rgb\":%s}",
+            base_r, base_g, base_b, use_rgb_mode ? "true" : "false");
         file->index = file->len;
         return 1;
     }
