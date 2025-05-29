@@ -14,6 +14,10 @@ extern void receive_data_reset();
 extern void receive_data_write(uint8_t b);
 extern void receive_data_commit(uint8_t cmd);
 
+extern uint8_t base_r, base_g, base_b;
+extern void load_color_from_flash(void);
+extern void setRGB(uint8_t r, uint8_t g, uint8_t b);
+
 // printer packet state machine
 void protocol_reset() {
     PRINTER_RESET;
@@ -40,7 +44,7 @@ uint8_t protocol_data_process(uint8_t data_in) {
             if (data_in == 0x33) printer_state = PRN_STATE_COMMAND; else PRINTER_RESET;
             break;
         case PRN_STATE_COMMAND:
-            setRGB(0, 0xFF, 0);
+            setRGB(base_r, base_g, base_b);
             printer_command = data_in;
             printer_state = PRN_STATE_COMPRESSION_INDICATOR;
             printer_status = next_printer_status;
@@ -97,7 +101,7 @@ uint8_t protocol_data_process(uint8_t data_in) {
             if ((receive_byte_counter & 0x3F) == 0) LED_TOGGLE;
 #endif
             if ((receive_byte_counter & 0x3F) == 0){
-                setRGB(0, 0xFF, 0);
+                setRGB(base_r, base_g, base_b);
             }
             if(++receive_byte_counter == packet_data_length) printer_state = PRN_STATE_CHECKSUM_1;
             receive_data_write(data_in);
