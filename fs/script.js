@@ -1,3 +1,5 @@
+const CURRENT_VERSION = "1.4.2";
+
 const COMMAND_INIT = 0x01;
 const COMMAND_PRINT = 0x02;
 const COMMAND_DATA = 0x04;
@@ -178,7 +180,11 @@ async function get_camera_image(canvas, binPath) {
 
 				console.log("Rendering transfer image...");
 				render(canvas, processed_data, current_image_start, ptr, CAMERA_WIDTH, 1, 0x03, 0xE4, 0xFF);
-				addCanvasToGallery(canvas);
+				if(window.gifMode){
+					addCanvasToGif(canvas, 100);
+				}else{
+					addCanvasToGallery(canvas);
+				}
 				reset_canvas(canvas);
 				buffer_start = ptr;
 				break;
@@ -202,7 +208,11 @@ async function get_camera_image(canvas, binPath) {
 	}
 
 	if (canvas.height > 1) {
-		addCanvasToGallery(canvas);
+		if(window.gifMode){
+			addCanvasToGif(canvas, 100);
+		}else{
+			addCanvasToGallery(canvas);
+		}
 		reset_canvas(canvas);
 	}
 	return res.ok
@@ -637,8 +647,6 @@ function observeGalleryChanges() {
     observer.observe(gallery, { childList: true });
 }
 
-const CURRENT_VERSION = "1.4.2";
-
 function isNewerVersion(latest, current) {
   const latestParts = latest.replace(/^v/, '').split('.').map(Number);
   const currentParts = current.replace(/^v/, '').split('.').map(Number);
@@ -756,4 +764,50 @@ function loadLedStatus() {
       document.getElementById('colorMode').checked = mode;
     })
     .catch(err => console.error("Failed to load LED status:", err));
+}
+
+function saveAllPictures(){
+	const buttons = document.querySelectorAll('.gallery-image button');
+	const total = buttons.length;
+
+	if(total == 0){
+		return;
+	}
+
+	showGeneralPopup();
+
+	updateGeneralPopup('SAVING PHOTOS', false);
+
+	buttons.forEach((btn, index) => {
+	setTimeout(() => {
+		let showButton = false;
+		if(index == total - 1){
+			showButton = true;
+		}
+		updateGeneralPopup(`SAVING PHOTO ${index + 1}/${total}`, showButton);
+		btn.click();
+	}, 1000 * index);
+	});
+}
+
+function showGeneralPopup() {
+  const popup = document.getElementById('general-popup');
+  popup.style.display = 'flex';
+}
+
+function closeGeneralPopup() {
+  const popup = document.getElementById('general-popup');
+  popup.style.display = 'none';
+}
+
+function updateGeneralPopup(html, showCloseButton){
+	const popupContent = document.querySelector('.general-popup-content');
+	if (popupContent) popupContent.innerHTML = html;
+
+	const closeButton = document.querySelector('.general-popup-button-close-button');
+	if(showCloseButton){
+		if (closeButton) closeButton.style.display = 'flex';
+	}else{
+		if (closeButton) closeButton.style.display = 'none';
+	}
 }

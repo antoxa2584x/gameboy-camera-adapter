@@ -1,71 +1,110 @@
 <!DOCTYPE html>
 <html lang="en">
-   <head>
-      <title>GameBoy Camera Adapter</title>
-      <button id="firmware-version-btn" onclick="showFirmwarePopup()" style="color:white;position:absolute;margin:1rem;right:0;top:0;font-size: 2em;">⚙️</button>
-      <link rel="icon" type="image/png" href="favicon-96x96.png" sizes="96x96">
-      <link rel="icon" type="image/svg+xml" href="favicon.svg">
-      <link rel="shortcut icon" href="/favicon.ico">
-      <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-      <meta name="apple-mobile-web-app-title" content="GameBoy Camera Adapter">
-      <link rel="manifest" href="site.webmanifest">
-      <link rel="mask-icon" href="safari-pinned-tab.svg" color="#cc3366">
-      <meta charset="UTF-8">
-      <meta name="apple-mobile-web-app-capable" content="yes">
-      <meta name="apple-mobile-web-app-status-bar-style" content="white">
-      <meta name="application-name" content="GameBoy Camera Adapter">
-      <meta name="msapplication-TileColor" content="#ece6e6">
-      <meta name="theme-color" content="#ece6e6">
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-      <link rel="stylesheet" href="styles.css">
-      <script defer src="script.js"></script>
-   </head>
-   <body>
-      <!-- Firmware Update Dialog -->
-      <div id="fw-popup" class="popup-overlay" style="display:none;">
-  <div class="popup-container">
-    <div style="display:flex; flex-direction:column; align-items:center; background:#266d3f; padding: 2rem; border-radius: 10px; width: 100%; max-width: 500px;">
-      
-      <p id="firmware-version-text" style="color:white; font-size: 1.5rem; margin-bottom: 2rem;">Current firmware is v?</p>
+<head>
+    <title>GameBoy Camera Adapter</title>
+    <link rel="icon" type="image/png" href="favicon-96x96.png" sizes="96x96">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="shortcut icon" href="/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-title" content="GameBoy Camera Adapter">
+    <link rel="manifest" href="site.webmanifest">
+    <link rel="mask-icon" href="safari-pinned-tab.svg" color="#cc3366">
+    <meta charset="UTF-8">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="white">
+    <meta name="application-name" content="GameBoy Camera Adapter">
+    <meta name="msapplication-TileColor" content="#ece6e6">
+    <meta name="theme-color" content="#ece6e6">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="GameBoy Camera Adapter">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <link rel="stylesheet" href="styles.css">
+    <script defer src="script.js"></script>
+</head>
+<body>
+<button onclick="showFirmwarePopup()" style="color:white;position:absolute;margin:1rem;right:0;top:0;">SETTINGS</button>
+<div style="color: white; position: absolute; left: 0; top: 0; margin-top: 130px; text-align: center; right: 0;">
+    <button onclick="window.location.href='/';" style="text-decoration: underline;">PHOTO Mode</button>
+    <button onclick="window.location.href='/gif.html';">GIF Mode</button>
+</div>
+<!-- Firmware Update Dialog -->
+
+<div id="fw-popup" class="popup-overlay" style="display:none;">
+    <div class="popup-container">
+        <div style="display:flex; flex-direction:column; align-items:center; background:#266d3f; padding: 2rem; border-radius: 10px; width: 100%; max-width: 500px;">
+
+            <p id="firmware-version-text" style="color:white; font-size: 1.5rem; margin-bottom: 2rem;">Current firmware
+                is v?</p>
 
 
-      <!-- Color Picker + Button -->
-      <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-        <label style="position: relative; width: 45px; height: 45px; border-radius: 50%; overflow: hidden; border: 2px solid white; cursor: pointer;">
-          <input type="color" id="ledColorPicker" value="#00ff00"
-            style="position: absolute; top: 0; left: 0; width: 70%; height: 70%; border: none; padding: 0; margin: 0; cursor: pointer; opacity: 0;">
-          <div id="colorPreview" style="width: 100%; height: 100%; border-radius: 50%; background-color: #00ff00;"></div>
-        </label>
+            <!-- Color Picker + Button -->
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <label style="position: relative; width: 45px; height: 45px; border-radius: 50%; overflow: hidden; border: 2px solid white; cursor: pointer;">
+                    <input type="color" id="ledColorPicker" value="#00ff00"
+                           style="position: absolute; top: 0; left: 0; width: 70%; height: 70%; border: none; padding: 0; margin: 0; cursor: pointer; opacity: 0;">
+                    <div id="colorPreview"
+                         style="width: 100%; height: 100%; border-radius: 50%; background-color: #00ff00;"></div>
+                </label>
 
 
-        <button onclick="setLedColor()" style="flex: 1; margin-left: 1rem; background-color: #004d25; color: white; border: none; border-radius: 8px; padding: 15px;">
-          Set LED Color
-        </button>
-      </div>
+                <button onclick="setLedColor()"
+                        style="flex: 1; margin-left: 1rem; background-color: #004d25; color: white; border: none; border-radius: 8px; padding: 15px;">
+                    Set LED Color
+                </button>
+            </div>
 
             <!-- Color Mode Selector -->
-      <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: 1rem;">
-        <label for="colorMode" style="color:white; font-size: 1rem; text-align:left;">If color not as expected, switch this:</label>
-        <label class="switch" style="min-width: 62px;">
-             <input type="checkbox" id="colorMode">
-             <span class="slider round"></span>
-         </label>
-      </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: 1rem;">
+                <label for="colorMode" style="color:white; font-size: 1rem; text-align:left;">If color not as expected,
+                    switch this:</label>
+                <label class="switch" style="min-width: 62px;">
+                    <input type="checkbox" id="colorMode">
+                    <span class="slider round"></span>
+                </label>
+            </div>
 
 
-      <!-- Firmware Controls -->
-      <button onclick="checkForUpdate()" style="margin-top: 3rem; background-color: #004d25; width: 100%; padding: 20px; color: white; border: none; border-radius: 8px;">
-        Check for Update
-      </button>
+            <!-- Firmware Controls -->
+            <button onclick="checkForUpdate()"
+                    style="margin-top: 3rem; background-color: #004d25; width: 100%; padding: 20px; color: white; border: none; border-radius: 8px;">
+                Check for Update
+            </button>
 
-      <button onclick="startUpdate()" style="margin-top: 1rem; background-color: red; color: white; width: 100%; padding: 20px; border: none; border-radius: 8px;">
-        Update
-      </button>
+            <button onclick="startUpdate()"
+                    style="margin-top: 1rem; background-color: red; color: white; width: 100%; padding: 20px; border: none; border-radius: 8px;">
+                Update
+            </button>
+        </div>
+
+        <!-- Close Button -->
+        <button onclick="closeFirmwarePopup()" style="
+          width: 40px;
+          height: 40px;
+          background-color: red;
+          color: white;
+          border: none;
+          cursor: pointer;
+          font-size: 1rem;
+          font-family: 'Press Start 2P', cursive;
+          border-radius: 50%;
+          margin: 10px;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        ">✕</button>
     </div>
+</div>
 
-    <!-- Close Button -->
-    <button onclick="closeFirmwarePopup()" style="
+<div id="general-popup" class="popup-overlay" style="display:none;">
+    <div class="popup-container">
+        <div class="general-popup-content"
+             style="display:flex; flex-direction:column; align-items:center; background:#266d3f; padding: 2rem; border-radius: 10px;">
+
+        </div>
+        <button class="general-popup-button-close-button" style="
       width: 40px;
       height: 40px;
       background-color: red;
@@ -75,47 +114,63 @@
       font-size: 1rem;
       font-family: 'Press Start 2P', cursive;
       border-radius: 50%;
-      margin: 10px;
+      margin:10px;
       display: flex;
       justify-content: center;
       align-items: center;
-    ">✕</button>
-  </div>
+    " onclick="closeGeneralPopup()">✕
+        </button>
+    </div>
 </div>
-
-      <div id="content" class="container">
-         <div id="header">
-            <div id="update-alert" style="display:none; color: yellow; font-size: 12px; text-align: center; padding: 10px;">
-               🔔 Update available: <span id="latest-version"></span>
-            </div>
-            <img src="logo.webp" alt="logo" style="padding:10%;width:80%;flex:auto;">
-            <button style="display:none" id="get_image_btn">Get Images</button>
-            <button style="display:none" id="tear_btn">Tear</button>
-            <button style="display:none" id="select_all_btn" disabled>Select All</button>
-            <button style="display:none" id="delete_selected_btn" disabled>Delete</button>
-            <button style="display:none" id="average_selected_btn" disabled>Average</button>
-            <div id="color-selector">
-               <div class="color-circle active" style="background:linear-gradient(to right, #ffffff 25%, #bfbfbf 25% 50%, #7f7f7f 50% 75%, #3f3f3f 75%)" data-scheme="grayscale"></div>
-               <div class="color-circle" style="background:linear-gradient(to right, #d0d93c 25%, #78a46a 25% 50%, #545854 50% 75%, #244624 75%)" data-scheme="game-boy"></div>
-               <div class="color-circle" style="background:linear-gradient(to right, #ffffff 25%, #b5b3bd 25% 50%, #545367 50% 75%, #090713 75%)" data-scheme="super-game-boy"></div>
-               <div class="color-circle" style="background:linear-gradient(to right, #f0f0f0 25%, #dac46a 25% 50%, #705834 50% 75%, #1e1e1e 75%)" data-scheme="game-boy-color-jpn"></div>
-               <div class="color-circle" style="background:linear-gradient(to right, #f0f0f0 25%, #dca0a0 25% 50%, #884e4e 50% 75%, #1e1e1e 75%)" data-scheme="game-boy-color-usa-gold"></div>
-               <div class="color-circle" style="background:linear-gradient(to right, #f0f0f0 25%, #86c864 25% 50%, #3a6084 50% 75%, #1e1e1e 75%)" data-scheme="game-boy-color-usa-eur"></div>
-            </div>
-            <br>
-         </div>
-         <div id="gallery"></div>
-      </div>
-      <p id="description">Start printing on your Game Boy. Photos will appear on this page</p>
-      <footer>
-         <div class="links">
-            <a href="https://github.com/untoxa/pico-gb-printer" target="_blank" id="image-link" aria-label="untoxa/pico-gb-printer">
+<div id="content" class="container">
+    <div id="header">
+        <img src="logo.webp" alt="logo" style="padding:10%;width:80%;flex:auto;">
+        <button style="display:none" id="get_image_btn">Get Images</button>
+        <button style="display:none" id="tear_btn">Tear</button>
+        <button style="display:none" id="select_all_btn" disabled>Select All</button>
+        <button style="display:none" id="delete_selected_btn" disabled>Delete</button>
+        <button style="display:none" id="average_selected_btn" disabled>Average</button>
+        <div id="color-selector">
+            <div class="color-circle active"
+                 style="background:linear-gradient(to right, #ffffff 25%, #bfbfbf 25% 50%, #7f7f7f 50% 75%, #3f3f3f 75%)"
+                 data-scheme="grayscale"></div>
+            <div class="color-circle"
+                 style="background:linear-gradient(to right, #d0d93c 25%, #78a46a 25% 50%, #545854 50% 75%, #244624 75%)"
+                 data-scheme="game-boy"></div>
+            <div class="color-circle"
+                 style="background:linear-gradient(to right, #ffffff 25%, #b5b3bd 25% 50%, #545367 50% 75%, #090713 75%)"
+                 data-scheme="super-game-boy"></div>
+            <div class="color-circle"
+                 style="background:linear-gradient(to right, #f0f0f0 25%, #dac46a 25% 50%, #705834 50% 75%, #1e1e1e 75%)"
+                 data-scheme="game-boy-color-jpn"></div>
+            <div class="color-circle"
+                 style="background:linear-gradient(to right, #f0f0f0 25%, #dca0a0 25% 50%, #884e4e 50% 75%, #1e1e1e 75%)"
+                 data-scheme="game-boy-color-usa-gold"></div>
+            <div class="color-circle"
+                 style="background:linear-gradient(to right, #f0f0f0 25%, #86c864 25% 50%, #3a6084 50% 75%, #1e1e1e 75%)"
+                 data-scheme="game-boy-color-usa-eur"></div>
+        </div>
+        <br>
+    </div>
+    <div>
+        <button onclick="saveAllPictures()">Save All</button>
+    </div>
+    <div id="gallery"></div>
+</div>
+<p id="description">Start printing on your Game Boy. Photos will appear on this page</p>
+<footer>
+    <div class="links">
+        <a href="https://github.com/untoxa/pico-gb-printer" target="_blank" id="image-link"
+           aria-label="untoxa/pico-gb-printer">
             <img src="github.png" alt="GitHub Project">
-            </a>
-            <a href="https://www.instagram.com/retrogaming_ua/" target="_blank" id="image-link" aria-label="Instagram">
+        </a>
+        <a href="https://www.instagram.com/retrogaming_ua/" target="_blank" id="image-link" aria-label="Instagram">
             <img src="instagram.png" alt="Instagram">
-            </a>
-         </div>
-      </footer>
-   </body>
+        </a>
+    </div>
+</footer>
+<sript>
+    window.gifMode = false;
+</sript>
+</body>
 </html>
