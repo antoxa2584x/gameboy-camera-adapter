@@ -407,9 +407,10 @@ footer .links img:hover {
 /* The switch - the box around the slider */
 .switch {
   position: relative;
-  display: inline-block;
-  width: 60px;
-  height: 34px;
+  width: 52px;
+  min-width: 52px;
+  height: 28px;
+  margin-right: 1rem;
 }
 
 /* Hide default HTML checkbox */
@@ -435,8 +436,8 @@ footer .links img:hover {
 .slider:before {
   position: absolute;
   content: "";
-  height: 26px;
-  width: 26px;
+  height: 18px;
+  width: 18px;
   left: 4px;
   bottom: 4px;
   background-color: white;
@@ -445,7 +446,7 @@ footer .links img:hover {
 }
 
 input:checked + .slider {
-  background-color: #004d25;
+  background-color: #266d3f;
 }
 
 input:focus + .slider {
