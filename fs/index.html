@@ -1,7 +1,9 @@
-<html lang="en"><head>
+<html lang="en">
+   <head>
       <title>GameBoy Camera Adapter</title>
-      </head><body><button id="firmware-version-btn" onclick="showFirmwarePopup()" style="color:white;position:absolute;margin:1rem;right:0;top:0;font-size: 1em;text-decoration: underline;">Settings</button>
-
+   </head>
+   <body>
+      <button id="firmware-version-btn" onclick="showFirmwarePopup()" style="color:white;position:absolute;margin:1rem;right:0;top:0;font-size: 1em;text-decoration: underline;">Settings</button>
       <link rel="icon" type="image/png" href="/img/favicon-96x96.png" sizes="96x96">
       <link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
       <link rel="shortcut icon" href="/img/favicon.ico">
@@ -16,58 +18,53 @@
       <meta name="theme-color" content="#ece6e6">
       <meta name="viewport" content="width=device-width, initial-scale=1">
       <link rel="stylesheet" href="styles.css">
-      <script defer="" src="script.js"></script>
-   
-   
       <!-- Firmware Update Dialog -->
-<div id="fw-popup" class="popup-overlay" style="display: none;">
-  <div class="popup-container">
-              
-                <div style="display: flex; flex-direction: column; align-items: center; background: #266d3f; padding: 2rem; border-radius: 10px; width: 100%; max-width: 500px;">
-                   <!-- Close Button -->
-                <button class="close-btn" onclick="closeFirmwarePopup()">✕</button>
-                        
-                    <p id="firmware-version-text" style="color: white; font-size: 1.5rem; margin-bottom: 2rem;">Current firmware is v1.4.2</p>
-
-                    <!-- Color Picker + Button -->
-                    <div class="settings-container">
-                      <div style="/* flex:1; */display: flex;flex-direction: row;align-content: center;">
-                        <label class="led-color">
-                            <input type="color" id="ledColorPicker" value="#00ff00" style="position: absolute;
-                                                                                           cursor: pointer;
-                                                                                           opacity: 0;">
-                            <div id="colorPreview" style="width: 52px;
-                                                          height: 28px;
-                                                          background-color: #00ff00;
-                                                          cursor: pointer;">
-                                                    </div>
-                        </label>
-                        <label style="color: white;font-size: 1rem;text-align: left;flex: 1;align-content: center;margin-left: 1rem;">Choose LED color</label>
-                      </div>
-                      
-                        <!-- Color Mode Selector -->
-                        <div style="display: flex;justify-content: space-between;align-items: center;width: 100%;margin-top: 1rem;">
-                            <label class="switch">
-                                <input type="checkbox" id="colorMode">
-                                <span class="slider round"></span>
-                            </label>
-                                                   
-                            <label for="colorMode" style="color: white;font-size: 1rem;text-align: left;">If color not as expected, switch this</label>
-
+      <div id="fw-popup" class="popup-overlay" style="display: none;">
+         <div class="popup-container">
+            <div style="display: flex; flex-direction: column; align-items: center; background: #266d3f; padding: 2rem; border-radius: 10px; width: 100%; max-width: 500px;">
+               <!-- Close Button -->
+               <button class="close-btn" onclick="closeFirmwarePopup()">✕</button>
+               <p id="firmware-version-text" style="color: white; font-size: 1.5rem; margin-bottom: 2rem;">Current firmware is v1.4.2</p>
+               <!-- Color Picker + Button -->
+               <div class="settings-container">
+                  <div style="/* flex:1; */display: flex;flex-direction: row;align-content: center;">
+                     <label class="led-color">
+                        <input type="color" id="ledColorPicker" value="#00ff00" style="position: absolute;
+                           cursor: pointer;
+                           opacity: 0;">
+                        <div id="colorPreview" style="width: 52px;
+                           height: 28px;
+                           background-color: #00ff00;
+                           cursor: pointer;">
                         </div>
-
-                        <button onclick="setLedColor()">Set LED Color</button>
-
-                    </div>
-
-                    <!-- Firmware Controls -->
-                    <button class="darkgreen" onclick="checkForUpdate()">Check for Update</button>
-                    
-                    <button class="red" onclick="startUpdate()">Update</button>
-                <label style="color: white;font-size: 0.7rem;text-align: center;margin-top: 1rem;">Click here only to update Adapter Firmware</label></div>
+                     </label>
+                     <label style="color: white;font-size: 1rem;text-align: left;flex: 1;align-content: center;margin-left: 1rem;">Choose LED color</label>
+                  </div>
+                  <!-- Color Mode Selector -->
+                  <div style="display: flex;justify-content: space-between;align-items: center;width: 100%;margin-top: 1rem;">
+                     <label class="switch">
+                     <input type="checkbox" id="colorMode" checked>
+                     <span class="slider round"></span>
+                     </label>
+                     <label for="colorMode" style="color: white;font-size: 1rem;text-align: left;">If color not as expected, switch this</label>
+                  </div>
+                  <button onclick="setLedColor()">Set LED Color</button>
+               </div>
+               <!-- Firmware Controls -->
+               <button class="darkgreen" onclick="checkForUpdate()">Check for Update</button>
+               <button class="red" onclick="startUpdate()">Update</button>
+               <label style="color: white;font-size: 0.7rem;text-align: center;margin-top: 1rem;">Click here only to update Adapter Firmware</label>
             </div>
-</div>
-
+         </div>
+      </div>
+      <div id="general-popup" class="popup-overlay" style="display:none;">
+         <div class="popup-container">
+            <div class="general-popup-content"
+               style="display:flex; flex-direction:column; align-items:center; background:#266d3f; padding: 2rem; border-radius: 10px; color: white; padding: 60px;">
+            </div>
+            <button class="close-btn" onclick="closeGeneralPopup()">✕</button>
+         </div>
+      </div>
       <div id="content" class="container">
          <div id="header">
             <div id="update-alert" style="display:none; color: yellow; font-size: 12px; text-align: center; padding: 10px;">
@@ -89,6 +86,9 @@
             </div>
             <br>
          </div>
+         <div>
+            <button id="save_all_btn" style="display:none" onclick="saveAllPictures()">Save All</button>
+         </div>
          <div id="gallery"></div>
       </div>
       <p id="description">Start printing on your Game Boy<br>Photos will appear on this page</p>
@@ -102,5 +102,7 @@
             </a>
          </div>
       </footer>
-   
-</body></html>
+
+      <script defer="" src="script.js"></script>
+   </body>
+</html>

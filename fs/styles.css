@@ -262,8 +262,6 @@ footer .links img:hover {
 	display: block;
 	cursor: pointer;
 	position: relative;
-	height: 100%;
-	width: 100%;
 }
 
 .gallery-image input[type="checkbox"] {
@@ -393,7 +391,7 @@ footer .links img:hover {
 }
 
 /* Popup Container Styles */
-.popup-container {
+.popup-container, .image-container {
 	animation: fadeInPop 0.3s ease-out;
 	position: relative;
 	max-width: 90vw;
@@ -406,7 +404,7 @@ footer .links img:hover {
 }
 
 /* Canvas Styles */
-.popup-container canvas {
+ .image-container canvas {
 	max-width: 90vw;
 	/* Fit within the viewport width */
 	max-height: 90vh;
