@@ -39,6 +39,9 @@
  #if WS2812_PIN >= NUM_BANK0_GPIOS
  #error Attempting to use a pin>=32 on a platform that does not support it
  #endif
+
+
+ extern bool use_rgb_mode;
  
  static inline void put_pixel(PIO pio, uint sm, uint32_t pixel_grb) {
      pio_sm_put_blocking(pio, sm, pixel_grb << 8u);
@@ -91,7 +94,10 @@
  }
 
  void setRGB(uint8_t r, uint8_t g, uint8_t b){
-    put_pixel(pio, sm, urgb_u32(g, r, b));
+    if (use_rgb_mode)
+        put_pixel(pio, sm, urgb_u32(r, g, b));
+    else
+        put_pixel(pio, sm, urgb_u32(g, r, b));         
  }
  
  void pattern_random(PIO pio, uint sm, uint len, uint t) {

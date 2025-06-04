@@ -233,10 +233,7 @@ void update_led_wave() {
         uint8_t g = (uint8_t)(base_g * scale);
         uint8_t b = (uint8_t)(base_b * scale);
 
-        if (use_rgb_mode)
-            setRGB(r, g, b);
-        else
-            setRGB(g, r, b);
+        setRGB(r, g, b);
 
         wave_index = (wave_index + 1) % WAVE_STEPS;
         last_blink = now;
