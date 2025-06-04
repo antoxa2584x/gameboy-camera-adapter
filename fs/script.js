@@ -787,16 +787,11 @@ function loadLedStatus() {
     fetch('/led_status')
         .then(response => response.json())
         .then(data => {
-            const {
-                r,
-                g,
-                b,
-                mode
-            } = data;
+            const { r, g, b, use_rgb } = data;
             const hex = "#" + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
             document.getElementById('ledColorPicker').value = hex;
             document.getElementById('colorPreview').style.backgroundColor = hex;
-            document.getElementById('colorMode').checked = mode === "true";
+            document.getElementById('colorMode').checked = use_rgb === true;
         })
         .catch(err => console.error("Failed to load LED status:", err));
 }
