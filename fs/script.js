@@ -323,37 +323,41 @@ function updateButtonStates() {
 async function downloadImage(image) {
     downloadIndex += 1;
     var datetime = new Date();
-    file_name = `image_${datetime.toISOString().split('T')[0]}_${datetime.toTimeString().split(' ')[0].replace(/:/g, '-')}.png`;
+    var file_name = `image_${datetime.toISOString().split('T')[0]}_${datetime.toTimeString().split(' ')[0].replace(/:/g, '-')}.jpg`;
 
-    // Create a canvas to draw the image
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
 
-    // Load the image
     const img = new Image();
-    img.crossOrigin = "Anonymous"; // This enables CORS
+    img.crossOrigin = "Anonymous";
     img.src = image.src;
-    img.onload = function() {
-        // Set canvas dimensions to 10 times the image dimensions
+    img.onload = function () {
         canvas.width = img.width * 10;
         canvas.height = img.height * 10;
-
-        // Disable image smoothing for Nearest Neighbor scaling
         ctx.imageSmoothingEnabled = false;
-
-        // Draw the image scaled up by 10 times
         ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, canvas.width, canvas.height);
 
-        // Convert the canvas to a blob and initiate the download
-        canvas.toBlob(function(blob) {
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(blob);
-            a.download = file_name;
-            a.style.display = "none";
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-        }, "image/png");
+        // Convert to JPEG base64
+        let jpegDataUrl = canvas.toDataURL("image/jpeg", 1.0);
+
+        // Add EXIF metadata
+        const zeroth = {};
+        zeroth[piexif.ImageIFD.Make] = "Nintendo";
+        zeroth[piexif.ImageIFD.Model] = "Game Boy Camera";
+        zeroth[piexif.ImageIFD.Software] = "GameBoy Camera Adapter";
+        const exifObj = { "0th": zeroth };
+        const exifBytes = piexif.dump(exifObj);
+
+        const jpegWithExif = piexif.insert(exifBytes, jpegDataUrl);
+
+        // Trigger download
+        const a = document.createElement("a");
+        a.href = jpegWithExif;
+        a.download = file_name;
+        a.style.display = "none";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
     };
 }
 
