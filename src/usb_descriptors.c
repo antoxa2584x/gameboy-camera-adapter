@@ -46,8 +46,12 @@ enum {
 };
 
 enum {
-    ITF_NUM_CDC = 0,
-    ITF_NUM_CDC_DATA,
+    ITF_NUM_NET = 0,
+    ITF_NUM_NET_DATA,
+
+    ITF_NUM_CDC_ACM,
+    ITF_NUM_CDC_ACM_DATA,
+
     ITF_NUM_TOTAL
 };
 
@@ -97,9 +101,9 @@ uint8_t const * tud_descriptor_device_cb(void) {
 //--------------------------------------------------------------------+
 // Configuration Descriptor
 //--------------------------------------------------------------------+
-#define MAIN_CONFIG_TOTAL_LEN    (TUD_CONFIG_DESC_LEN + TUD_RNDIS_DESC_LEN)
-#define ALT_CONFIG_TOTAL_LEN     (TUD_CONFIG_DESC_LEN + TUD_CDC_ECM_DESC_LEN)
-#define NCM_CONFIG_TOTAL_LEN     (TUD_CONFIG_DESC_LEN + TUD_CDC_NCM_DESC_LEN)
+#define MAIN_CONFIG_TOTAL_LEN    (TUD_CONFIG_DESC_LEN + TUD_RNDIS_DESC_LEN + TUD_CDC_DESC_LEN)
+#define ALT_CONFIG_TOTAL_LEN     (TUD_CONFIG_DESC_LEN + TUD_CDC_ECM_DESC_LEN + TUD_CDC_DESC_LEN)
+#define NCM_CONFIG_TOTAL_LEN     (TUD_CONFIG_DESC_LEN + TUD_CDC_NCM_DESC_LEN + TUD_CDC_DESC_LEN)
 
 #if CFG_TUSB_MCU == OPT_MCU_LPC175X_6X || CFG_TUSB_MCU == OPT_MCU_LPC177X_8X || CFG_TUSB_MCU == OPT_MCU_LPC40XX
     // LPC 17xx and 40xx endpoint type (bulk/interrupt/iso) are fixed by its number
@@ -121,6 +125,10 @@ uint8_t const * tud_descriptor_device_cb(void) {
     #define EPNUM_NET_IN      0x82
 #endif
 
+#define EPNUM_CDC_NOTIF   0x84
+#define EPNUM_CDC_OUT     0x03
+#define EPNUM_CDC_IN      0x85
+
 #if CFG_TUD_ECM_RNDIS
 
 static uint8_t const rndis_configuration[] = {
@@ -128,7 +136,11 @@ static uint8_t const rndis_configuration[] = {
     TUD_CONFIG_DESCRIPTOR(CONFIG_ID_RNDIS+1, ITF_NUM_TOTAL, 0, MAIN_CONFIG_TOTAL_LEN, 0, 100),
 
     // Interface number, string index, EP notification address and size, EP data address (out, in) and size.
-    TUD_RNDIS_DESCRIPTOR(ITF_NUM_CDC, STRID_INTERFACE, EPNUM_NET_NOTIF, 8, EPNUM_NET_OUT, EPNUM_NET_IN, CFG_TUD_NET_ENDPOINT_SIZE),
+    TUD_RNDIS_DESCRIPTOR(ITF_NUM_NET, STRID_INTERFACE, EPNUM_NET_NOTIF, 8, EPNUM_NET_OUT, EPNUM_NET_IN, CFG_TUD_NET_ENDPOINT_SIZE),
+
+    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_ACM, 0,
+                       EPNUM_CDC_NOTIF, 8,
+                       EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
 };
 
 static uint8_t const ecm_configuration[] = {
@@ -136,7 +148,11 @@ static uint8_t const ecm_configuration[] = {
     TUD_CONFIG_DESCRIPTOR(CONFIG_ID_ECM+1, ITF_NUM_TOTAL, 0, ALT_CONFIG_TOTAL_LEN, 0, 100),
 
     // Interface number, description string index, MAC address string index, EP notification address and size, EP data address (out, in), and size, max segment size.
-    TUD_CDC_ECM_DESCRIPTOR(ITF_NUM_CDC, STRID_INTERFACE, STRID_MAC, EPNUM_NET_NOTIF, 64, EPNUM_NET_OUT, EPNUM_NET_IN, CFG_TUD_NET_ENDPOINT_SIZE, CFG_TUD_NET_MTU),
+    TUD_CDC_ECM_DESCRIPTOR(ITF_NUM_NET, STRID_INTERFACE, STRID_MAC, EPNUM_NET_NOTIF, 64, EPNUM_NET_OUT, EPNUM_NET_IN, CFG_TUD_NET_ENDPOINT_SIZE, CFG_TUD_NET_MTU),
+
+    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_ACM, 0,
+                       EPNUM_CDC_NOTIF, 8,
+                       EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
 };
 
 #else
@@ -146,7 +162,11 @@ static uint8_t const ncm_configuration[] = {
     TUD_CONFIG_DESCRIPTOR(CONFIG_ID_NCM+1, ITF_NUM_TOTAL, 0, NCM_CONFIG_TOTAL_LEN, 0, 100),
 
     // Interface number, description string index, MAC address string index, EP notification address and size, EP data address (out, in), and size, max segment size.
-    TUD_CDC_NCM_DESCRIPTOR(ITF_NUM_CDC, STRID_INTERFACE, STRID_MAC, EPNUM_NET_NOTIF, 64, EPNUM_NET_OUT, EPNUM_NET_IN, CFG_TUD_NET_ENDPOINT_SIZE, CFG_TUD_NET_MTU),
+    TUD_CDC_NCM_DESCRIPTOR(ITF_NUM_NET, STRID_INTERFACE, STRID_MAC, EPNUM_NET_NOTIF, 64, EPNUM_NET_OUT, EPNUM_NET_IN, CFG_TUD_NET_ENDPOINT_SIZE, CFG_TUD_NET_MTU),
+
+    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_ACM, 0,
+                       EPNUM_CDC_NOTIF, 8,
+                       EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
 };
 
 #endif
@@ -178,10 +198,10 @@ uint8_t const * tud_descriptor_configuration_cb(uint8_t index) {
 // array of pointer to string descriptors
 static char const* string_desc_arr [] = {
     [STRID_LANGID]       = (const char[]) { 0x09, 0x04 }, // supported language is English (0x0409)
-    [STRID_MANUFACTURER] = "PicoGBPrinter",               // Manufacturer
+    [STRID_MANUFACTURER] = "GameBoy Camera Adapter",               // Manufacturer
     [STRID_PRODUCT]      = "Go to http://192.168.7.1/",   // Product
     // STRID_SERIAL index is handled seperately
-    [STRID_INTERFACE]    = "Pico GB Printer USB Network Interface"    // Interface Description
+    [STRID_INTERFACE]    = "GameBoy Camera Adapter USB Network Interface"    // Interface Description
     // STRID_MAC index is handled separately
 };
 
