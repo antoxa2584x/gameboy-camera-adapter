@@ -23,6 +23,8 @@
 #include "hardware/flash.h"
 #include "hardware/sync.h"
 
+#include "cdc_sender.h"
+
 bool debug_enable = ENABLE_DEBUG;
 bool speed_240_MHz = false;
 
@@ -44,6 +46,11 @@ extern void setRGB(uint8_t r, uint8_t g, uint8_t b);
 void receive_data_reset(void) {
     if (!allocated_file) return;
     last_file_len = allocated_file->size;
+
+    if (tud_cdc_connected()) {
+        (void) cdc_send_file_framed(allocated_file, 2000);
+    }
+
     if (push_file(allocated_file)) picture_count++;
     allocated_file = NULL;
 }
@@ -309,6 +316,14 @@ int fs_open_custom(struct fs_file *file, const char *name) {
 
 void fs_close_custom(struct fs_file *file) {
     (void)(file);
+}
+
+void tud_cdc_rx_cb(uint8_t itf) {
+  (void) itf;
+  uint8_t buf[64];
+  uint32_t n = tud_cdc_read(buf, sizeof(buf));
+  tud_cdc_write(buf, n);
+  tud_cdc_write_flush();
 }
 
 // main loop
