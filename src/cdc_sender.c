@@ -78,36 +78,54 @@ bool cdc_send_bytes(const uint8_t* data, uint32_t len, uint32_t timeout_ms) {
     return true;
 }
 
+static uint32_t base64_encode(const uint8_t *in, uint32_t inlen,
+                              char *out, uint32_t outmax)
+{
+    static const char b64[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    uint32_t outlen = 0;
+    for (uint32_t i = 0; i < inlen; i += 3) {
+        uint32_t v = in[i] << 16;
+        if (i + 1 < inlen) v |= in[i+1] << 8;
+        if (i + 2 < inlen) v |= in[i+2];
+
+        if (outlen + 4 > outmax) break;
+
+        out[outlen++] = b64[(v >> 18) & 0x3F];
+        out[outlen++] = b64[(v >> 12) & 0x3F];
+        out[outlen++] = (i+1 < inlen) ? b64[(v >> 6) & 0x3F] : '=';
+        out[outlen++] = (i+2 < inlen) ? b64[v & 0x3F] : '=';
+    }
+    return outlen;
+}
+
+void send_base64_chunk(const uint8_t* data, uint32_t len) {
+    char encoded[2048]; // enough to hold 1024 bytes encoded (~1368 chars)
+    uint32_t out_len = base64_encode(data, len, encoded, sizeof(encoded));
+    encoded[out_len] = '\n';
+    cdc_send_bytes((const uint8_t*)encoded, out_len + 1, 5000);
+}
+
 bool cdc_send_file_framed(const datafile_t* f, uint32_t timeout_ms) {
     if (!f) return false;
 
-    // Announce length as a line (terminal-friendly)
-    char lenline[64];
-    int hdrn = snprintf(lenline, sizeof(lenline),
-                        "GBCA_PHOTO_TRANSFER=%u\n", (unsigned)f->size);
-    if (hdrn <= 0) return false;
-    if (!cdc_send_bytes((const uint8_t*)lenline, (uint32_t)hdrn, timeout_ms)) return false;
+    static const char init[] = "GBCA_PHOTO_TRANSFER_BASE64\n";
+    (void) cdc_send_bytes((const uint8_t*)init, sizeof(init)-1, 500);
 
-    // Stream file blocks in strict 128-byte slices
     for (const datablock_t* b = f->first; b; b = b->next) {
         uint32_t remain = b->size;
         uint32_t off = 0;
         while (remain) {
             uint32_t slice = remain > 1024 ? 1024 : remain;
-            if (!cdc_send_bytes(b->data + off, slice, timeout_ms)) {
-                // optionally tell the terminal that we aborted
-                static const char abortmsg[] = "ABORT\n";
-                (void) cdc_send_bytes((const uint8_t*)abortmsg, sizeof(abortmsg)-1, 200);
-                return false;
-            }
+            send_base64_chunk(b->data + off, slice);
             off    += slice;
             remain -= slice;
         }
     }
 
-    // Trailer for humans
     static const char done[] = "DONE\n";
-    (void) cdc_send_bytes((const uint8_t*)done, sizeof(done)-1, 500);
+    (void) cdc_send_bytes((const uint8_t*)done, sizeof(done)-1, 5000);
 
     return true;
 }
