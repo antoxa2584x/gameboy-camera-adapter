@@ -43,14 +43,27 @@ bool use_rgb_mode = true; // default mode string
 
 extern void setRGB(uint8_t r, uint8_t g, uint8_t b);
 
+static inline void flush_tail_and_done(void) {
+    // flush the last partial block, if any
+    if (allocated_file && allocated_file->last) {
+        datablock_t *last = allocated_file->last;
+        if (last->size > 0 && last->size < DATABLOCK_SIZE) {
+            (void) send_base64_chunk(last->data, last->size);
+        }
+    }
+    // send trailer so host knows stream is complete
+    static const char done[] = "DONE\n";
+    (void) cdc_send_bytes((const uint8_t*)done, sizeof(done)-1, 2000);
+}
+
 void receive_data_reset(void) {
     if (!allocated_file) return;
     last_file_len = allocated_file->size;
 
     if (tud_cdc_connected()) {
-        (void) cdc_send_file_framed(allocated_file, 2000);
-    }
-
+        flush_tail_and_done();
+    }    
+    
     if (push_file(allocated_file)) picture_count++;
     allocated_file = NULL;
 }
@@ -59,29 +72,46 @@ bool double_init = false;
 void receive_data_init(void) {
     if (double_init) receive_data_reset();
     double_init = true;
+    
+    if (tud_cdc_connected()) {
+        static const char init[] = "GBCA_PHOTO_TRANSFER\n";
+        (void) cdc_send_bytes((const uint8_t*)init, sizeof(init)-1, 500);
+    }
 }
 
 void receive_data_write(uint8_t b) {
     double_init = false;
     datablock_t * block;
+
     if (!allocated_file) {
         allocated_file = allocate_file();
         if (!allocated_file) return;
     }
+
     block = allocated_file->last;
     if (!block) {
         block = allocate_block();
         if (!block) return;
         allocated_file->first = allocated_file->last = block;
     }
+
     if (block->size >= DATABLOCK_SIZE) {
-        block = allocate_block();
-        if (!block) return;
-        allocated_file->last->next = block;
-        allocated_file->last = block;
+        datablock_t *nb = allocate_block();
+        if (!nb) return;
+        allocated_file->last->next = nb;
+        allocated_file->last = nb;
+        block = nb;
     }
+
     block->data[block->size++] = b;
     allocated_file->size++;
+
+    if (tud_cdc_connected()) {
+        // Send only when the current block just became full
+        if (block->size == DATABLOCK_SIZE) {
+            (void) send_base64_chunk(block->data, DATABLOCK_SIZE);
+        }
+    }
 }
 
 void receive_data_commit(uint8_t cmd) {
