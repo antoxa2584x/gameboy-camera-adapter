@@ -7,7 +7,6 @@ const PRINTER_WIDTH = 20;
 const CAMERA_WIDTH = 16;
 const TILE_SIZE = 0x10;
 const TILE_HEIGHT = 8;
-const TILE_WIDTH = 8;
 
 const imageBinPath = "/download";
 const resetPath = "/reset";
@@ -24,16 +23,10 @@ const averageSelectedBtn = document.getElementById("average_selected_btn");
 
 const CURRENT_VERSION = "1.4.5";
 
-Date.prototype.today = function(delim) {
-    return ((this.getDate() < 10) ? "0" : "") + this.getDate() + delim + (((this.getMonth() + 1) < 10) ? "0" : "") + (this.getMonth() + 1) + delim + this.getFullYear();
-}
-Date.prototype.timeNow = function(delim) {
-    return ((this.getHours() < 10) ? "0" : "") + this.getHours() + delim + ((this.getMinutes() < 10) ? "0" : "") + this.getMinutes() + delim + ((this.getSeconds() < 10) ? "0" : "") + this.getSeconds();
-}
-String.prototype.format = function() {
-    var formatted = this;
-    for (var i = 0; i < arguments.length; i++) {
-        var regexp = new RegExp('\\{' + i + '\\}', 'gi');
+String.prototype.format = function () {
+    let formatted = this;
+    for (let i = 0; i < arguments.length; i++) {
+        const regexp = new RegExp('\\{' + i + '\\}', 'gi');
         formatted = formatted.replace(regexp, arguments[i]);
     }
     return formatted;
@@ -53,7 +46,7 @@ function resize_canvas(canvas, new_w, new_h) {
 }
 
 function render(canvas, image_data, image_start, image_end, image_tile_width, sheets, margin, palette, exposure) {
-    pal = new Uint8Array(4);
+    let pal = new Uint8Array(4);
     pal[0] = ((exposure * ((palette >> 0) & 0x03)) / 3) >> 0;
     pal[1] = ((exposure * ((palette >> 2) & 0x03)) / 3) >> 0;
     pal[2] = ((exposure * ((palette >> 4) & 0x03)) / 3) >> 0;
@@ -75,7 +68,7 @@ function render(canvas, image_data, image_start, image_end, image_tile_width, sh
                 let offset = (((tile_y << 3) + t) * canvas.width + (tile_x << 3) + b) << 2;
                 let color_index = ((b1 >> (7 - b)) & 1) | (((b2 >> (7 - b)) & 1) << 1);
 
-                writeData[offset + 0] = writeData[offset + 1] = writeData[offset + 2] = 0xFF - pal[color_index];
+                writeData[offset] = writeData[offset + 1] = writeData[offset + 2] = 0xFF - pal[color_index];
                 writeData[offset + 3] = 0xff;
             }
         }
@@ -87,7 +80,7 @@ function render(canvas, image_data, image_start, image_end, image_tile_width, sh
     }
     ctx.putImageData(imageData, 0, 0);
 
-    return ((margin & 0x0f) != 0);
+    return ((margin & 0x0f) !== 0);
 }
 
 function decode(is_compressed, sour, sour_size, sour_data_len, sour_ptr, dest, dest_ptr) {
@@ -96,7 +89,7 @@ function decode(is_compressed, sour, sour_size, sour_data_len, sour_ptr, dest, d
             const stop = sour_ptr + sour_data_len;
             while (sour_ptr < stop) {
                 const tag = sour[sour_ptr++];
-                if (tag & 0x80) {
+                if (tag && 0x80) {
                     const data = sour[sour_ptr++];
                     for (let i = 0; i < ((tag & 0x7f) + 2); i++) {
                         dest[dest_ptr++] = data;
@@ -118,14 +111,14 @@ function decode(is_compressed, sour, sour_size, sour_data_len, sour_ptr, dest, d
     return dest_ptr;
 }
 
-async function get_camera_image(canvas, binPath) {
+async function get_camera_image(canvas) {
     const res = await fetch(imageBinPath);
     const resBody = await res.blob();
     const resBuf = await resBody.arrayBuffer();
     const resData = new Uint8Array(resBuf);
     const data_size = resBody.size;
 
-    processed_data = new Uint8Array(Math.max(1024 * 1024, data_size));
+    let processed_data = new Uint8Array(Math.max(1024 * 1024, data_size));
 
     reset_canvas(canvas);
 
@@ -144,7 +137,7 @@ async function get_camera_image(canvas, binPath) {
 
             case COMMAND_PRINT:
                 console.log("COMMAND_PRINT: Processing print command...");
-                if ((len = resData[idx++] | (resData[idx++] << 8)) != 4) {
+                if ((len = resData[idx++] | (resData[idx++] << 8)) !== 4) {
                     console.warn(`Unexpected length for COMMAND_PRINT: ${len}. Skipping to end.`);
                     idx = data_size;
                     break;
@@ -234,7 +227,7 @@ function addCanvasToGallery(canvas) {
         label.appendChild(img);
         div.appendChild(label);
 
-        label.addEventListener("click", function() {
+        label.addEventListener("click", function () {
             const inp = div.querySelector("input[type='checkbox']");
             inp.checked = !inp.checked;
             div.markedForAction = inp.checked;
@@ -244,11 +237,11 @@ function addCanvasToGallery(canvas) {
         const btn = document.createElement("button");
         btn.textContent = "SAVE";
         btn.classList.add("shake");
-        btn.addEventListener("click", function() {
+        btn.addEventListener("click", function () {
             downloadImage(img);
         });
 
-        img.addEventListener("click", function() {
+        img.addEventListener("click", function () {
             showPopupWithUpscaledImage(img);
         });
 
@@ -276,7 +269,7 @@ function showPopupWithUpscaledImage(image) {
     const img = new Image();
     img.crossOrigin = "Anonymous"; // This enables CORS
     img.src = image.src;
-    img.onload = function() {
+    img.onload = function () {
         // Set canvas dimensions to 10 times the image dimensions
         canvas.width = img.width * 10;
         canvas.height = img.height * 10;
@@ -322,8 +315,8 @@ function updateButtonStates() {
 
 async function downloadImage(image) {
     downloadIndex += 1;
-    var datetime = new Date();
-    var file_name = `image_${datetime.toISOString().split('T')[0]}_${datetime.toTimeString().split(' ')[0].replace(/:/g, '-')}.jpg`;
+    const datetime = new Date();
+    const file_name = `image_${datetime.toISOString().split('T')[0]}_${datetime.toTimeString().split(' ')[0].replace(/:/g, '-')}.jpg`;
 
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
@@ -345,7 +338,7 @@ async function downloadImage(image) {
         zeroth[piexif.ImageIFD.Make] = "Nintendo";
         zeroth[piexif.ImageIFD.Model] = "Game Boy Camera";
         zeroth[piexif.ImageIFD.Software] = "GameBoy Camera Adapter";
-        const exifObj = { "0th": zeroth };
+        const exifObj = {"0th": zeroth};
         const exifBytes = piexif.dump(exifObj);
 
         const jpegWithExif = piexif.insert(exifBytes, jpegDataUrl);
@@ -362,13 +355,13 @@ async function downloadImage(image) {
 }
 
 
-getImageBtn.addEventListener("click", async function() {
-    await get_camera_image(canvas, imageBinPath);
+getImageBtn.addEventListener("click", async function () {
+    await get_camera_image(canvas);
 });
 
-selectAllBtn.addEventListener("click", function() {
-    var items = gallery.children;
-    if (items.length != 0) {
+selectAllBtn.addEventListener("click", function () {
+    const items = gallery.children;
+    if (items.length !== 0) {
         Array.from(items).forEach(item => {
             const input = item.querySelector("input[type='checkbox']");
             if (input) {
@@ -384,33 +377,34 @@ selectAllBtn.addEventListener("click", function() {
     }
 });
 
-deleteSelectedBtn.addEventListener("click", function() {
-    var items = gallery.children;
-    for (var i = items.length - 1; i >= 0; i--) {
+deleteSelectedBtn.addEventListener("click", function () {
+    const items = gallery.children;
+    for (let i = items.length - 1; i >= 0; i--) {
         if (items[i].markedForAction) items[i].remove();
     }
     updateButtonStates();
 });
 
-tearBtn.addEventListener("click", async function() {
+tearBtn.addEventListener("click", async function () {
     fetch(resetPath)
         .then((response) => {
             return response.json();
         })
         .then((data) => {
-            if (data.result != "ok") return;
+            if (data.result !== "ok") return;
             else {
-                var items = gallery.children;
-                for (var i = items.length - 1; i >= 0; i--) {
+                const items = gallery.children;
+                for (let i = items.length - 1; i >= 0; i--) {
                     items[i].remove();
                 }
-            };
+            }
+
             getImageBtn.click();
         });
 
 });
 
-averageSelectedBtn.addEventListener("click", function() {
+averageSelectedBtn.addEventListener("click", function () {
     const items = gallery.children;
 
     const avgCanvas = document.createElement('canvas');
@@ -425,7 +419,7 @@ averageSelectedBtn.addEventListener("click", function() {
     const tmpH = firstImg.height;
     for (let i = 1; i < items.length; i++) {
         const img = items[i].querySelector("img");
-        if (tmpW != img.width || tmpH != img.height) {
+        if (tmpW !== img.width || tmpH !== img.height) {
             alert("Image dimensions should be the same to do an average");
             return;
         }
@@ -464,15 +458,17 @@ averageSelectedBtn.addEventListener("click", function() {
 });
 
 // auto fetch images
-var fetch_skip = false;
-var fetch_ok = false;
+let fetch_skip = false;
+let fetch_ok = false;
+
+let fetch_interval;
 
 function periodic_fetch() {
     if (!fetch_skip) {
         fetch_skip = true;
-        void(async () => {
-            fetch_ok = await get_camera_image(canvas, imageBinPath).catch(
-                function(err) {
+        void (async () => {
+            fetch_ok = await get_camera_image(canvas).catch(
+                function () {
                     fetch_ok = false;
                 }
             );
@@ -482,32 +478,8 @@ function periodic_fetch() {
         })();
     }
 }
-var fetch_interval = setInterval(periodic_fetch, 1000);
 
-function generateExampleImage() {
-    // Create a canvas
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-
-    // Set canvas dimensions
-    canvas.width = 160;
-    canvas.height = 160;
-
-    // Draw a background color
-    ctx.fillStyle = "#004d25";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Draw some text
-    ctx.fillStyle = "white";
-    ctx.font = "20px 'Press Start 2P'";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("Example", canvas.width / 2, canvas.height / 2 - 20);
-    ctx.fillText("Image", canvas.width / 2, canvas.height / 2 + 20);
-
-    addCanvasToGallery(canvas);
-}
-
+fetch_interval = setInterval(periodic_fetch, 1000);
 const pocketCameraPalettes = {
     "grayscale": {
         "#ffffff": [255, 255, 255],
@@ -781,8 +753,7 @@ function setLedColor() {
 }
 
 function updatePreview() {
-    const color = document.getElementById("ledColorPicker").value;
-    document.getElementById("colorPreview").style.backgroundColor = color;
+    document.getElementById("colorPreview").style.backgroundColor = document.getElementById("ledColorPicker").value;
 }
 
 document.getElementById("ledColorPicker").addEventListener("input", updatePreview);
@@ -791,7 +762,7 @@ function loadLedStatus() {
     fetch('/led_status')
         .then(response => response.json())
         .then(data => {
-            const { r, g, b, use_rgb } = data;
+            const {r, g, b, use_rgb} = data;
             const hex = "#" + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
             document.getElementById('ledColorPicker').value = hex;
             document.getElementById('colorPreview').style.backgroundColor = hex;
@@ -804,24 +775,22 @@ function saveAllPictures() {
     const buttons = document.querySelectorAll('.gallery-image button');
     const total = buttons.length;
 
-    if (total == 0) {
-        return;
+    if (total !== 0) {
+        showGeneralPopup();
+        updateGeneralPopup('SAVING PHOTOS', false);
+        buttons.forEach((btn, index) => {
+            setTimeout(() => {
+                let showButton = false;
+                if (index === total - 1) {
+                    showButton = true;
+                }
+                updateGeneralPopup(`SAVING PHOTO ${index + 1}/${total}`, showButton);
+                btn.click();
+            }, 1000 * index);
+        });
+    } else {
+
     }
-
-    showGeneralPopup();
-
-    updateGeneralPopup('SAVING PHOTOS', false);
-
-    buttons.forEach((btn, index) => {
-        setTimeout(() => {
-            let showButton = false;
-            if (index == total - 1) {
-                showButton = true;
-            }
-            updateGeneralPopup(`SAVING PHOTO ${index + 1}/${total}`, showButton);
-            btn.click();
-        }, 1000 * index);
-    });
 }
 
 function showGeneralPopup() {
@@ -845,6 +814,173 @@ function updateGeneralPopup(html, showCloseButton) {
         if (closeButton) closeButton.style.display = 'none';
     }
 }
+function canvasToTileData(canvas) {
+    const ctx = canvas.getContext("2d");
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const pixels = imgData.data;
+    const tiles = [];
+
+    const w = canvas.width;
+    const h = canvas.height;
+
+    for (let y = 0; y < h; y += 8) {
+        for (let x = 0; x < w; x += 8) {
+            for (let row = 0; row < 8; row++) {
+                let byte1 = 0;
+                let byte2 = 0;
+                for (let col = 0; col < 8; col++) {
+                    let px = ((y + row) * w + (x + col)) * 4;
+                    let gray = (pixels[px] + pixels[px + 1] + pixels[px + 2]) / 3;
+                    let shade = gray > 192 ? 0 : gray > 128 ? 1 : gray > 64 ? 2 : 3;
+                    byte1 |= ((shade & 1) << (7 - col));
+                    byte2 |= (((shade >> 1) & 1) << (7 - col));
+                }
+                tiles.push(byte1);
+                tiles.push(byte2);
+            }
+        }
+    }
+
+    return new Uint8Array(tiles);
+}
+function printSelectedImage() {
+    const canvas = document.getElementById("preview-canvas");
+    const binaryData = canvasToTileData(canvas);
+    sendChunkedData(binaryData);
+}
+
+function sendChunkedData(binaryData, chunkSize = 256) {
+    const totalChunks = Math.ceil(binaryData.length / chunkSize);
+
+    function sendNextChunk(index) {
+        if (index >= totalChunks) return;
+
+        const start = index * chunkSize;
+        const end = Math.min(start + chunkSize, binaryData.length);
+        const chunk = binaryData.slice(start, end);
+
+        let hexData = '';
+        for (let i = 0; i < chunk.length; i++) {
+            hexData += chunk[i].toString(16).padStart(2, '0');
+        }
+
+        const done = index === totalChunks - 1 ? "&done=1" : "";
+        const url = `/print_chunk?id=${index}&data=${hexData}${done}`;
+
+        fetch(url)
+            .then(res => res.ok)
+            // .then(() => sendNextChunk(index + 1))
+            .catch(err => {
+                console.error("Chunk failed", err);
+                alert("Chunk upload failed.");
+            });
+    }
+
+    sendNextChunk(0);
+}
+
+function handleFileInput(e) {
+    const file = e.target.files[0];
+    const nameDisplay = document.getElementById("file-name");
+    const printButton = document.getElementById("print-button");
+
+    if (file) {
+        const name = file.name;
+        const dotIndex = name.lastIndexOf(".");
+        const base = dotIndex > 0 ? name.substring(0, dotIndex) : name;
+        const ext = dotIndex > 0 ? name.substring(dotIndex) : "";
+        nameDisplay.textContent = base.length > 47 ? base.substring(0, 30) + "..." + base.substring(base.length - 3, base.length) + ext : name;
+        printButton.style.display = "block";
+    } else {
+        nameDisplay.textContent = "No file selected";
+        printButton.style.display = "none";
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function (evt) {
+        const img = new Image();
+        img.onload = function () {
+            const canvas = document.getElementById("preview-canvas");
+            const ctx = canvas.getContext("2d");
+            canvas.width = 160;
+            canvas.height = 144;
+            ctx.drawImage(img, 0, 0, 160, 144);
+
+            const imageData = ctx.getImageData(0, 0, 160, 144);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const gray = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                let level = gray > 192 ? 255 : gray > 128 ? 170 : gray > 64 ? 85 : 0;
+                data[i] = data[i + 1] = data[i + 2] = level;
+            }
+            ctx.putImageData(imageData, 0, 0);
+        };
+        img.src = evt.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+const logoImg = document.getElementById("logo-img");
+let currentMode = "scanner";
+logoImg.addEventListener("click", () => {
+    const scanner = document.getElementById("scanner-mode");
+    const printer = document.getElementById("printer-mode");
+    if (currentMode === "scanner") {
+        scanner.style.display = "none";
+        printer.style.display = "block";
+        currentMode = "printer";
+    } else {
+        scanner.style.display = "block";
+        printer.style.display = "none";
+        currentMode = "scanner";
+    }
+});
+
+window.addEventListener("DOMContentLoaded", () => {
+    const canvas = document.getElementById("preview-canvas");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#004d25";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#fff";
+    ctx.font = "18px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("No Image", canvas.width / 2, canvas.height / 2);
+});
+
+function decodePrinterStatus(byte) {
+    const flags = [
+        "Checksum Error",
+        "Printer Busy",
+        "Image Data Full",
+        "Unprocessed Data",
+        "Packet Error",
+        "Paper Jam",
+        "Other Error",
+        "Battery Low"
+    ];
+    const errors = [];
+    for (let i = 0; i < 8; i++) {
+        if (byte & (1 << i)) errors.push(flags[i]);
+    }
+    return errors.length ? errors.join(", ") : "OK";
+}
+
+function pollPrinterStatus() {
+    fetch('/status.json')
+        .then(r => r.json())
+        .then(data => {
+            if (data.printer !== undefined) {
+                const el = document.getElementById("printer-status");
+                el.textContent = "Printer Status: " + decodePrinterStatus(data.printer);
+                el.style.color = data.printer === 0 ? "lightgreen" : "orange";
+            }
+        })
+        .catch(err => console.error("Status error:", err));
+}
+
+setInterval(pollPrinterStatus, 2000); // check every 2s
 
 window.showFirmwarePopup = showFirmwarePopup;
 window.closeFirmwarePopup = closeFirmwarePopup;

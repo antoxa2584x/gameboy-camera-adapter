@@ -81,7 +81,7 @@ void receive_data_commit(uint8_t cmd) {
     if (cmd == CAM_COMMAND_TRANSFER) receive_data_reset();
 }
 
-// link cable
+// link cableD
 bool link_cable_data_received = false;
 void link_cable_ISR(void) {
     linkcable_send(protocol_data_process(linkcable_receive()));
@@ -173,7 +173,7 @@ void load_color_from_flash() {
     const uint8_t *flash_data = (const uint8_t *)(XIP_BASE + FLASH_TARGET_OFFSET);
 
     bool is_valid = (flash_data[3] == 0xA5); // magic byte check
-    
+
     if (is_valid) {
         base_r = flash_data[0];
         base_g = flash_data[1];
@@ -240,11 +240,54 @@ void update_led_wave() {
     }
 }
 
+// Web interface endpoint to receive chunks and trigger print
+const char *cgi_print_chunk(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
+    return "/index.html";
+
+    int chunk_id = -1;
+    int is_done = 0;
+    const char *payload = NULL;
+
+    if (chunk_id == 0) {
+        gbprinter_send_packet(PRN_COMMAND_INIT, NULL, 0); // Required init command
+    }
+
+    // Parse parameters
+    for (int i = 0; i < iNumParams; i++) {
+        if (strcmp(pcParam[i], "id") == 0) {
+            chunk_id = atoi(pcValue[i]);
+        } else if (strcmp(pcParam[i], "data") == 0) {
+            payload = pcValue[i];
+        } else if (strcmp(pcParam[i], "done") == 0) {
+            is_done = atoi(pcValue[i]);
+        }
+    }
+
+    // Convert hex payload to bytes and send to printer
+    size_t len = strlen(payload);
+    for (size_t i = 0; i + 1 < len; i += 2) {
+        char byte_str[3] = { payload[i], payload[i + 1], 0 };
+        uint8_t b = (uint8_t)strtol(byte_str, NULL, 16);
+        receive_data_write(b);
+    }
+
+    // Commit chunk
+    receive_data_commit(CAM_COMMAND_TRANSFER);
+
+    // Final print command
+    if (is_done) {
+        send_print_command_to_printer();
+    }
+
+    return "/index.html";
+}
+
 /* Add to CGI handler list */
 static const tCGI cgi_handlers[] = {
     { "/download", cgi_download },
     { "/update", cgi_update },
     { "/set_color", cgi_set_color },
+    { "/print_chunk", cgi_print_chunk },
 };
 
 int fs_open_custom(struct fs_file *file, const char *name) {
@@ -276,15 +319,17 @@ int fs_open_custom(struct fs_file *file, const char *name) {
         return 1;
     } else if (!strcmp(name, STATUS_FILE)) {
         memset(file, 0, sizeof(struct fs_file));
+        const printerStatus = get_printer_status();
         file->data  = file_buffer;
         file->len   = snprintf(file_buffer, sizeof(file_buffer),
                                "{\"result\":\"ok\"," \
                                "\"options\":{\"debug\":\"%s\"}," \
                                "\"status\":{\"last_size\":%d,\"total_files\":%d},"\
-                               "\"system\":{\"fast\":%s}}",
+                               "\"system\":{\"fast\":%s}," \
+                               "\"printer\":%d}",
                                on_off[debug_enable],
                                last_file_len, picture_count,
-                               true_false[speed_240_MHz]);
+                               true_false[speed_240_MHz], printerStatus);
         file->index = file->len;
         return 1;
     } else if (!strcmp(name, LIST_FILE)) {
@@ -304,6 +349,7 @@ int fs_open_custom(struct fs_file *file, const char *name) {
         file->index = file->len;
         return 1;
     }
+
     return 0;
 }
 
