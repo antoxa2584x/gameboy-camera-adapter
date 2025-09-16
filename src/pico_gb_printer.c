@@ -43,6 +43,120 @@ bool use_rgb_mode = true; // default mode string
 
 extern void setRGB(uint8_t r, uint8_t g, uint8_t b);
 
+// --- CDC line parser state ---
+#define CDC_RX_MAX 256
+static char cdc_line[CDC_RX_MAX];
+static uint32_t cdc_len = 0;
+
+static inline void cdc_reset_line(void) { cdc_len = 0; cdc_line[0] = 0; }
+
+// Trim trailing CR
+static void cdc_finish_line(void) {
+  while (cdc_len && (cdc_line[cdc_len-1] == '\r' || cdc_line[cdc_len-1] == '\n')) {
+    cdc_len--;
+  }
+  cdc_line[cdc_len] = '\0';
+}
+
+// Simple helpers to parse query params like ?r=..&g=..&b=..&use_rgb=..
+static bool query_get_int(const char* qs, const char* key, int* out) {
+  // find key=
+  const char* p = strstr(qs, key);
+  if (!p) return false;
+  p += strlen(key);
+  if (*p != '=') return false;
+  p++;
+  *out = atoi(p);
+  return true;
+}
+
+static bool query_get_bool(const char* qs, const char* key, bool* out) {
+  const char* p = strstr(qs, key);
+  if (!p) return false;
+  p += strlen(key);
+  if (*p != '=') return false;
+  p++;
+  // accept true/false/1/0
+  if      (strncmp(p, "true", 4) == 0)  { *out = true;  return true; }
+  else if (strncmp(p, "false", 5) == 0) { *out = false; return true; }
+  else if (*p == '1')                   { *out = true;  return true; }
+  else if (*p == '0')                   { *out = false; return true; }
+  return false;
+}
+
+// Handle one complete CDC line
+static void cdc_handle_line(const char* line) {
+  // Ignore empty lines
+  if (!line || !*line) return;
+
+  // Photo-transfer markers already handled elsewhere (keep your existing logic).
+  // Here we focus on the simple GET routes coming from Android.
+  if (strncmp(line, "GET ", 4) == 0) {
+    const char* path = line + 4;
+
+    // e.g. "/led_status" or "/set_color?...". Find end of path/qs (space or end)
+    const char* end = strchr(path, ' ');
+    size_t len = end ? (size_t)(end - path) : strlen(path);
+
+    // Make a small copy to work with
+    char req[192];
+    if (len >= sizeof(req)) len = sizeof(req) - 1;
+    memcpy(req, path, len);
+    req[len] = '\0';
+
+    // Split on '?' for query
+    char* qs = strchr(req, '?');
+    if (qs) { *qs++ = '\0'; } // now req = path, qs = query string
+
+    if (strcmp(req, "/led_status") == 0) {
+      // Build exactly one JSON line like your Android expects
+      // {"r":int,"g":int,"b":int,"use_rgb":bool}\n
+      char json[96];
+      int n = snprintf(json, sizeof(json),
+                       "{\"r\":%u,\"g\":%u,\"b\":%u,\"use_rgb\":%s}\n",
+                       base_r, base_g, base_b, use_rgb_mode ? "true" : "false");
+      cdc_send_bytes((const uint8_t*)json, (uint32_t)n, 2000);
+      return;
+    }
+
+    if (strcmp(req, "/set_color") == 0) {
+      int r = base_r, g = base_g, b = base_b;
+      bool rgb = use_rgb_mode;
+
+      if (qs) {
+        query_get_int(qs, "r", &r);
+        query_get_int(qs, "g", &g);
+        query_get_int(qs, "b", &b);
+        query_get_bool(qs, "use_rgb", &rgb);
+      }
+
+      // clamp
+      if (r < 0) r = 0; if (r > 255) r = 255;
+      if (g < 0) g = 0; if (g > 255) g = 255;
+      if (b < 0) b = 0; if (b > 255) b = 255;
+
+      base_r = (uint8_t)r;
+      base_g = (uint8_t)g;
+      base_b = (uint8_t)b;
+      use_rgb_mode = rgb;
+
+      // apply immediately (no reboot), persist to flash like your web path does
+      save_color_to_flash(base_r, base_g, base_b, use_rgb_mode);
+      setRGB(base_r, base_g, base_b);
+
+      // small ACK line so Android can readLine() without timing out
+      static const char ok[] = "OK\n";
+      cdc_send_bytes((const uint8_t*)ok, sizeof(ok)-1, 1000);
+      return;
+    }
+  }
+
+  // For anything else (or if you still want echo for debugging):
+  tud_cdc_write_str("UNKNOWN\n");
+  tud_cdc_write_flush();
+}
+
+
 static inline void flush_tail_and_done(void) {
     // flush the last partial block, if any
     if (allocated_file && allocated_file->last) {
@@ -352,9 +466,26 @@ void tud_cdc_rx_cb(uint8_t itf) {
   (void) itf;
   uint8_t buf[64];
   uint32_t n = tud_cdc_read(buf, sizeof(buf));
-  tud_cdc_write(buf, n);
-  tud_cdc_write_flush();
+
+  for (uint32_t i = 0; i < n; i++) {
+    char ch = (char)buf[i];
+
+    if (ch == '\n') {
+      // complete line
+      cdc_finish_line();
+      cdc_handle_line(cdc_line);
+      cdc_reset_line();
+    } else {
+      if (cdc_len + 1 < CDC_RX_MAX) {
+        cdc_line[cdc_len++] = ch;
+      } else {
+        // overflow: reset line to avoid garbage
+        cdc_reset_line();
+      }
+    }
+  }
 }
+
 
 // main loop
 int main(void) {
