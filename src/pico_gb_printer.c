@@ -111,7 +111,7 @@ static void cdc_handle_line(const char* line) {
     if (strcmp(req, "/led_status") == 0) {
       // Build exactly one JSON line like your Android expects
       // {"r":int,"g":int,"b":int,"use_rgb":bool}\n
-      char json[96];
+      char json[128];
       int n = snprintf(json, sizeof(json),
                        "{\"r\":%u,\"g\":%u,\"b\":%u,\"use_rgb\":%s}\n",
                        base_r, base_g, base_b, use_rgb_mode ? "true" : "false");
@@ -432,10 +432,11 @@ int fs_open_custom(struct fs_file *file, const char *name) {
                                "{\"result\":\"ok\"," \
                                "\"options\":{\"debug\":\"%s\"}," \
                                "\"status\":{\"last_size\":%d,\"total_files\":%d},"\
-                               "\"system\":{\"fast\":%s}}",
+                               "\"system\":{\"fast\":%s,\"version\":\"%s\"}}",
                                on_off[debug_enable],
                                last_file_len, picture_count,
-                               true_false[speed_240_MHz]);
+                               true_false[speed_240_MHz],
+                               FIRMWARE_VERSION);
         file->index = file->len;
         return 1;
     } else if (!strcmp(name, LIST_FILE)) {

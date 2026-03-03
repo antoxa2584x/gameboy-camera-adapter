@@ -22,7 +22,8 @@ const deleteSelectedBtn = document.getElementById("delete_selected_btn");
 const selectAllBtn = document.getElementById("select_all_btn");
 const averageSelectedBtn = document.getElementById("average_selected_btn");
 
-const CURRENT_VERSION = "1.4.5";
+const CURRENT_VERSION = "1.4.7"; // Fallback version
+let dynamicVersion = CURRENT_VERSION;
 
 Date.prototype.today = function(delim) {
     return ((this.getDate() < 10) ? "0" : "") + this.getDate() + delim + (((this.getMonth() + 1) < 10) ? "0" : "") + (this.getMonth() + 1) + delim + this.getFullYear();
@@ -118,14 +119,21 @@ function decode(is_compressed, sour, sour_size, sour_data_len, sour_ptr, dest, d
     return dest_ptr;
 }
 
+let processed_data = new Uint8Array(1024 * 1024);
+
 async function get_camera_image(canvas, binPath) {
     const res = await fetch(imageBinPath);
+    if (!res.ok) return false;
     const resBody = await res.blob();
     const resBuf = await resBody.arrayBuffer();
     const resData = new Uint8Array(resBuf);
     const data_size = resBody.size;
 
-    processed_data = new Uint8Array(Math.max(1024 * 1024, data_size));
+    if (data_size === 0) return true;
+
+    if (data_size > processed_data.length) {
+        processed_data = new Uint8Array(data_size);
+    }
 
     reset_canvas(canvas);
 
@@ -150,11 +158,10 @@ async function get_camera_image(canvas, binPath) {
                     break;
                 }
 
-                let sheets = resData[idx++];
+    let sheets = resData[idx++];
                 let margins = resData[idx++];
-                let palette = resData[idx++];
+                let palette = resData[idx++] || 0xE4;
                 let exposure = Math.min(0xFF, 0x80 + resData[idx++]);
-                palette = (palette) ? palette : 0xE4;
 
                 console.log(`COMMAND_PRINT details: sheets=${sheets}, margins=${margins}, palette=${palette.toString(16)}, exposure=${exposure}`);
 
@@ -465,24 +472,23 @@ averageSelectedBtn.addEventListener("click", function() {
 
 // auto fetch images
 var fetch_skip = false;
-var fetch_ok = false;
 
-function periodic_fetch() {
-    if (!fetch_skip) {
-        fetch_skip = true;
-        void(async () => {
-            fetch_ok = await get_camera_image(canvas, imageBinPath).catch(
-                function(err) {
-                    fetch_ok = false;
-                }
-            );
-            fetch_skip = false;
-            clearInterval(fetch_interval);
-            fetch_interval = setInterval(periodic_fetch, (fetch_ok) ? 10 : 1000);
-        })();
+async function periodic_fetch() {
+    if (fetch_skip) return;
+    fetch_skip = true;
+
+    try {
+        const fetch_ok = await get_camera_image(canvas, imageBinPath);
+        const next_interval = fetch_ok ? 500 : 2000;
+        setTimeout(periodic_fetch, next_interval);
+    } catch (err) {
+        console.error("Fetch error:", err);
+        setTimeout(periodic_fetch, 2000);
+    } finally {
+        fetch_skip = false;
     }
 }
-var fetch_interval = setInterval(periodic_fetch, 1000);
+setTimeout(periodic_fetch, 1000);
 
 function generateExampleImage() {
     // Create a canvas
@@ -565,43 +571,27 @@ function applyColorScheme(scheme) {
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
 
-        // Set canvas size to match the image
         canvas.width = img.naturalWidth;
         canvas.height = img.naturalHeight;
+        ctx.drawImage(img, 0, 0);
 
-        // Draw the image onto the canvas
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-        // Get pixel data
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageData.data;
 
-        // Loop through all pixels
         for (let i = 0; i < data.length; i += 4) {
-            const rgbString = JSON.stringify([data[i], data[i + 1], data[i + 2]]);
+            const rgb = [data[i], data[i + 1], data[i + 2]];
+            const rgbString = JSON.stringify(rgb);
             const grayHex = reverseColorMapping[rgbString] || rgbToHex(data[i], data[i + 1], data[i + 2]);
 
-            // Ensure the darkest color is mapped correctly
-            if (grayHex === "#3f3f3f" && scheme === "grayscale") {
-                data[i] = 63;
-                data[i + 1] = 63;
-                data[i + 2] = 63;
-                continue;
-            }
-
-            // If grayscale value exists in the scheme, replace it
-            if (selectedPalette[grayHex]) {
-                const newColor = selectedPalette[grayHex];
-                data[i] = newColor[0]; // R
-                data[i + 1] = newColor[1]; // G
-                data[i + 2] = newColor[2]; // B
+            const newColor = selectedPalette[grayHex];
+            if (newColor) {
+                data[i] = newColor[0];
+                data[i + 1] = newColor[1];
+                data[i + 2] = newColor[2];
             }
         }
 
-        // Put the modified image data back to the canvas
         ctx.putImageData(imageData, 0, 0);
-
-        // Replace the image with the modified version
         img.src = canvas.toDataURL();
     });
 }
@@ -703,7 +693,7 @@ async function checkGitHubRelease() {
         const latestVersion = release.name.replace(/^v/, '');
         const releaseUrl = release.html_url;
 
-        if (isNewerVersion(latestVersion, CURRENT_VERSION)) {
+        if (isNewerVersion(latestVersion, dynamicVersion)) {
             const alertBox = document.getElementById("update-alert");
             const versionSpan = document.getElementById("latest-version");
 
@@ -716,15 +706,35 @@ async function checkGitHubRelease() {
 }
 
 
+async function fetchFirmwareVersion() {
+    try {
+        const response = await fetch('/status.json');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.system && data.system.version) {
+            dynamicVersion = data.system.version;
+            const versionText = document.getElementById("firmware-version-text");
+            if (versionText) {
+                versionText.textContent = `Current firmware is v${dynamicVersion}`;
+            }
+        }
+    } catch (err) {
+        console.error("Failed to fetch firmware version:", err);
+    }
+}
+
+
 document.addEventListener("DOMContentLoaded", () => {
     const versionText = document.getElementById("firmware-version-text");
 
     if (versionText) {
-        versionText.textContent = `Current firmware is v${CURRENT_VERSION}`;
+        versionText.textContent = `Current firmware is v${dynamicVersion}`;
     }
 
     // Run on load
-    checkGitHubRelease();
+    fetchFirmwareVersion().then(() => {
+        checkGitHubRelease();
+    });
     parseScheme();
     observeGalleryChanges();
 });
