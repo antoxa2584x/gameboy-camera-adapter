@@ -1,6 +1,7 @@
 #ifndef _GLOBALS_H_INCLUDE_
 #define _GLOBALS_H_INCLUDE_
 
+#define FIRMWARE_VERSION        "1.4.7"
 #define ENABLE_DEBUG            false
 #define BUFFER_SIZE_KB          128
 #define FILE_BUFFER_SIZE        16384

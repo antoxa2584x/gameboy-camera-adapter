@@ -23,7 +23,7 @@ body {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	margin-bottom: 70px;
+	margin-bottom: 150px;
 }
 
 button {
@@ -161,24 +161,39 @@ p {
 
 .gallery-image {
 	width: 100%;
-	max-width: 190px;
-	/* Adjust based on your image size */
 	padding: 10px;
-	margin: 10px;
 	background-color: rgb(0 0 0 / 28%);
 	border: 1px solid #004d25;
 	/* Darker green for the border */
 	border-radius: 5px;
 	box-sizing: border-box;
 	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
 }
 
 #gallery {
-	max-width: 80%;
+	max-width: 95%;
 	display: grid;
+	grid-template-columns: repeat(2, 1fr);
 	gap: 10px;
 	justify-content: center;
 	padding: 20px;
+	margin: 0 auto;
+}
+
+@media (max-width: 480px) {
+	#gallery {
+		max-width: 100%;
+		padding: 5px;
+	}
+}
+
+@media (min-width: 1024px) {
+	#gallery {
+		grid-template-columns: repeat(6, 1fr);
+	}
 }
 
 footer {
@@ -250,11 +265,13 @@ footer .links img:hover {
 	}
 
 	.gallery-image img {
-		width: 160px;
+		width: 100%;
+		height: auto;
+		display: block;
 	}
 
 	.gallery-image {
-		flex: 1;
+		width: 100%;
 	}
 }
 
@@ -306,12 +323,6 @@ footer .links img:hover {
 	margin: auto;
 }
 
-#gallery {
-	display: flex;
-	flex-wrap: wrap;
-	justify-content: center;
-	align-items: flex-start;
-}
 
 #image-link {
 	bottom: 10px;

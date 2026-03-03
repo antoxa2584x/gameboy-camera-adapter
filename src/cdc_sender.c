@@ -86,11 +86,11 @@ static uint32_t base64_encode(const uint8_t *in, uint32_t inlen,
 
     uint32_t outlen = 0;
     for (uint32_t i = 0; i < inlen; i += 3) {
+        if (outlen + 4 > outmax) break;
+
         uint32_t v = in[i] << 16;
         if (i + 1 < inlen) v |= in[i+1] << 8;
         if (i + 2 < inlen) v |= in[i+2];
-
-        if (outlen + 4 > outmax) break;
 
         out[outlen++] = b64[(v >> 18) & 0x3F];
         out[outlen++] = b64[(v >> 12) & 0x3F];
@@ -101,10 +101,12 @@ static uint32_t base64_encode(const uint8_t *in, uint32_t inlen,
 }
 
 void send_base64_chunk(const uint8_t* data, uint32_t len) {
-    char encoded[2048]; // enough to hold 1024 bytes encoded (~1368 chars)
+    static char encoded[2048]; // moved to static to save stack
     uint32_t out_len = base64_encode(data, len, encoded, sizeof(encoded));
-    encoded[out_len] = '\n';
-    cdc_send_bytes((const uint8_t*)encoded, out_len + 1, 5000);
+    if (out_len + 1 <= sizeof(encoded)) {
+        encoded[out_len] = '\n';
+        cdc_send_bytes((const uint8_t*)encoded, out_len + 1, 5000);
+    }
 }
 
 bool cdc_send_file_framed(const datafile_t* f, uint32_t timeout_ms) {
