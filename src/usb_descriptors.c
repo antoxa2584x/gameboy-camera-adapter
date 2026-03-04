@@ -201,9 +201,9 @@ static char const* string_desc_arr [] = {
     [STRID_LANGID]       = (const char[]) { 0x09, 0x04 }, // supported language is English (0x0409)
     [STRID_MANUFACTURER] = "RetroGaming UA",               // Manufacturer
     [STRID_PRODUCT]      = "GameBoy Camera Adapter [" FIRMWARE_VERSION "]",   // Product
-    // STRID_SERIAL index is handled seperately
-    [STRID_INTERFACE]    = "GameBoy Camera Adapter USB Network Interface"    // Interface Description
-    // STRID_MAC index is handled separately
+    [STRID_SERIAL]       = "GBCA1.4.8",                                        // Serial
+    [STRID_INTERFACE]    = "GameBoy Camera Adapter USB Network Interface",    // Interface Description
+    [STRID_MAC]          = "0002846A9600"                                      // MAC
 };
 
 static uint16_t _desc_str[32];
@@ -218,21 +218,6 @@ uint16_t const* tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
     if (STRID_LANGID == index) {
         memcpy(&_desc_str[1], string_desc_arr[STRID_LANGID], 2);
         chr_count = 1;
-    } else if (STRID_SERIAL == index) {
-        pico_unique_board_id_t id;
-        pico_get_unique_board_id(&id);
-
-        for (unsigned i = 0; i < sizeof(id.id); i++) {
-            _desc_str[1 + chr_count++] = "0123456789ABCDEF"[(id.id[i] >> 4) & 0xf];
-            _desc_str[1 + chr_count++] = "0123456789ABCDEF"[(id.id[i] >> 0) & 0xf];
-        }
-    } else if (STRID_MAC == index) {
-        // Convert MAC address into UTF-16
-
-        for (unsigned i = 0; i < sizeof(tud_network_mac_address); i++) {
-            _desc_str[1 + chr_count++] = "0123456789ABCDEF"[(tud_network_mac_address[i] >> 4) & 0xf];
-            _desc_str[1 + chr_count++] = "0123456789ABCDEF"[(tud_network_mac_address[i] >> 0) & 0xf];
-        }
     } else {
         // Note: the 0xEE index string is a Microsoft OS 1.0 Descriptors.
         // https://docs.microsoft.com/en-us/windows-hardware/drivers/usbcon/microsoft-defined-usb-descriptors
