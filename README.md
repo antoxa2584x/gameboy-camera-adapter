@@ -12,6 +12,8 @@ Based on the original pico-gb-printer repo: https://github.com/untoxa/pico-gb-pr
 Webserver example that came with TinyUSB slightly modified to run on a Raspberry Pi Pico.
 Lets the Pico pretend to be a USB Ethernet device. Runs the webinterface at http://192.168.7.1/
 
+Now with Android app support! You can use the [GameBoy Camera Adapter Companion](https://github.com/antoxa2584x/gameboy-camera-adapter-companion) to easily receive and manage your photos on your Android device.
+
 Special thanks to Raphael-Boichot, please check this repo: https://github.com/Raphael-Boichot/The-Arduino-SD-Game-Boy-Printer
 
 ## Schematics
