@@ -22,7 +22,7 @@ const deleteSelectedBtn = document.getElementById("delete_selected_btn");
 const selectAllBtn = document.getElementById("select_all_btn");
 const averageSelectedBtn = document.getElementById("average_selected_btn");
 
-const CURRENT_VERSION = "1.4.7"; // Fallback version
+const CURRENT_VERSION = "1.4.8"; // Fallback version
 let dynamicVersion = CURRENT_VERSION;
 
 Date.prototype.today = function(delim) {
