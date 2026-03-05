@@ -54,6 +54,7 @@
 #define ETHARP_SUPPORT_STATIC_ENTRIES   1
 
 #define LWIP_HTTPD_CGI                  1
+#define LWIP_HTTPD_MAX_REQUEST_URI_LEN  1024
 //#define LWIP_HTTPD_CGI_SSI              1
 //#define LWIP_HTTPD_FILE_STATE           1
 
