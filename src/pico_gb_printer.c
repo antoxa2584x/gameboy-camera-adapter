@@ -91,12 +91,14 @@ void receive_data_commit(uint8_t cmd) {
 
 // link cableD
 bool link_cable_data_received = false;
+volatile bool printing_active = false;
 void link_cable_ISR(void) {
     linkcable_send(protocol_data_process(linkcable_receive()));
     link_cable_data_received = true;
 }
 
 int64_t link_cable_watchdog(alarm_id_t id, void *user_data) {
+    if (printing_active) return MS(300); // Don't touch PIO/pins during printing
     if (!link_cable_data_received) {
         linkcable_reset();
         protocol_reset();
@@ -252,9 +254,23 @@ void update_led_wave() {
 #define PIN_SOUT   3  // SIN: from Pico to printer
 #define PIN_SIN    0  // SOUT: from printer to Pico
 
-const int halfDelay = 200; // microseconds (approx 2.5kHz)
+const int halfDelay = 62; // microseconds (~8kHz, matches Game Boy serial speed)
 
 uint8_t current_printer_status = PRINTER_STATUS_DISCONNECTED;
+
+// Packet queue: buffer all packets, send in one burst
+#define PKT_QUEUE_SIZE 8192
+#define PKT_MAX_PACKETS 64
+static uint8_t pkt_queue_buf[PKT_QUEUE_SIZE];
+static int pkt_queue_offsets[PKT_MAX_PACKETS]; // start offset of each packet
+static int pkt_queue_lengths[PKT_MAX_PACKETS]; // length of each packet
+static int pkt_queue_count = 0;
+static int pkt_queue_used = 0;
+
+// Debug: store raw responses from last packet
+#define DBG_MAX 32
+uint8_t dbg_responses[DBG_MAX];
+int dbg_count = 0;
 
 uint8_t get_printer_status() {
     return current_printer_status;
@@ -277,29 +293,33 @@ uint8_t printer_send_byte(uint8_t byteToSend) {
 }
 
 void printer_send_packet(const uint8_t* packet, int length) {
-    // Disable PIO while bit-banging
-    pio_sm_set_enabled(LINKCABLE_PIO, LINKCABLE_SM, false);
-    pio_set_irq0_source_enabled(LINKCABLE_PIO, pis_interrupt0, false);
-    
-    // Reconfigure pins for bit-banging
-    gpio_init(PIN_SCK);
-    gpio_set_dir(PIN_SCK, GPIO_OUT);
-    gpio_put(PIN_SCK, 1);
+    // First call: disable PIO and configure GPIO (subsequent calls reuse same pin config)
+    if (!printing_active) {
+        pio_sm_set_enabled(LINKCABLE_PIO, LINKCABLE_SM, false);
+        pio_set_irq0_source_enabled(LINKCABLE_PIO, pis_interrupt0, false);
+        printing_active = true;
 
-    gpio_init(PIN_SOUT);
-    gpio_set_dir(PIN_SOUT, GPIO_OUT);
-    gpio_put(PIN_SOUT, 0);
+        gpio_init(PIN_SCK);
+        gpio_set_dir(PIN_SCK, GPIO_OUT);
+        gpio_put(PIN_SCK, 0);
 
-    gpio_init(PIN_SIN);
-    gpio_set_dir(PIN_SIN, GPIO_IN);
-    gpio_pull_up(PIN_SIN); // Enable pull-up to detect disconnection (reads 0xFF)
+        gpio_init(PIN_SOUT);
+        gpio_set_dir(PIN_SOUT, GPIO_OUT);
+        gpio_put(PIN_SOUT, 0);
+
+        gpio_init(PIN_SIN);
+        gpio_set_dir(PIN_SIN, GPIO_IN);
+        gpio_disable_pulls(PIN_SIN);
+    }
 
     uint8_t last_response = 0x00;
     uint8_t status_byte = 0x00;
     bool has_response = false;
     bool sync_received = false;
+    dbg_count = 0;
     for (int i = 0; i < length; i++) {
         uint8_t response = printer_send_byte(packet[i]);
+        if (dbg_count < DBG_MAX) dbg_responses[dbg_count++] = response;
         
         if (sync_received) {
             status_byte = response;
@@ -333,17 +353,16 @@ void printer_send_packet(const uint8_t* packet, int length) {
     }
 
     sleep_us(200);
-    
-    // Re-enable PIO
-    linkcable_init(link_cable_ISR);
+    // Leave SCK HIGH (as printer_send_byte left it) — do NOT pull LOW or re-enable PIO.
+    // A spurious falling edge would desync the printer.
+    // PIO re-enabled only when JS sends done=1.
 }
 
-// Web interface endpoint to receive chunks and trigger print
+// Web interface endpoint: buffer packets, then send all at once on done=1
 const char *cgi_print_chunk(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
     int is_done = 0;
     const char *payload = NULL;
 
-    // Parse parameters
     for (int i = 0; i < iNumParams; i++) {
         if (strcmp(pcParam[i], "data") == 0) {
             payload = pcValue[i];
@@ -352,21 +371,38 @@ const char *cgi_print_chunk(int iIndex, int iNumParams, char *pcParam[], char *p
         }
     }
 
-    if (payload) {
-        // Convert hex payload to bytes
+    if (payload && !is_done) {
+        // Buffer the packet (don't send yet)
         size_t hex_len = strlen(payload);
-        if (hex_len > 1024) return "/index.html"; // Basic protection against too large packets
-
+        if (hex_len > 2048) return "/index.html";
         size_t byte_len = hex_len / 2;
-        uint8_t *packet = malloc(byte_len);
-        if (packet) {
+
+        if (pkt_queue_count < PKT_MAX_PACKETS && pkt_queue_used + byte_len <= PKT_QUEUE_SIZE) {
+            pkt_queue_offsets[pkt_queue_count] = pkt_queue_used;
+            pkt_queue_lengths[pkt_queue_count] = byte_len;
             for (size_t i = 0; i < byte_len; i++) {
                 char byte_str[3] = { payload[i*2], payload[i*2 + 1], 0 };
-                packet[i] = (uint8_t)strtol(byte_str, NULL, 16);
+                pkt_queue_buf[pkt_queue_used + i] = (uint8_t)strtol(byte_str, NULL, 16);
             }
-            printer_send_packet(packet, byte_len);
-            free(packet);
+            pkt_queue_used += byte_len;
+            pkt_queue_count++;
         }
+    }
+
+    if (is_done) {
+        // Send ALL buffered packets in one burst (like hello_usb.c)
+        for (int p = 0; p < pkt_queue_count; p++) {
+            printer_send_packet(
+                &pkt_queue_buf[pkt_queue_offsets[p]],
+                pkt_queue_lengths[p]
+            );
+        }
+        // Reset queue
+        pkt_queue_count = 0;
+        pkt_queue_used = 0;
+        // Restore link cable
+        printing_active = false;
+        linkcable_init(link_cable_ISR);
     }
 
     return "/index.html";
@@ -410,15 +446,25 @@ int fs_open_custom(struct fs_file *file, const char *name) {
     } else if (!strcmp(name, STATUS_FILE)) {
         memset(file, 0, sizeof(struct fs_file));
         file->data  = file_buffer;
+        // Build debug response hex string
+        char dbg_hex[DBG_MAX * 3 + 1];
+        int dpos = 0;
+        for (int i = 0; i < dbg_count && dpos < (int)sizeof(dbg_hex) - 3; i++) {
+            if (i > 0) dbg_hex[dpos++] = ' ';
+            dpos += snprintf(dbg_hex + dpos, sizeof(dbg_hex) - dpos, "%02x", dbg_responses[i]);
+        }
+        dbg_hex[dpos] = '\0';
         file->len   = snprintf(file_buffer, sizeof(file_buffer),
                                "{\"result\":\"ok\"," \
                                "\"options\":{\"debug\":\"%s\"}," \
                                "\"status\":{\"last_size\":%d,\"total_files\":%d},"\
                                "\"system\":{\"fast\":%s}," \
-                               "\"printer\":%u}",
+                               "\"printer\":%u," \
+                               "\"dbg\":\"%s\"}",
                                on_off[debug_enable],
                                last_file_len, picture_count,
-                               true_false[speed_240_MHz], (unsigned int)get_printer_status());
+                               true_false[speed_240_MHz], (unsigned int)get_printer_status(),
+                               dbg_hex);
         file->index = file->len;
         return 1;
     } else if (!strcmp(name, LIST_FILE)) {

@@ -852,7 +852,13 @@ function canvasToTileData(canvas) {
 function printSelectedImage() {
     const canvas = document.getElementById("preview-canvas");
     const binaryData = canvasToTileData(canvas);
-    sendChunkedData(binaryData);
+    // Truncate to complete strips (640 bytes each = 2 tile rows = 16px)
+    const STRIP_SIZE = 640;
+    const totalStrips = Math.floor(binaryData.length / STRIP_SIZE);
+    const trimmedLen = totalStrips * STRIP_SIZE;
+    const trimmed = binaryData.slice(0, trimmedLen);
+    console.log(`Image: ${binaryData.length} bytes -> ${totalStrips} strips (${trimmedLen} bytes)`);
+    sendChunkedData(trimmed);
 }
 
 function sendChunkedData(binaryData, chunkSize = 256) {
@@ -892,9 +898,9 @@ function sendChunkedData(binaryData, chunkSize = 256) {
         // palette: 0xE4 (standard)
         // exposure: 0x00-0x7F (0x40 default)
         const expValue = Math.min(0x7F, exposure);
-        const data = new Uint8Array([0x01, 0x00, 0xE4, expValue]);
+        const data = new Uint8Array([0x01, 0x03, 0xE4, expValue]);
         const header = "883302000400";
-        let hexData = "0100e4" + expValue.toString(16).padStart(2, '0');
+        let hexData = "0103e4" + expValue.toString(16).padStart(2, '0');
         const checksum = calculateChecksum(0x02, data);
         const checkL = (checksum & 0xFF).toString(16).padStart(2, '0');
         const checkH = (checksum >> 8).toString(16).padStart(2, '0');
@@ -912,11 +918,14 @@ function sendChunkedData(binaryData, chunkSize = 256) {
         packets.push({ data: createDataPacket(chunk), name: "DATA" });
     }
 
-    // After all data chunks, send a status check to ensure buffer is ready
-    packets.push({ data: packetStatus, name: "STATUS" });
+    // Empty DATA packet signals end of image data to the printer
+    packets.push({ data: "88330400000004000000", name: "DATA_END" });
 
-    packets.push({ data: createPrintPacket(), name: "PRINT" });
-    // Final status checks
+    // PRINT — exact same packet as working hello_usb.c
+    packets.push({ data: "8833020004000103E47F6D010000", name: "PRINT" });
+
+    // Status checks after print
+    packets.push({ data: packetStatus, name: "STATUS" });
     packets.push({ data: packetStatus, name: "STATUS" });
     packets.push({ data: packetStatus, name: "STATUS" });
 
@@ -961,54 +970,39 @@ function sendChunkedData(binaryData, chunkSize = 256) {
 
     const statusInterval = setInterval(updatePrinterStatusUI, 5000);
 
-    function sendNextPacket(index) {
+    // Buffer all packets to firmware, then trigger burst send
+    function bufferNextPacket(index) {
         if (index >= packets.length) {
-            clearInterval(statusInterval);
-            alert("Printing complete!");
+            console.log(`All ${packets.length} packets buffered. Triggering burst send...`);
+            // done=1 triggers the firmware to send everything at once
+            fetch("/print_chunk?done=1")
+                .then(() => new Promise(resolve => setTimeout(resolve, 2000))) // wait for printing
+                .then(() => fetch("/status.json"))
+                .then(res => res.json())
+                .then(statusData => {
+                    clearInterval(statusInterval);
+                    const printerStatus = statusData.printer;
+                    console.log(`Final status: 0x${printerStatus.toString(16).padStart(2, '0')} (${getPrinterStatusDisplay(printerStatus)}) raw: [${statusData.dbg || ''}]`);
+                    alert("Print result: " + getPrinterStatusDisplay(printerStatus));
+                })
+                .catch(err => {
+                    clearInterval(statusInterval);
+                    console.error("Print failed", err);
+                });
             return;
         }
 
         const packet = packets[index];
         const url = `/print_chunk?data=${packet.data}`;
+        console.log(`[${index}/${packets.length}] Buffering ${packet.name} (${packet.data.length / 2} bytes)`);
 
         fetch(url)
             .then(res => {
                 if (!res.ok) throw new Error("Server error");
-                return new Promise(resolve => setTimeout(resolve, 150)); // Wait for bit-banging to finish
-            })
-            .then(() => fetch("/status.json"))
-            .then(res => res.json())
-            .then(statusData => {
-                const printerStatus = statusData.printer;
-                currentPrinterStatus = printerStatus;
-
-                if (printerStatus === 0xFF) {
-                    alert("Printer disconnected!");
-                    clearInterval(statusInterval);
-                    return;
-                }
-                
-                // If it's a DATA packet, wait if buffer is full
-                // If it's a PRINT packet, wait while printing
-                let delay = 100;
-                if (packet.name === "DATA" && (printerStatus & 0x04)) {
-                    console.log("Printer buffer full, waiting...");
-                    delay = 1000;
-                    return setTimeout(() => sendNextPacket(index), delay);
-                }
-                
-                if (packet.name === "PRINT" || (printerStatus & 0x02)) {
-                    console.log("Printer busy, waiting...");
-                    delay = 1000;
-                    return setTimeout(() => sendNextPacket(index), delay);
-                }
-
-                setTimeout(() => sendNextPacket(index + 1), delay);
+                setTimeout(() => bufferNextPacket(index + 1), 50);
             })
             .catch(err => {
-                clearInterval(statusInterval);
-                console.error("Packet failed", err);
-                alert("Printing failed at packet " + index + " (" + packet.name + ")");
+                console.error("Buffer failed at packet " + index, err);
             });
     }
 
@@ -1017,7 +1011,7 @@ function sendChunkedData(binaryData, chunkSize = 256) {
         return;
     }
 
-    sendNextPacket(0);
+    bufferNextPacket(0);
 }
 
 function handleFileInput(e) {
@@ -1075,6 +1069,7 @@ logoImg.addEventListener("click", () => {
         currentMode = "printer";
         // Immediately trigger periodic_fetch to clear fast interval if it was running
         periodic_fetch();
+        pollPrinterStatus();
     } else {
         scanner.style.display = "block";
         printer.style.display = "none";
