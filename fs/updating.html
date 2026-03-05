@@ -17,6 +17,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Updating...</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <script>
+        async function checkOnline() {
+            try {
+                const response = await fetch('/status.json', { cache: "no-store" });
+                if (response.ok) {
+                    window.location.href = '/';
+                }
+            } catch (e) {
+                // Ignore errors (device still offline)
+            }
+        }
+
+        // Wait 5 seconds before starting to poll
+        setTimeout(() => {
+            // Poll every 3 seconds
+            setInterval(checkOnline, 3000);
+            // Also check immediately after delay
+            checkOnline();
+        }, 5000);
+    </script>
     <style>
         body {
             font-family: 'Press Start 2P', cursive;

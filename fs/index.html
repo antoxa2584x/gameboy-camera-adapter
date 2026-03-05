@@ -25,8 +25,9 @@
 
 <!-- Firmware Update Dialog -->
 <div id="fw-popup" class="popup-overlay" style="display: none;">
-    <div class="popup-container">
-        <div style="display: flex; flex-direction: column; align-items: center; background: #266d3f; padding: 2rem; border-radius: 10px; width: 100%; max-width: 500px;">
+    <div class="popup-container"
+         style="position: relative; background: #266d3f; padding: 2rem; border-radius: 10px; width: 90%; max-width: 500px; box-sizing: border-box;">
+        <div style="display: flex; flex-direction: column; align-items: center;">
             <!-- Close Button -->
             <button class="close-btn" onclick="closeFirmwarePopup()">✕</button>
             <p id="firmware-version-text" style="color: white; font-size: 1.5rem; margin-bottom: 2rem;">Current firmware
@@ -67,9 +68,10 @@
     </div>
 </div>
 <div id="general-popup" class="popup-overlay" style="display:none;">
-    <div class="popup-container">
+    <div class="popup-container"
+         style="position: relative; background: #266d3f; padding: 2rem; border-radius: 10px; color: white; width: 90%; max-width: 500px; box-sizing: border-box;">
         <div class="general-popup-content"
-             style="display:flex; flex-direction:column; align-items:center; background:#266d3f; padding: 2rem; border-radius: 10px; color: white; padding: 60px;">
+             style="display:flex; flex-direction:column; align-items:center;">
         </div>
         <button class="close-btn" onclick="closeGeneralPopup()">✕</button>
     </div>
@@ -81,7 +83,11 @@
             🔔 Update available: <span id="latest-version"></span>
         </div>
         <img src="img/logo.webp" alt="logo" id="logo-img"
-             style="width:80%;flex:auto;padding: 15% 10% 10%;cursor: pointer;">
+             style="width:80%;flex:auto;padding: 15% 10% 5%;cursor: pointer;">
+        <div id="mode-indicator" style="color: white; margin-bottom: 2rem;">
+            <div id="mode-name" style="font-size: 1.5rem; margin-bottom: 0.5rem;">Gallery</div>
+            <div id="mode-switch-hint" style="font-size: 0.6rem; opacity: 0.8;">(Click logo to switch mode)</div>
+        </div>
     </div>
 
     <!-- Mode Containers -->
@@ -114,7 +120,7 @@
             </div>
             <br>
         </div>
-        <div>
+        <div style="display: flex; justify-content: center; width: 100%;">
             <button id="save_all_btn" style="display:none" onclick="saveAllPictures()">Save All</button>
         </div>
         <div id="gallery"></div>
@@ -122,32 +128,37 @@
         <p id="description">Start printing on your Game Boy<br>Photos will appear on this page</p>
     </div>
 
-    <div id="printer-mode" class="mode-block" style="display: none;">
-        <div style="display: flex; justify-content: center; align-items: center; height: 60vh; width: 100%;">
+    <div id="printer-mode" class="mode-block" style="display: none; padding-bottom: 2rem;">
+        <div style="display: flex; justify-content: center; align-items: center; width: 100%; margin-top: 20px;">
             <div style="text-align: center; display: flex; flex-direction: column; gap: 1.5rem; align-items: center;">
                 <div id="printer-status" style="color:white; text-align:center; margin-top:10px;">
                     Printer Status: OK
-                </div>
-
-                <div id="printer-controls" style="display: none; flex-direction: column; gap: 0.5rem; width: 100%;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; color: white;">
-                        <label for="print-exposure">Exposure:</label>
-                        <input type="range" id="print-exposure" min="0" max="127" value="64" style="width: 100px;">
-                    </div>
                 </div>
 
                 <label style="color: white; font-size: 1.1rem;">Upload Image for Printing</label>
 
                 <canvas id="preview-canvas" width="160" height="144" style="border: 1px solid white;"></canvas>
 
-                <input type="file" id="file-input" accept="image/*" onchange="handleFileInput(event)" style="display: none;">
+                <input type="file" id="file-input" accept="image/*" onchange="handleFileInput(event)"
+                       style="display: none;">
 
                 <div style="display: flex; flex-direction: column; align-items: center;">
-                    <label for="file-input" style="background: #4caf50; color: white; padding: 0.5rem 1rem; border-radius: 5px; cursor: pointer; font-weight: bold; margin-bottom: 0.5rem;">Choose File</label>
-                    <span id="file-name" style="color: white; font-size: 0.9rem;">No file selected</span>
+                    <label for="file-input"
+                           style="background: #4caf50; color: white; padding: 0.5rem 1rem; border-radius: 5px; cursor: pointer; font-weight: bold; margin-bottom: 0.5rem;">Choose
+                        File</label>
                 </div>
 
-                <button id="print-button" class="darkgreen" onclick="printSelectedImage()" style="display: none;">Print to Game Boy</button>
+                <div id="printer-controls"
+                     style="display: none; flex-direction: column; gap: 0.2rem; width: 100%; margin-top: 1rem;">
+                    <div style="display: flex; justify-content: center; align-items: center; color: white; gap: 0.5rem;">
+                        <label for="print-exposure" style="font-size: 0.8rem;">Exposure:</label>
+                        <input type="range" id="print-exposure" min="0" max="127" value="64" style="width: 150px;">
+                    </div>
+                </div>
+
+                <button id="print-button" class="darkgreen" onclick="printSelectedImage()"
+                        style="display: none; margin-top: 1rem;">Print to Game Boy
+                </button>
             </div>
         </div>
     </div>
@@ -155,13 +166,10 @@
 
 <footer>
     <div class="links">
-        <a href="https://github.com/untoxa/pico-gb-printer" id="image-link" target="_blank"
-           aria-label="untoxa/pico-gb-printer">
-            <img src="img/github.png" alt="GitHub Project">
-        </a>
-        <a href="https://www.instagram.com/retrogaming_ua/" id="image-link" target="_blank" aria-label="Instagram">
-            <img src="img/instagram.png" alt="Instagram">
-        </a>
+        <a href="https://github.com/antoxa2584x/gameboy-camera-adapter" class="footer-link" target="_blank">GITHUB</a>
+        <a href="https://github.com/antoxa2584x/gameboy-camera-adapter-companion" class="footer-link" target="_blank">ANDROID
+            APP</a>
+        <a href="https://www.instagram.com/retrogaming_ua/" class="footer-link" target="_blank">INSTAGRAM</a>
     </div>
 </footer>
 

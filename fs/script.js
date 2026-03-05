@@ -224,43 +224,30 @@ function addCanvasToGallery(canvas) {
 
         const img = new Image();
         img.src = canvas.toDataURL();
-        div.appendChild(img);
-        div.appendChild(document.createElement("br"));
-        div.markedForAction = false;
-
-        const input = document.createElement("input");
-        input.setAttribute("type", "checkbox");
-        input.setAttribute("id", `checkbox-${gallery.children.length}`);
-        input.style.display = "none";
-        input.checked = false;
-        div.appendChild(input);
-
-        const label = document.createElement("label");
-        label.setAttribute("for", input.id);
-        label.classList.add("image-label");
-        label.appendChild(img);
-        div.appendChild(label);
-
-        label.addEventListener("click", function() {
-            const inp = div.querySelector("input[type='checkbox']");
-            inp.checked = !inp.checked;
-            div.markedForAction = inp.checked;
-            updateButtonStates();
-        });
-
-        const btn = document.createElement("button");
-        btn.textContent = "SAVE";
-        btn.classList.add("shake");
-        btn.addEventListener("click", function() {
-            downloadImage(img);
-        });
-
         img.addEventListener("click", function() {
             showPopupWithUpscaledImage(img);
         });
 
+        const btn = document.createElement("button");
+        btn.textContent = "SAVE";
+        btn.addEventListener("click", function(e) {
+            e.stopPropagation(); // Prevent opening popup when clicking SAVE
+            downloadImage(img);
+        });
+
+        div.appendChild(img);
         div.appendChild(btn);
+
         gallery.appendChild(div);
+
+        // Ensure UI elements like "Save All" and colors are visible
+        const colors = document.getElementById('color-selector');
+        const saveAll = document.getElementById('save_all_btn');
+        const description = document.getElementById('description');
+        if (description) description.style.display = 'none';
+        if (colors) colors.style.display = 'flex';
+        if (saveAll) saveAll.style.display = 'flex';
+
         selectAllBtn.disabled = false;
     }
 }
@@ -274,6 +261,19 @@ function showPopupWithUpscaledImage(image) {
     // Create popup container
     const popup = document.createElement("div");
     popup.classList.add("image-container");
+    // Ensure relative positioning for the close button
+    popup.style.position = "relative";
+    popup.style.display = "flex";
+    popup.style.flexDirection = "column";
+    popup.style.alignItems = "center";
+    popup.style.gap = "0";
+    popup.style.padding = "0";
+    popup.style.backgroundColor = "transparent"; // Remove weird background square
+    popup.style.borderRadius = "10px";
+    popup.style.boxSizing = "border-box";
+    popup.style.maxWidth = "90vw";
+    popup.style.maxHeight = "90vh";
+    popup.style.justifyContent = "center";
 
     // Create canvas for upscaled image
     const canvas = document.createElement("canvas");
@@ -297,17 +297,45 @@ function showPopupWithUpscaledImage(image) {
 
     popup.appendChild(canvas);
 
+    // Create save button as text at the bottom
+    const saveButton = document.createElement("button");
+    saveButton.textContent = "SAVE";
+    saveButton.style.background = "none";
+    saveButton.style.border = "none";
+    saveButton.style.color = "white";
+    saveButton.style.padding = "0"; // Remove horizontal padding as it's right aligned
+    saveButton.style.fontFamily = "inherit";
+    saveButton.style.fontSize = "1.2rem";
+    saveButton.style.marginTop = "20px";
+    saveButton.style.alignSelf = "flex-end";
+    saveButton.style.marginRight = "10px";
+    saveButton.style.cursor = "pointer";
+    saveButton.style.transition = "opacity 0.2s";
+
+    saveButton.onmouseover = () => {
+        saveButton.style.opacity = "0.8";
+        saveButton.style.textDecoration = "underline";
+    };
+    saveButton.onmouseout = () => {
+        saveButton.style.opacity = "1";
+        saveButton.style.textDecoration = "none";
+    };
+
+    saveButton.onclick = () => {
+        downloadImage(image);
+    };
+    popup.appendChild(saveButton);
+
     // Create close button
     const closeButton = document.createElement("button");
-    closeButton.textContent = "X";
+    closeButton.textContent = "✕";
     closeButton.classList.add("popup-close-button");
-    closeButton.classList.add("shake");
 
     closeButton.onclick = () => {
         document.body.removeChild(overlay);
     };
-
     popup.appendChild(closeButton);
+
     overlay.appendChild(popup);
     document.body.appendChild(overlay);
 }
@@ -640,13 +668,24 @@ function renderExtraViews() {
     }
 }
 
-document.querySelectorAll(".color-circle").forEach(circle => {
-    circle.addEventListener("click", () => {
-        document.querySelectorAll(".color-circle").forEach(c => c.classList.remove("active"));
-        circle.classList.add("active");
-        applyColorScheme(circle.dataset.scheme);
+// Color scheme selector handler
+function setupColorSchemeSelector() {
+    document.querySelectorAll(".color-circle").forEach(circle => {
+        circle.onclick = () => {
+            // Remove active class from all circles
+            document.querySelectorAll(".color-circle").forEach(c => c.classList.remove("active"));
+
+            // Add active class to clicked circle
+            circle.classList.add("active");
+
+            // Store the selected scheme in localStorage
+            localStorage.setItem("selectedColorScheme", circle.dataset.scheme);
+
+            // Apply color scheme
+            applyColorScheme(circle.dataset.scheme);
+        };
     });
-});
+}
 
 // Function to observe changes in the gallery container
 function observeGalleryChanges() {
@@ -740,24 +779,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     parseScheme();
     observeGalleryChanges();
+    setupColorSchemeSelector();
 });
 
-document.querySelectorAll(".color-circle").forEach(circle => {
-    circle.addEventListener("click", () => {
-        // Remove active class from all circles
-        document.querySelectorAll(".color-circle").forEach(c => c.classList.remove("active"));
-
-        // Add active class to clicked circle
-        circle.classList.add("active");
-
-        // Store the selected scheme in localStorage
-        const selectedScheme = circle.dataset.scheme;
-        localStorage.setItem("selectedColorScheme", selectedScheme);
-
-        // Apply the selected scheme
-        applyColorScheme(selectedScheme);
-    });
-});
 
 function showFirmwarePopup() {
     const popup = document.getElementById('fw-popup');
@@ -863,6 +887,8 @@ window.showFirmwarePopup = showFirmwarePopup;
 window.closeFirmwarePopup = closeFirmwarePopup;
 window.setLedColor = setLedColor;
 window.checkForUpdate = checkForUpdate;
+window.downloadImage = downloadImage;
+window.saveAllPictures = saveAllPictures;
 
 function decodePrinterStatus(byte) {
     if (byte === 0xFF) return "Disconnected";
@@ -913,20 +939,256 @@ if (logoImg) {
     logoImg.addEventListener("click", () => {
         const scanner = document.getElementById("scanner-mode");
         const printer = document.getElementById("printer-mode");
-        if (currentMode === "scanner") {
-            if (scanner) scanner.style.display = "none";
-            if (printer) printer.style.display = "block";
-            currentMode = "printer";
-            // Immediately trigger periodic_fetch to clear fast interval if it was running
-            periodic_fetch();
-            pollPrinterStatus();
+        const modeName = document.getElementById("mode-name");
+
+        const switchMode = () => {
+            if (currentMode === "scanner") {
+                if (scanner) {
+                    scanner.style.display = "none";
+                    scanner.classList.remove("fade-out");
+                }
+                if (printer) {
+                    printer.style.display = "block";
+                    printer.classList.add("fade-in");
+                }
+                if (modeName) modeName.textContent = "Printer";
+                currentMode = "printer";
+                periodic_fetch();
+                pollPrinterStatus();
+            } else {
+                if (printer) {
+                    printer.style.display = "none";
+                    printer.classList.remove("fade-out");
+                }
+                if (scanner) {
+                    scanner.style.display = "block";
+                    scanner.classList.add("fade-in");
+                }
+                if (modeName) modeName.textContent = "Gallery";
+                currentMode = "scanner";
+                periodic_fetch();
+            }
+        };
+
+        const currentBlock = currentMode === "scanner" ? scanner : printer;
+        if (currentBlock) {
+            currentBlock.classList.remove("fade-in");
+            currentBlock.classList.add("fade-out");
+            currentBlock.addEventListener("animationend", () => {
+                switchMode();
+            }, { once: true });
         } else {
-            if (scanner) scanner.style.display = "block";
-            if (printer) printer.style.display = "none";
-            currentMode = "scanner";
+            switchMode();
         }
     });
 }
 window.startUpdate = startUpdate;
 window.saveAllPictures = saveAllPictures;
 window.closeGeneralPopup = closeGeneralPopup;
+
+function canvasToTileData(canvas) {
+    const ctx = canvas.getContext("2d");
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const pixels = imgData.data;
+    const tiles = [];
+
+    const w = canvas.width;
+    const h = canvas.height;
+
+    for (let y = 0; y < h; y += 8) {
+        for (let x = 0; x < w; x += 8) {
+            for (let row = 0; row < 8; row++) {
+                let byte1 = 0;
+                let byte2 = 0;
+                for (let col = 0; col < 8; col++) {
+                    let px = ((y + row) * w + (x + col)) * 4;
+                    // Game Boy grayscale uses inverted intensity: 0=White, 3=Black
+                    let gray = (0.299 * pixels[px] + 0.587 * pixels[px + 1] + 0.114 * pixels[px + 2]);
+                    let shade = gray > 192 ? 0 : gray > 128 ? 1 : gray > 64 ? 2 : 3;
+                    byte1 |= ((shade & 1) << (7 - col));
+                    byte2 |= (((shade >> 1) & 1) << (7 - col));
+                }
+                tiles.push(byte1);
+                tiles.push(byte2);
+            }
+        }
+    }
+
+    return new Uint8Array(tiles);
+}
+
+function printSelectedImage() {
+    const canvas = document.getElementById("preview-canvas");
+    const binaryData = canvasToTileData(canvas);
+    // Truncate to complete strips (640 bytes each = 2 tile rows = 16px)
+    const STRIP_SIZE = 640;
+    const totalStrips = Math.floor(binaryData.length / STRIP_SIZE);
+    const trimmedLen = totalStrips * STRIP_SIZE;
+    const trimmed = binaryData.slice(0, trimmedLen);
+    console.log(`Image: ${binaryData.length} bytes -> ${totalStrips} strips (${trimmedLen} bytes)`);
+    sendChunkedData(trimmed);
+}
+
+function sendChunkedData(binaryData, chunkSize = 256) {
+    const totalChunks = Math.ceil(binaryData.length / chunkSize);
+
+    function calculateChecksum(command, data) {
+        let sum = command + (data.length & 0xFF) + (data.length >> 8);
+        for (let i = 0; i < data.length; i++) {
+            sum = (sum + data[i]);
+        }
+        return sum & 0xFFFF;
+    }
+
+    const packetInit = "88330100000001000000";
+    const packetStatus = "88330f0000000f000000";
+
+    function createDataPacket(data) {
+        let header = "88330400";
+        let lenL = (data.length & 0xFF).toString(16).padStart(2, '0');
+        let lenH = (data.length >> 8).toString(16).padStart(2, '0');
+        let hexData = '';
+        for (let i = 0; i < data.length; i++) {
+            hexData += data[i].toString(16).padStart(2, '0');
+        }
+        let checksum = calculateChecksum(0x04, data);
+        let checkL = (checksum & 0xFF).toString(16).padStart(2, '0');
+        let checkH = (checksum >> 8).toString(16).padStart(2, '0');
+        return header + lenL + lenH + hexData + checkL + checkH + "0000";
+    }
+
+    let packets = [];
+    packets.push({ data: packetInit, name: "INIT" });
+    packets.push({ data: packetStatus, name: "STATUS" });
+
+    for (let i = 0; i < totalChunks; i++) {
+        const start = i * chunkSize;
+        const end = Math.min(start + chunkSize, binaryData.length);
+        const chunk = binaryData.slice(start, end);
+        packets.push({ data: createDataPacket(chunk), name: "DATA" });
+    }
+
+    // Empty DATA packet signals end of image data to the printer
+    packets.push({ data: "88330400000004000000", name: "DATA_END" });
+
+    // PRINT packet
+    const exposure = parseInt(document.getElementById("print-exposure").value) || 0x40;
+    const expValue = Math.min(0x7F, exposure);
+    const printData = new Uint8Array([0x01, 0x03, 0xE4, expValue]);
+    const printHeader = "883302000400";
+    let printHexData = "0103e4" + expValue.toString(16).padStart(2, '0');
+    const printChecksum = calculateChecksum(0x02, printData);
+    const printCheckL = (printChecksum & 0xFF).toString(16).padStart(2, '0');
+    const printCheckH = (printChecksum >> 8).toString(16).padStart(2, '0');
+    packets.push({ data: printHeader + printHexData + printCheckL + printCheckH + "0000", name: "PRINT" });
+
+    // Status checks after print
+    packets.push({ data: packetStatus, name: "STATUS" });
+    packets.push({ data: packetStatus, name: "STATUS" });
+    packets.push({ data: packetStatus, name: "STATUS" });
+
+    function getPrinterStatusDisplay(status) {
+        if (status === 0xFF) return "Disconnected";
+        if (status === 0) return "OK";
+        const flags = [
+            "Checksum Error",
+            "Printer Busy",
+            "Image Data Full",
+            "Unprocessed Data",
+            "Packet Error",
+            "Paper Jam",
+            "Other Error",
+            "Battery Low"
+        ];
+        const errors = [];
+        for (let i = 0; i < 8; i++) {
+            if (status & (1 << i)) errors.push(flags[i]);
+        }
+        return errors.length ? errors.join(", ") : "OK (" + status.toString(16).padStart(2, '0') + ")";
+    }
+
+    // Buffer all packets to firmware, then trigger burst send
+    function bufferNextPacket(index) {
+        if (index >= packets.length) {
+            console.log(`All ${packets.length} packets buffered. Triggering burst send...`);
+            fetch("/print_chunk?done=1")
+                .then(() => new Promise(resolve => setTimeout(resolve, 2000))) // wait for printing
+                .then(() => fetch("/status.json"))
+                .then(res => res.json())
+                .then(statusData => {
+                    const printerStatus = statusData.printer;
+                    console.log(`Final status: 0x${printerStatus.toString(16).padStart(2, '0')} (${getPrinterStatusDisplay(printerStatus)})`);
+                    alert("Print result: " + getPrinterStatusDisplay(printerStatus));
+                })
+                .catch(err => {
+                    console.error("Print failed", err);
+                });
+            return;
+        }
+
+        const packet = packets[index];
+        const url = `/print_chunk?data=${packet.data}`;
+        console.log(`[${index}/${packets.length}] Buffering ${packet.name} (${packet.data.length / 2} bytes)`);
+
+        fetch(url)
+            .then(res => {
+                if (!res.ok) throw new Error("Server error");
+                setTimeout(() => bufferNextPacket(index + 1), 50);
+            })
+            .catch(err => {
+                console.error("Buffer failed at packet " + index, err);
+            });
+    }
+
+    bufferNextPacket(0);
+}
+
+function handleFileInput(e) {
+    const file = e.target.files[0];
+    const nameDisplay = document.getElementById("file-name");
+    const printButton = document.getElementById("print-button");
+
+    if (file) {
+        if (nameDisplay) {
+            const name = file.name;
+            const dotIndex = name.lastIndexOf(".");
+            const base = dotIndex > 0 ? name.substring(0, dotIndex) : name;
+            const ext = dotIndex > 0 ? name.substring(dotIndex) : "";
+            nameDisplay.textContent = base.length > 47 ? base.substring(0, 30) + "..." + base.substring(base.length - 3, base.length) + ext : name;
+        }
+        printButton.style.display = "block";
+        document.getElementById("printer-controls").style.display = "flex";
+    } else {
+        if (nameDisplay) nameDisplay.textContent = "No file selected";
+        printButton.style.display = "none";
+        document.getElementById("printer-controls").style.display = "none";
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function (evt) {
+        const img = new Image();
+        img.onload = function () {
+            const canvas = document.getElementById("preview-canvas");
+            const ctx = canvas.getContext("2d");
+            canvas.width = 160;
+            canvas.height = 144;
+            ctx.drawImage(img, 0, 0, 160, 144);
+
+            const imageData = ctx.getImageData(0, 0, 160, 144);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const gray = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                let level = gray > 192 ? 255 : gray > 128 ? 170 : gray > 64 ? 85 : 0;
+                data[i] = data[i + 1] = data[i + 2] = level;
+            }
+            ctx.putImageData(imageData, 0, 0);
+        };
+        img.src = evt.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+window.handleFileInput = handleFileInput;
+window.printSelectedImage = printSelectedImage;
+window.showPopupWithUpscaledImage = showPopupWithUpscaledImage;

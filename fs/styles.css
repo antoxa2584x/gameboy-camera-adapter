@@ -23,7 +23,10 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    margin-bottom: 70px;
+    margin-top: 40px;
+    margin-bottom: 120px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 button {
@@ -94,7 +97,6 @@ button.darkgreen:hover {
     background-color: #003d1d;
 }
 
-/* Optional: Close button inside popup */
 .popup-container .close-btn {
     width: 40px;
     height: 40px;
@@ -109,13 +111,35 @@ button.darkgreen:hover {
     justify-content: center;
     align-items: center;
     position: absolute;
-    right: 0;
-    top: 0;
-    margin: 10px;
+    right: -20px;
+    top: -20px;
+    margin: 0;
     transition: background-color 0.2s ease;
+    z-index: 1001;
 }
 
-.popup-container .close-btn:hover {
+.popup-close-button {
+    width: 40px;
+    height: 40px;
+    background-color: #D32F2F;
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    font-family: 'Press Start 2P', cursive;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: absolute;
+    right: -20px;
+    top: -40px;
+    margin: 0;
+    transition: background-color 0.2s ease;
+    z-index: 1001;
+}
+
+.popup-container .close-btn:hover, .popup-close-button:hover {
     background-color: #b71c1c;
 }
 
@@ -158,26 +182,102 @@ p {
     /* Default font */
 }
 
-.gallery-image {
+.mode-block {
     width: 100%;
-    max-width: 190px;
-    /* Adjust based on your image size */
-    padding: 10px;
-    margin: 10px;
-    background-color: rgb(0 0 0 / 28%);
-    border: 1px solid #004d25;
-    /* Darker green for the border */
-    border-radius: 5px;
-    box-sizing: border-box;
-    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
+/* Gallery Layout */
 #gallery {
-    max-width: 80%;
+    width: 100%;
+    max-width: 800px;
+    margin: 0 auto;
     display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 10px;
     justify-content: center;
     padding: 20px;
+    box-sizing: border-box;
+}
+
+.gallery-image {
+    width: 100%;
+    min-width: 0;
+    max-width: 190px;
+    padding: 10px;
+    margin: 0 auto; /* Center within grid cell */
+    background-color: rgb(0 0 0 / 28%);
+    border: 1px solid #004d25;
+    border-radius: 5px;
+    box-sizing: border-box;
+    position: relative;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.gallery-image:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 15px rgba(76, 175, 80, 0.5);
+    z-index: 10;
+}
+
+@media (max-width: 800px) {
+    #gallery {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        padding: 15px;
+    }
+}
+
+@media (max-width: 640px) {
+    #gallery {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        padding: 12px;
+    }
+}
+
+@media (max-width: 480px) {
+    #gallery {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        padding: 10px;
+    }
+}
+
+/* Exposure Seekbar Theme */
+#print-exposure {
+    -webkit-appearance: none;
+    width: 100%;
+    max-width: 150px;
+    height: 8px;
+    background: #004d25;
+    border-radius: 4px;
+    outline: none;
+    margin: 0;
+}
+
+#print-exposure::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    background: #4caf50;
+    cursor: pointer;
+    border-radius: 50%;
+    border: 2px solid white;
+}
+
+#print-exposure::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    background: #4caf50;
+    cursor: pointer;
+    border-radius: 50%;
+    border: 2px solid white;
 }
 
 footer {
@@ -189,31 +289,20 @@ footer {
     color: white;
     padding: 10px;
     text-align: center;
+    z-index: 100;
 }
 
 /* Ensure the `.links` container inside the footer also stretches */
 footer .links {
-    width: 100%;
     display: flex;
     justify-content: center;
-    /* Centering icons */
-    gap: 15px;
-    /* Space between icons */
+    align-items: center;
+    gap: 20px;
     padding: 10px 0;
+    flex-wrap: wrap;
 }
 
-/* Ensure the icons scale properly */
-footer .links img {
-    width: 40px;
-    /* Adjust the icon size */
-    height: auto;
-    transition: transform 0.3s ease;
-}
-
-/* Add hover effect */
-footer .links img:hover {
-    transform: scale(1.1);
-}
+/* Add hover effect on child images is already handled by .footer-link img:hover */
 
 .language-select {
     margin-top: 5px;
@@ -230,30 +319,50 @@ footer .links img:hover {
 }
 
 .container {
-    max-width: 75%;
-    /* Set the maximum width for the container */
+    width: 90%;
+    max-width: 800px;
     margin: 0 auto;
-    /* Center the container */
     text-align: center;
-    /* Ensure text is centered */
 }
 
-@media (min-width: 320px) {
+@media (max-width: 480px) {
     .container {
-        max-width: 90%;
-        /* Set the maximum width for the container */
-        margin: 0 auto;
-        /* Center the container */
-        text-align: center;
-        /* Ensure text is centered */
+        width: 95%;
     }
 
-    .gallery-image img {
-        width: 160px;
+    .popup-container .close-btn, .popup-close-button {
+        right: 5px;
+        top: 5px;
     }
 
-    .gallery-image {
-        flex: 1;
+    #logo-img {
+        width: 90% !important;
+        padding: 10% 5% 5% !important;
+    }
+
+    #mode-name {
+        font-size: 1.2rem !important;
+    }
+
+    .color-circle {
+        width: 30px !important;
+        height: 30px !important;
+    }
+
+    #color-selector {
+        gap: 10px !important;
+    }
+
+    .popup-container > div {
+        padding: 1rem !important;
+    }
+
+    #firmware-version-text {
+        font-size: 1.1rem !important;
+    }
+
+    .settings-container label {
+        font-size: 0.8rem !important;
     }
 }
 
@@ -291,8 +400,22 @@ footer .links img:hover {
 }
 
 .gallery-image button {
+    background: none;
+    border: none;
+    color: white;
+    padding: 0;
+    font-family: inherit;
+    font-size: 0.7rem;
+    cursor: pointer;
+    width: 100%;
+    text-align: center;
     margin-top: 10px;
-    /* Ensure consistent spacing around buttons */
+    transition: color 0.2s, opacity 0.2s;
+}
+
+.gallery-image button:hover {
+    opacity: 0.8;
+    text-decoration: underline;
 }
 
 #description {
@@ -305,44 +428,26 @@ footer .links img:hover {
     margin: auto;
 }
 
-#gallery {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: flex-start;
-}
 
-#image-link {
-    bottom: 10px;
-    /* Space from the bottom of the screen */
-    right: 10px;
-    /* Space from the right of the screen */
-    z-index: 1000;
-    /* Ensure it appears above other elements */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 50px;
-    /* Size of the clickable area */
-    height: 50px;
-}
-
-#image-link img {
-
-    /* Fit the container */
+.gallery-image img {
+    width: 100%;
+    max-width: 160px;
     height: auto;
-    /* Maintain aspect ratio */
-    filter: brightness(0) invert(1);
-    /* White filter for the black icon */
-    transition: transform 0.3s ease, filter 0.3s ease;
-    /* Hover effect */
+    display: block;
+    margin: 0 auto;
 }
 
-#image-link img:hover {
-    transform: scale(1.1);
-    /* Slightly enlarge on hover */
-    filter: brightness(1) invert(0.8);
-    /* Slight hover filter adjustment */
+.footer-link {
+    display: inline-block;
+    color: white;
+    text-decoration: none;
+    font-size: 0.7rem;
+    transition: opacity 0.2s ease;
+}
+
+.footer-link:hover {
+    opacity: 0.8;
+    text-decoration: underline;
 }
 
 @keyframes shake {
@@ -397,9 +502,7 @@ footer .links img:hover {
     /* Ensures the container doesn't overflow the viewport width */
     max-height: 90vh;
     /* Ensures the container doesn't overflow the viewport height */
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    overflow: visible;
 }
 
 /* Canvas Styles */
@@ -415,28 +518,39 @@ footer .links img:hover {
 }
 
 /* Close Button Styles */
-.popup-close-button {
+.popup-close-button, .popup-save-button {
     position: absolute;
-    top: 10px;
-    right: 10px;
     width: 40px;
-    /* Set a fixed width */
     height: 40px;
-    /* Set a fixed height */
-    background-color: red;
     color: white;
     border: none;
     cursor: pointer;
     font-size: 1rem;
     font-family: 'Press Start 2P', cursive;
     border-radius: 50%;
-    /* Makes the button circular */
     display: flex;
     justify-content: center;
     align-items: center;
-    /* Center the text/icon inside the circle */
     padding: 0;
-    /* Remove extra padding */
+    z-index: 1001;
+}
+
+.popup-close-button {
+    right: -20px;
+    top: -40px;
+    background-color: #D32F2F;
+}
+
+@media (max-width: 550px) {
+    .popup-close-button, .popup-container .close-btn {
+        right: 5px;
+        top: 5px;
+    }
+}
+
+.popup-save-button {
+    right: 60px;
+    background-color: #4caf50;
 }
 
 #color-selector {
@@ -459,10 +573,12 @@ footer .links img:hover {
 
 .color-circle:hover {
     transform: scale(1.2);
+    box-shadow: 0 0 15px rgba(76, 175, 80, 0.5);
 }
 
 .color-circle.active {
     transform: scale(1.2);
+    box-shadow: 0 0 15px rgba(76, 175, 80, 0.5);
 }
 
 /* Popup Animation */
@@ -475,6 +591,32 @@ footer .links img:hover {
         opacity: 1;
         transform: scale(1);
     }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(-10px); }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-out forwards;
+}
+
+.fade-out {
+    animation: fadeOut 0.3s ease-in forwards;
+}
+
+#mode-indicator {
+    transition: transform 0.2s ease-in-out;
+}
+
+#logo-img:active + #mode-indicator {
+    transform: scale(0.95);
 }
 
 /* The switch - the box around the slider */
