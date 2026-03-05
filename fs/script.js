@@ -464,6 +464,11 @@ let fetch_ok = false;
 let fetch_interval;
 
 function periodic_fetch() {
+    if (currentMode === "printer") {
+        clearInterval(fetch_interval);
+        fetch_interval = setInterval(periodic_fetch, 1000);
+        return;
+    }
     if (!fetch_skip) {
         fetch_skip = true;
         void (async () => {
@@ -830,7 +835,8 @@ function canvasToTileData(canvas) {
                 let byte2 = 0;
                 for (let col = 0; col < 8; col++) {
                     let px = ((y + row) * w + (x + col)) * 4;
-                    let gray = (pixels[px] + pixels[px + 1] + pixels[px + 2]) / 3;
+                    // Game Boy grayscale uses inverted intensity: 0=White, 3=Black
+                    let gray = (0.299 * pixels[px] + 0.587 * pixels[px + 1] + 0.114 * pixels[px + 2]);
                     let shade = gray > 192 ? 0 : gray > 128 ? 1 : gray > 64 ? 2 : 3;
                     byte1 |= ((shade & 1) << (7 - col));
                     byte2 |= (((shade >> 1) & 1) << (7 - col));
@@ -852,31 +858,166 @@ function printSelectedImage() {
 function sendChunkedData(binaryData, chunkSize = 256) {
     const totalChunks = Math.ceil(binaryData.length / chunkSize);
 
-    function sendNextChunk(index) {
-        if (index >= totalChunks) return;
+    function calculateChecksum(command, data) {
+        let sum = command + (data.length & 0xFF) + (data.length >> 8);
+        for (let i = 0; i < data.length; i++) {
+            sum = (sum + data[i]);
+        }
+        return sum & 0xFFFF;
+    }
 
-        const start = index * chunkSize;
+    const packetInit = "88330100000001000000";
+    const packetStatus = "88330f0000000f000000";
+
+    function createDataPacket(data) {
+        let header = "88330400";
+        let lenL = (data.length & 0xFF).toString(16).padStart(2, '0');
+        let lenH = (data.length >> 8).toString(16).padStart(2, '0');
+        let hexData = '';
+        for (let i = 0; i < data.length; i++) {
+            hexData += data[i].toString(16).padStart(2, '0');
+        }
+        let checksum = calculateChecksum(0x04, data);
+        let checkL = (checksum & 0xFF).toString(16).padStart(2, '0');
+        let checkH = (checksum >> 8).toString(16).padStart(2, '0');
+        return header + lenL + lenH + hexData + checkL + checkH + "0000";
+    }
+
+    function createPrintPacket() {
+        const exposure = parseInt(document.getElementById("print-exposure").value) || 0x40;
+        // The standard Game Boy Printer PRINT command (0x02) uses 4 data bytes:
+        // [sheets][margins][palette][exposure]
+        // sheets: 0x01 (one copy)
+        // margins: upper/lower margin (0x00 default)
+        // palette: 0xE4 (standard)
+        // exposure: 0x00-0x7F (0x40 default)
+        const expValue = Math.min(0x7F, exposure);
+        const data = new Uint8Array([0x01, 0x00, 0xE4, expValue]);
+        const header = "883302000400";
+        let hexData = "0100e4" + expValue.toString(16).padStart(2, '0');
+        const checksum = calculateChecksum(0x02, data);
+        const checkL = (checksum & 0xFF).toString(16).padStart(2, '0');
+        const checkH = (checksum >> 8).toString(16).padStart(2, '0');
+        return header + hexData + checkL + checkH + "0000";
+    }
+
+    let packets = [];
+    packets.push({ data: packetInit, name: "INIT" });
+    packets.push({ data: packetStatus, name: "STATUS" });
+
+    for (let i = 0; i < totalChunks; i++) {
+        const start = i * chunkSize;
         const end = Math.min(start + chunkSize, binaryData.length);
         const chunk = binaryData.slice(start, end);
+        packets.push({ data: createDataPacket(chunk), name: "DATA" });
+    }
 
-        let hexData = '';
-        for (let i = 0; i < chunk.length; i++) {
-            hexData += chunk[i].toString(16).padStart(2, '0');
+    // After all data chunks, send a status check to ensure buffer is ready
+    packets.push({ data: packetStatus, name: "STATUS" });
+
+    packets.push({ data: createPrintPacket(), name: "PRINT" });
+    // Final status checks
+    packets.push({ data: packetStatus, name: "STATUS" });
+    packets.push({ data: packetStatus, name: "STATUS" });
+
+    let currentPrinterStatus = 0; // Local status for this print job
+    function getPrinterStatusDisplay(status) {
+        if (status === 0xFF) return "Disconnected";
+        if (status === 0) return "OK";
+        const flags = [
+            "Checksum Error",
+            "Printer Busy",
+            "Image Data Full",
+            "Unprocessed Data",
+            "Packet Error",
+            "Paper Jam",
+            "Other Error",
+            "Battery Low"
+        ];
+        const errors = [];
+        for (let i = 0; i < 8; i++) {
+            if (status & (1 << i)) errors.push(flags[i]);
+        }
+        return errors.length ? errors.join(", ") : "OK (" + status.toString(16).padStart(2, '0') + ")";
+    }
+
+    function updatePrinterStatusUI() {
+        const statusEl = document.getElementById("printer-status");
+        if (!statusEl) return;
+
+        fetch("/status.json")
+            .then(res => res.json())
+            .then(data => {
+                currentPrinterStatus = data.printer;
+                statusEl.textContent = "Printer Status: " + getPrinterStatusDisplay(currentPrinterStatus);
+                if (currentPrinterStatus === 0xFF) {
+                    statusEl.style.color = "red";
+                } else {
+                    statusEl.style.color = currentPrinterStatus === 0 ? "lightgreen" : "orange";
+                }
+            })
+            .catch(err => console.error("Failed to get status", err));
+    }
+
+    const statusInterval = setInterval(updatePrinterStatusUI, 5000);
+
+    function sendNextPacket(index) {
+        if (index >= packets.length) {
+            clearInterval(statusInterval);
+            alert("Printing complete!");
+            return;
         }
 
-        const done = index === totalChunks - 1 ? "&done=1" : "";
-        const url = `/print_chunk?id=${index}&data=${hexData}${done}`;
+        const packet = packets[index];
+        const url = `/print_chunk?data=${packet.data}`;
 
         fetch(url)
-            .then(res => res.ok)
-            // .then(() => sendNextChunk(index + 1))
+            .then(res => {
+                if (!res.ok) throw new Error("Server error");
+                return new Promise(resolve => setTimeout(resolve, 150)); // Wait for bit-banging to finish
+            })
+            .then(() => fetch("/status.json"))
+            .then(res => res.json())
+            .then(statusData => {
+                const printerStatus = statusData.printer;
+                currentPrinterStatus = printerStatus;
+
+                if (printerStatus === 0xFF) {
+                    alert("Printer disconnected!");
+                    clearInterval(statusInterval);
+                    return;
+                }
+                
+                // If it's a DATA packet, wait if buffer is full
+                // If it's a PRINT packet, wait while printing
+                let delay = 100;
+                if (packet.name === "DATA" && (printerStatus & 0x04)) {
+                    console.log("Printer buffer full, waiting...");
+                    delay = 1000;
+                    return setTimeout(() => sendNextPacket(index), delay);
+                }
+                
+                if (packet.name === "PRINT" || (printerStatus & 0x02)) {
+                    console.log("Printer busy, waiting...");
+                    delay = 1000;
+                    return setTimeout(() => sendNextPacket(index), delay);
+                }
+
+                setTimeout(() => sendNextPacket(index + 1), delay);
+            })
             .catch(err => {
-                console.error("Chunk failed", err);
-                alert("Chunk upload failed.");
+                clearInterval(statusInterval);
+                console.error("Packet failed", err);
+                alert("Printing failed at packet " + index + " (" + packet.name + ")");
             });
     }
 
-    sendNextChunk(0);
+    if (currentPrinterStatus === 0xFF) {
+        alert("Printer is disconnected. Please connect the printer before printing.");
+        return;
+    }
+
+    sendNextPacket(0);
 }
 
 function handleFileInput(e) {
@@ -891,9 +1032,11 @@ function handleFileInput(e) {
         const ext = dotIndex > 0 ? name.substring(dotIndex) : "";
         nameDisplay.textContent = base.length > 47 ? base.substring(0, 30) + "..." + base.substring(base.length - 3, base.length) + ext : name;
         printButton.style.display = "block";
+        document.getElementById("printer-controls").style.display = "flex";
     } else {
         nameDisplay.textContent = "No file selected";
         printButton.style.display = "none";
+        document.getElementById("printer-controls").style.display = "none";
         return;
     }
 
@@ -930,6 +1073,8 @@ logoImg.addEventListener("click", () => {
         scanner.style.display = "none";
         printer.style.display = "block";
         currentMode = "printer";
+        // Immediately trigger periodic_fetch to clear fast interval if it was running
+        periodic_fetch();
     } else {
         scanner.style.display = "block";
         printer.style.display = "none";
@@ -950,6 +1095,7 @@ window.addEventListener("DOMContentLoaded", () => {
 });
 
 function decodePrinterStatus(byte) {
+    if (byte === 0xFF) return "Disconnected";
     const flags = [
         "Checksum Error",
         "Printer Busy",
@@ -961,6 +1107,7 @@ function decodePrinterStatus(byte) {
         "Battery Low"
     ];
     const errors = [];
+    if (byte === 0) return "OK";
     for (let i = 0; i < 8; i++) {
         if (byte & (1 << i)) errors.push(flags[i]);
     }
@@ -968,19 +1115,29 @@ function decodePrinterStatus(byte) {
 }
 
 function pollPrinterStatus() {
+    // If we're in printer mode, the sendChunkedData function handles the status interval
+    // But we need a global one for when not currently sending data
+    if (currentMode !== "printer") return;
+    
     fetch('/status.json')
         .then(r => r.json())
         .then(data => {
             if (data.printer !== undefined) {
                 const el = document.getElementById("printer-status");
-                el.textContent = "Printer Status: " + decodePrinterStatus(data.printer);
-                el.style.color = data.printer === 0 ? "lightgreen" : "orange";
+                if (el) {
+                    el.textContent = "Printer Status: " + decodePrinterStatus(data.printer);
+                    if (data.printer === 0xFF) {
+                        el.style.color = "red";
+                    } else {
+                        el.style.color = data.printer === 0 ? "lightgreen" : "orange";
+                    }
+                }
             }
         })
         .catch(err => console.error("Status error:", err));
 }
 
-setInterval(pollPrinterStatus, 2000); // check every 2s
+setInterval(pollPrinterStatus, 3000);
 
 window.showFirmwarePopup = showFirmwarePopup;
 window.closeFirmwarePopup = closeFirmwarePopup;

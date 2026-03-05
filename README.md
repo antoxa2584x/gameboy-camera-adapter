@@ -14,6 +14,10 @@ Lets the Pico pretend to be a USB Ethernet device. Runs the webinterface at http
 
 Special thanks to Raphael-Boichot, please check this repo: https://github.com/Raphael-Boichot/The-Arduino-SD-Game-Boy-Printer
 
+## Printer Support
+
+This project also supports printing to a real Game Boy Printer. For detailed information about the protocol implementation, see [PRINTER_PROTOCOL.md](PRINTER_PROTOCOL.md).
+
 ## Schematics
 
 You will need a Raspberry Pi, 1/2 of the game boy link cable and a four-channel 5v to 3.3v level shifter. Connect parts as shown:

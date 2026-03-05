@@ -129,6 +129,13 @@
                     Printer Status: OK
                 </div>
 
+                <div id="printer-controls" style="display: none; flex-direction: column; gap: 0.5rem; width: 100%;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; color: white;">
+                        <label for="print-exposure">Exposure:</label>
+                        <input type="range" id="print-exposure" min="0" max="127" value="64" style="width: 100px;">
+                    </div>
+                </div>
+
                 <label style="color: white; font-size: 1.1rem;">Upload Image for Printing</label>
 
                 <canvas id="preview-canvas" width="160" height="144" style="border: 1px solid white;"></canvas>

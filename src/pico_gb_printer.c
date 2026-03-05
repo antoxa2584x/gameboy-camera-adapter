@@ -19,9 +19,17 @@
 #include "ws2812.pio.h"
 
 #include <string.h>
+#include <stdlib.h>
 
 #include "hardware/flash.h"
 #include "hardware/sync.h"
+
+// GameBoy Printer status
+#define PRINTER_STATUS_OK           0x00
+#define PRINTER_STATUS_FULL         0x04
+#define PRINTER_STATUS_BUSY         0x02
+#define PRINTER_STATUS_CHECKSUM     0x01
+#define PRINTER_STATUS_DISCONNECTED 0xFF
 
 bool debug_enable = ENABLE_DEBUG;
 bool speed_240_MHz = false;
@@ -240,43 +248,125 @@ void update_led_wave() {
     }
 }
 
+#define PIN_SCK    2  // CLK: from Pico to printer
+#define PIN_SOUT   3  // SIN: from Pico to printer
+#define PIN_SIN    0  // SOUT: from printer to Pico
+
+const int halfDelay = 200; // microseconds (approx 2.5kHz)
+
+uint8_t current_printer_status = PRINTER_STATUS_DISCONNECTED;
+
+uint8_t get_printer_status() {
+    return current_printer_status;
+}
+
+uint8_t printer_send_byte(uint8_t byteToSend) {
+    uint8_t gbReply = 0;
+    for (int i = 0; i < 8; i++) {
+        gpio_put(PIN_SOUT, (byteToSend >> (7 - i)) & 1);
+        gpio_put(PIN_SCK, 0);
+        sleep_us(halfDelay);
+        bool readBit = gpio_get(PIN_SIN);
+        gbReply = (gbReply << 1) | (readBit ? 1 : 0);
+        gpio_put(PIN_SCK, 1);
+        sleep_us(halfDelay);
+    }
+    gpio_put(PIN_SOUT, 0);
+    sleep_us(halfDelay);
+    return gbReply;
+}
+
+void printer_send_packet(const uint8_t* packet, int length) {
+    // Disable PIO while bit-banging
+    pio_sm_set_enabled(LINKCABLE_PIO, LINKCABLE_SM, false);
+    pio_set_irq0_source_enabled(LINKCABLE_PIO, pis_interrupt0, false);
+    
+    // Reconfigure pins for bit-banging
+    gpio_init(PIN_SCK);
+    gpio_set_dir(PIN_SCK, GPIO_OUT);
+    gpio_put(PIN_SCK, 1);
+
+    gpio_init(PIN_SOUT);
+    gpio_set_dir(PIN_SOUT, GPIO_OUT);
+    gpio_put(PIN_SOUT, 0);
+
+    gpio_init(PIN_SIN);
+    gpio_set_dir(PIN_SIN, GPIO_IN);
+    gpio_pull_up(PIN_SIN); // Enable pull-up to detect disconnection (reads 0xFF)
+
+    uint8_t last_response = 0x00;
+    uint8_t status_byte = 0x00;
+    bool has_response = false;
+    bool sync_received = false;
+    for (int i = 0; i < length; i++) {
+        uint8_t response = printer_send_byte(packet[i]);
+        
+        if (sync_received) {
+            status_byte = response;
+            sync_received = false; // We got the status after sync
+            has_response = true;
+        } else if (response == 0x81) {
+            sync_received = true;
+            has_response = true;
+        } else if (response != 0x00 && response != 0xFF) {
+            // Backup in case we missed sync but got something else
+            last_response = response;
+            has_response = true;
+        }
+        
+        sleep_us(10);
+    }
+
+    if (has_response) {
+        if (status_byte != 0x00) {
+            current_printer_status = status_byte;
+        } else if (last_response != 0x81 && last_response != 0xFF && last_response != 0x00) {
+            current_printer_status = last_response;
+        } else {
+            // If we only got 0x81 or 0x00 as last response, it might be OK
+            // but usually status follows 0x81.
+            // If status_byte is 0x00, it means the printer is likely OK.
+            current_printer_status = status_byte; 
+        }
+    } else {
+        current_printer_status = PRINTER_STATUS_DISCONNECTED;
+    }
+
+    sleep_us(200);
+    
+    // Re-enable PIO
+    linkcable_init(link_cable_ISR);
+}
+
 // Web interface endpoint to receive chunks and trigger print
 const char *cgi_print_chunk(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
-    return "/index.html";
-
-    int chunk_id = -1;
     int is_done = 0;
     const char *payload = NULL;
 
-    if (chunk_id == 0) {
-        gbprinter_send_packet(PRN_COMMAND_INIT, NULL, 0); // Required init command
-    }
-
     // Parse parameters
     for (int i = 0; i < iNumParams; i++) {
-        if (strcmp(pcParam[i], "id") == 0) {
-            chunk_id = atoi(pcValue[i]);
-        } else if (strcmp(pcParam[i], "data") == 0) {
+        if (strcmp(pcParam[i], "data") == 0) {
             payload = pcValue[i];
         } else if (strcmp(pcParam[i], "done") == 0) {
             is_done = atoi(pcValue[i]);
         }
     }
 
-    // Convert hex payload to bytes and send to printer
-    size_t len = strlen(payload);
-    for (size_t i = 0; i + 1 < len; i += 2) {
-        char byte_str[3] = { payload[i], payload[i + 1], 0 };
-        uint8_t b = (uint8_t)strtol(byte_str, NULL, 16);
-        receive_data_write(b);
-    }
+    if (payload) {
+        // Convert hex payload to bytes
+        size_t hex_len = strlen(payload);
+        if (hex_len > 1024) return "/index.html"; // Basic protection against too large packets
 
-    // Commit chunk
-    receive_data_commit(CAM_COMMAND_TRANSFER);
-
-    // Final print command
-    if (is_done) {
-        send_print_command_to_printer();
+        size_t byte_len = hex_len / 2;
+        uint8_t *packet = malloc(byte_len);
+        if (packet) {
+            for (size_t i = 0; i < byte_len; i++) {
+                char byte_str[3] = { payload[i*2], payload[i*2 + 1], 0 };
+                packet[i] = (uint8_t)strtol(byte_str, NULL, 16);
+            }
+            printer_send_packet(packet, byte_len);
+            free(packet);
+        }
     }
 
     return "/index.html";
@@ -319,17 +409,16 @@ int fs_open_custom(struct fs_file *file, const char *name) {
         return 1;
     } else if (!strcmp(name, STATUS_FILE)) {
         memset(file, 0, sizeof(struct fs_file));
-        const printerStatus = get_printer_status();
         file->data  = file_buffer;
         file->len   = snprintf(file_buffer, sizeof(file_buffer),
                                "{\"result\":\"ok\"," \
                                "\"options\":{\"debug\":\"%s\"}," \
                                "\"status\":{\"last_size\":%d,\"total_files\":%d},"\
                                "\"system\":{\"fast\":%s}," \
-                               "\"printer\":%d}",
+                               "\"printer\":%u}",
                                on_off[debug_enable],
                                last_file_len, picture_count,
-                               true_false[speed_240_MHz], printerStatus);
+                               true_false[speed_240_MHz], (unsigned int)get_printer_status());
         file->index = file->len;
         return 1;
     } else if (!strcmp(name, LIST_FILE)) {
