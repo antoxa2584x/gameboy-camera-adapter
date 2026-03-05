@@ -12,6 +12,8 @@ Based on the original pico-gb-printer repo: https://github.com/untoxa/pico-gb-pr
 Webserver example that came with TinyUSB slightly modified to run on a Raspberry Pi Pico.
 Lets the Pico pretend to be a USB Ethernet device. Runs the webinterface at http://192.168.7.1/
 
+Now with Android app support! You can use the [GameBoy Camera Adapter Companion](https://github.com/antoxa2584x/gameboy-camera-adapter-companion) to easily receive and manage your photos on your Android device.
+
 Special thanks to Raphael-Boichot, please check this repo: https://github.com/Raphael-Boichot/The-Arduino-SD-Game-Boy-Printer
 
 ## Printer Support
@@ -23,7 +25,7 @@ This project also supports printing to a real Game Boy Printer. For detailed inf
 You will need a Raspberry Pi, 1/2 of the game boy link cable and a four-channel 5v to 3.3v level shifter. Connect parts as shown:
 
 <p align="center">
-  <img src="https://github.com/antoxa2584x/gameboy-camera-adapter/blob/main/schematics.png?raw=true"/>
+  <img src="https://github.com/antoxa2584x/gameboy-camera-adapter/blob/main/schematics.jpg?raw=true"/>
 </p>
 
 This is the example of the ready-to-use device:

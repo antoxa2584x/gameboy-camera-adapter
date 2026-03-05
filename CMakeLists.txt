@@ -34,7 +34,8 @@ add_executable(
     src/gb_printer.c 
     src/datablocks.c 
     src/tusb_lwip_glue.c 
-    src/usb_descriptors.c 
+    src/usb_descriptors.c
+    src/cdc_sender.c
     ${TINYUSB_LIBNETWORKING_SOURCES}
 )
 

@@ -22,6 +22,10 @@
  * THE SOFTWARE.
  *
  */
+#define CFG_TUD_CDC 1
+#define CFG_TUD_CDC_RX_BUFSIZE  1024
+#define CFG_TUD_CDC_TX_BUFSIZE  1024
+#define CFG_TUD_CDC_EP_BUFSIZE    64
 
 #ifndef _TUSB_CONFIG_H_
 #define _TUSB_CONFIG_H_
@@ -68,6 +72,8 @@
 // Enable Device stack
 #define CFG_TUD_ENABLED       1
 
+#define CFG_TUD_CDC           1
+
 // Default is max speed that hardware controller could support with on-chip PHY
 #define CFG_TUD_MAX_SPEED     BOARD_TUD_MAX_SPEED
 
@@ -98,8 +104,11 @@
 
 // Network class has 2 drivers: ECM/RNDIS and NCM.
 // Only one of the drivers can be enabled
-#define CFG_TUD_ECM_RNDIS     1
-#define CFG_TUD_NCM           (1-CFG_TUD_ECM_RNDIS)
+#define CFG_TUD_ECM_RNDIS     0
+#define CFG_TUD_NCM           1
+
+#define CFG_TUD_NET_ENDPOINT_SIZE 64
+#define CFG_TUD_NET_MTU           1500
 
 #ifdef __cplusplus
  }

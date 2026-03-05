@@ -7,6 +7,7 @@ const PRINTER_WIDTH = 20;
 const CAMERA_WIDTH = 16;
 const TILE_SIZE = 0x10;
 const TILE_HEIGHT = 8;
+const TILE_WIDTH = 8;
 
 const imageBinPath = "/download";
 const resetPath = "/reset";
@@ -21,12 +22,19 @@ const deleteSelectedBtn = document.getElementById("delete_selected_btn");
 const selectAllBtn = document.getElementById("select_all_btn");
 const averageSelectedBtn = document.getElementById("average_selected_btn");
 
-const CURRENT_VERSION = "1.4.5";
+const CURRENT_VERSION = "1.4.8"; // Fallback version
+let dynamicVersion = CURRENT_VERSION;
 
-String.prototype.format = function () {
-    let formatted = this;
-    for (let i = 0; i < arguments.length; i++) {
-        const regexp = new RegExp('\\{' + i + '\\}', 'gi');
+Date.prototype.today = function(delim) {
+    return ((this.getDate() < 10) ? "0" : "") + this.getDate() + delim + (((this.getMonth() + 1) < 10) ? "0" : "") + (this.getMonth() + 1) + delim + this.getFullYear();
+}
+Date.prototype.timeNow = function(delim) {
+    return ((this.getHours() < 10) ? "0" : "") + this.getHours() + delim + ((this.getMinutes() < 10) ? "0" : "") + this.getMinutes() + delim + ((this.getSeconds() < 10) ? "0" : "") + this.getSeconds();
+}
+String.prototype.format = function() {
+    var formatted = this;
+    for (var i = 0; i < arguments.length; i++) {
+        var regexp = new RegExp('\\{' + i + '\\}', 'gi');
         formatted = formatted.replace(regexp, arguments[i]);
     }
     return formatted;
@@ -46,7 +54,7 @@ function resize_canvas(canvas, new_w, new_h) {
 }
 
 function render(canvas, image_data, image_start, image_end, image_tile_width, sheets, margin, palette, exposure) {
-    let pal = new Uint8Array(4);
+    pal = new Uint8Array(4);
     pal[0] = ((exposure * ((palette >> 0) & 0x03)) / 3) >> 0;
     pal[1] = ((exposure * ((palette >> 2) & 0x03)) / 3) >> 0;
     pal[2] = ((exposure * ((palette >> 4) & 0x03)) / 3) >> 0;
@@ -68,7 +76,7 @@ function render(canvas, image_data, image_start, image_end, image_tile_width, sh
                 let offset = (((tile_y << 3) + t) * canvas.width + (tile_x << 3) + b) << 2;
                 let color_index = ((b1 >> (7 - b)) & 1) | (((b2 >> (7 - b)) & 1) << 1);
 
-                writeData[offset] = writeData[offset + 1] = writeData[offset + 2] = 0xFF - pal[color_index];
+                writeData[offset + 0] = writeData[offset + 1] = writeData[offset + 2] = 0xFF - pal[color_index];
                 writeData[offset + 3] = 0xff;
             }
         }
@@ -80,7 +88,7 @@ function render(canvas, image_data, image_start, image_end, image_tile_width, sh
     }
     ctx.putImageData(imageData, 0, 0);
 
-    return ((margin & 0x0f) !== 0);
+    return ((margin & 0x0f) != 0);
 }
 
 function decode(is_compressed, sour, sour_size, sour_data_len, sour_ptr, dest, dest_ptr) {
@@ -89,7 +97,7 @@ function decode(is_compressed, sour, sour_size, sour_data_len, sour_ptr, dest, d
             const stop = sour_ptr + sour_data_len;
             while (sour_ptr < stop) {
                 const tag = sour[sour_ptr++];
-                if (tag && 0x80) {
+                if (tag & 0x80) {
                     const data = sour[sour_ptr++];
                     for (let i = 0; i < ((tag & 0x7f) + 2); i++) {
                         dest[dest_ptr++] = data;
@@ -111,14 +119,21 @@ function decode(is_compressed, sour, sour_size, sour_data_len, sour_ptr, dest, d
     return dest_ptr;
 }
 
-async function get_camera_image(canvas) {
+let processed_data = new Uint8Array(1024 * 1024);
+
+async function get_camera_image(canvas, binPath) {
     const res = await fetch(imageBinPath);
+    if (!res.ok) return false;
     const resBody = await res.blob();
     const resBuf = await resBody.arrayBuffer();
     const resData = new Uint8Array(resBuf);
     const data_size = resBody.size;
 
-    let processed_data = new Uint8Array(Math.max(1024 * 1024, data_size));
+    if (data_size === 0) return true;
+
+    if (data_size > processed_data.length) {
+        processed_data = new Uint8Array(data_size);
+    }
 
     reset_canvas(canvas);
 
@@ -137,17 +152,16 @@ async function get_camera_image(canvas) {
 
             case COMMAND_PRINT:
                 console.log("COMMAND_PRINT: Processing print command...");
-                if ((len = resData[idx++] | (resData[idx++] << 8)) !== 4) {
+                if ((len = resData[idx++] | (resData[idx++] << 8)) != 4) {
                     console.warn(`Unexpected length for COMMAND_PRINT: ${len}. Skipping to end.`);
                     idx = data_size;
                     break;
                 }
 
-                let sheets = resData[idx++];
+    let sheets = resData[idx++];
                 let margins = resData[idx++];
-                let palette = resData[idx++];
+                let palette = resData[idx++] || 0xE4;
                 let exposure = Math.min(0xFF, 0x80 + resData[idx++]);
-                palette = (palette) ? palette : 0xE4;
 
                 console.log(`COMMAND_PRINT details: sheets=${sheets}, margins=${margins}, palette=${palette.toString(16)}, exposure=${exposure}`);
 
@@ -227,7 +241,7 @@ function addCanvasToGallery(canvas) {
         label.appendChild(img);
         div.appendChild(label);
 
-        label.addEventListener("click", function () {
+        label.addEventListener("click", function() {
             const inp = div.querySelector("input[type='checkbox']");
             inp.checked = !inp.checked;
             div.markedForAction = inp.checked;
@@ -237,11 +251,11 @@ function addCanvasToGallery(canvas) {
         const btn = document.createElement("button");
         btn.textContent = "SAVE";
         btn.classList.add("shake");
-        btn.addEventListener("click", function () {
+        btn.addEventListener("click", function() {
             downloadImage(img);
         });
 
-        img.addEventListener("click", function () {
+        img.addEventListener("click", function() {
             showPopupWithUpscaledImage(img);
         });
 
@@ -269,7 +283,7 @@ function showPopupWithUpscaledImage(image) {
     const img = new Image();
     img.crossOrigin = "Anonymous"; // This enables CORS
     img.src = image.src;
-    img.onload = function () {
+    img.onload = function() {
         // Set canvas dimensions to 10 times the image dimensions
         canvas.width = img.width * 10;
         canvas.height = img.height * 10;
@@ -315,8 +329,8 @@ function updateButtonStates() {
 
 async function downloadImage(image) {
     downloadIndex += 1;
-    const datetime = new Date();
-    const file_name = `image_${datetime.toISOString().split('T')[0]}_${datetime.toTimeString().split(' ')[0].replace(/:/g, '-')}.jpg`;
+    var datetime = new Date();
+    var file_name = `image_${datetime.toISOString().split('T')[0]}_${datetime.toTimeString().split(' ')[0].replace(/:/g, '-')}.jpg`;
 
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
@@ -338,7 +352,7 @@ async function downloadImage(image) {
         zeroth[piexif.ImageIFD.Make] = "Nintendo";
         zeroth[piexif.ImageIFD.Model] = "Game Boy Camera";
         zeroth[piexif.ImageIFD.Software] = "GameBoy Camera Adapter";
-        const exifObj = {"0th": zeroth};
+        const exifObj = { "0th": zeroth };
         const exifBytes = piexif.dump(exifObj);
 
         const jpegWithExif = piexif.insert(exifBytes, jpegDataUrl);
@@ -355,13 +369,13 @@ async function downloadImage(image) {
 }
 
 
-getImageBtn.addEventListener("click", async function () {
-    await get_camera_image(canvas);
+getImageBtn.addEventListener("click", async function() {
+    await get_camera_image(canvas, imageBinPath);
 });
 
-selectAllBtn.addEventListener("click", function () {
-    const items = gallery.children;
-    if (items.length !== 0) {
+selectAllBtn.addEventListener("click", function() {
+    var items = gallery.children;
+    if (items.length != 0) {
         Array.from(items).forEach(item => {
             const input = item.querySelector("input[type='checkbox']");
             if (input) {
@@ -377,34 +391,33 @@ selectAllBtn.addEventListener("click", function () {
     }
 });
 
-deleteSelectedBtn.addEventListener("click", function () {
-    const items = gallery.children;
-    for (let i = items.length - 1; i >= 0; i--) {
+deleteSelectedBtn.addEventListener("click", function() {
+    var items = gallery.children;
+    for (var i = items.length - 1; i >= 0; i--) {
         if (items[i].markedForAction) items[i].remove();
     }
     updateButtonStates();
 });
 
-tearBtn.addEventListener("click", async function () {
+tearBtn.addEventListener("click", async function() {
     fetch(resetPath)
         .then((response) => {
             return response.json();
         })
         .then((data) => {
-            if (data.result !== "ok") return;
+            if (data.result != "ok") return;
             else {
-                const items = gallery.children;
-                for (let i = items.length - 1; i >= 0; i--) {
+                var items = gallery.children;
+                for (var i = items.length - 1; i >= 0; i--) {
                     items[i].remove();
                 }
-            }
-
+            };
             getImageBtn.click();
         });
 
 });
 
-averageSelectedBtn.addEventListener("click", function () {
+averageSelectedBtn.addEventListener("click", function() {
     const items = gallery.children;
 
     const avgCanvas = document.createElement('canvas');
@@ -419,7 +432,7 @@ averageSelectedBtn.addEventListener("click", function () {
     const tmpH = firstImg.height;
     for (let i = 1; i < items.length; i++) {
         const img = items[i].querySelector("img");
-        if (tmpW !== img.width || tmpH !== img.height) {
+        if (tmpW != img.width || tmpH != img.height) {
             alert("Image dimensions should be the same to do an average");
             return;
         }
@@ -458,33 +471,52 @@ averageSelectedBtn.addEventListener("click", function () {
 });
 
 // auto fetch images
-let fetch_skip = false;
-let fetch_ok = false;
+var fetch_skip = false;
 
-let fetch_interval;
-
-function periodic_fetch() {
-    if (currentMode === "printer") {
-        clearInterval(fetch_interval);
-        fetch_interval = setInterval(periodic_fetch, 1000);
+async function periodic_fetch() {
+    if (typeof currentMode !== 'undefined' && currentMode === "printer") {
         return;
     }
-    if (!fetch_skip) {
-        fetch_skip = true;
-        void (async () => {
-            fetch_ok = await get_camera_image(canvas).catch(
-                function () {
-                    fetch_ok = false;
-                }
-            );
-            fetch_skip = false;
-            clearInterval(fetch_interval);
-            fetch_interval = setInterval(periodic_fetch, (fetch_ok) ? 10 : 1000);
-        })();
+    if (fetch_skip) return;
+    fetch_skip = true;
+
+    try {
+        const fetch_ok = await get_camera_image(canvas, imageBinPath);
+        const next_interval = fetch_ok ? 500 : 2000;
+        setTimeout(periodic_fetch, next_interval);
+    } catch (err) {
+        console.error("Fetch error:", err);
+        setTimeout(periodic_fetch, 2000);
+    } finally {
+        fetch_skip = false;
     }
 }
+setTimeout(periodic_fetch, 1000);
 
-fetch_interval = setInterval(periodic_fetch, 1000);
+function generateExampleImage() {
+    // Create a canvas
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    // Set canvas dimensions
+    canvas.width = 160;
+    canvas.height = 160;
+
+    // Draw a background color
+    ctx.fillStyle = "#004d25";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw some text
+    ctx.fillStyle = "white";
+    ctx.font = "20px 'Press Start 2P'";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("Example", canvas.width / 2, canvas.height / 2 - 20);
+    ctx.fillText("Image", canvas.width / 2, canvas.height / 2 + 20);
+
+    addCanvasToGallery(canvas);
+}
+
 const pocketCameraPalettes = {
     "grayscale": {
         "#ffffff": [255, 255, 255],
@@ -542,43 +574,27 @@ function applyColorScheme(scheme) {
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
 
-        // Set canvas size to match the image
         canvas.width = img.naturalWidth;
         canvas.height = img.naturalHeight;
+        ctx.drawImage(img, 0, 0);
 
-        // Draw the image onto the canvas
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-        // Get pixel data
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageData.data;
 
-        // Loop through all pixels
         for (let i = 0; i < data.length; i += 4) {
-            const rgbString = JSON.stringify([data[i], data[i + 1], data[i + 2]]);
+            const rgb = [data[i], data[i + 1], data[i + 2]];
+            const rgbString = JSON.stringify(rgb);
             const grayHex = reverseColorMapping[rgbString] || rgbToHex(data[i], data[i + 1], data[i + 2]);
 
-            // Ensure the darkest color is mapped correctly
-            if (grayHex === "#3f3f3f" && scheme === "grayscale") {
-                data[i] = 63;
-                data[i + 1] = 63;
-                data[i + 2] = 63;
-                continue;
-            }
-
-            // If grayscale value exists in the scheme, replace it
-            if (selectedPalette[grayHex]) {
-                const newColor = selectedPalette[grayHex];
-                data[i] = newColor[0]; // R
-                data[i + 1] = newColor[1]; // G
-                data[i + 2] = newColor[2]; // B
+            const newColor = selectedPalette[grayHex];
+            if (newColor) {
+                data[i] = newColor[0];
+                data[i + 1] = newColor[1];
+                data[i + 2] = newColor[2];
             }
         }
 
-        // Put the modified image data back to the canvas
         ctx.putImageData(imageData, 0, 0);
-
-        // Replace the image with the modified version
         img.src = canvas.toDataURL();
     });
 }
@@ -680,7 +696,7 @@ async function checkGitHubRelease() {
         const latestVersion = release.name.replace(/^v/, '');
         const releaseUrl = release.html_url;
 
-        if (isNewerVersion(latestVersion, CURRENT_VERSION)) {
+        if (isNewerVersion(latestVersion, dynamicVersion)) {
             const alertBox = document.getElementById("update-alert");
             const versionSpan = document.getElementById("latest-version");
 
@@ -693,15 +709,35 @@ async function checkGitHubRelease() {
 }
 
 
+async function fetchFirmwareVersion() {
+    try {
+        const response = await fetch('/status.json');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.system && data.system.version) {
+            dynamicVersion = data.system.version;
+            const versionText = document.getElementById("firmware-version-text");
+            if (versionText) {
+                versionText.textContent = `Current firmware is v${dynamicVersion}`;
+            }
+        }
+    } catch (err) {
+        console.error("Failed to fetch firmware version:", err);
+    }
+}
+
+
 document.addEventListener("DOMContentLoaded", () => {
     const versionText = document.getElementById("firmware-version-text");
 
     if (versionText) {
-        versionText.textContent = `Current firmware is v${CURRENT_VERSION}`;
+        versionText.textContent = `Current firmware is v${dynamicVersion}`;
     }
 
     // Run on load
-    checkGitHubRelease();
+    fetchFirmwareVersion().then(() => {
+        checkGitHubRelease();
+    });
     parseScheme();
     observeGalleryChanges();
 });
@@ -758,7 +794,8 @@ function setLedColor() {
 }
 
 function updatePreview() {
-    document.getElementById("colorPreview").style.backgroundColor = document.getElementById("ledColorPicker").value;
+    const color = document.getElementById("ledColorPicker").value;
+    document.getElementById("colorPreview").style.backgroundColor = color;
 }
 
 document.getElementById("ledColorPicker").addEventListener("input", updatePreview);
@@ -767,7 +804,7 @@ function loadLedStatus() {
     fetch('/led_status')
         .then(response => response.json())
         .then(data => {
-            const {r, g, b, use_rgb} = data;
+            const { r, g, b, use_rgb } = data;
             const hex = "#" + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
             document.getElementById('ledColorPicker').value = hex;
             document.getElementById('colorPreview').style.backgroundColor = hex;
@@ -780,22 +817,24 @@ function saveAllPictures() {
     const buttons = document.querySelectorAll('.gallery-image button');
     const total = buttons.length;
 
-    if (total !== 0) {
-        showGeneralPopup();
-        updateGeneralPopup('SAVING PHOTOS', false);
-        buttons.forEach((btn, index) => {
-            setTimeout(() => {
-                let showButton = false;
-                if (index === total - 1) {
-                    showButton = true;
-                }
-                updateGeneralPopup(`SAVING PHOTO ${index + 1}/${total}`, showButton);
-                btn.click();
-            }, 1000 * index);
-        });
-    } else {
-
+    if (total == 0) {
+        return;
     }
+
+    showGeneralPopup();
+
+    updateGeneralPopup('SAVING PHOTOS', false);
+
+    buttons.forEach((btn, index) => {
+        setTimeout(() => {
+            let showButton = false;
+            if (index == total - 1) {
+                showButton = true;
+            }
+            updateGeneralPopup(`SAVING PHOTO ${index + 1}/${total}`, showButton);
+            btn.click();
+        }, 1000 * index);
+    });
 }
 
 function showGeneralPopup() {
@@ -819,275 +858,11 @@ function updateGeneralPopup(html, showCloseButton) {
         if (closeButton) closeButton.style.display = 'none';
     }
 }
-function canvasToTileData(canvas) {
-    const ctx = canvas.getContext("2d");
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const pixels = imgData.data;
-    const tiles = [];
 
-    const w = canvas.width;
-    const h = canvas.height;
-
-    for (let y = 0; y < h; y += 8) {
-        for (let x = 0; x < w; x += 8) {
-            for (let row = 0; row < 8; row++) {
-                let byte1 = 0;
-                let byte2 = 0;
-                for (let col = 0; col < 8; col++) {
-                    let px = ((y + row) * w + (x + col)) * 4;
-                    // Game Boy grayscale uses inverted intensity: 0=White, 3=Black
-                    let gray = (0.299 * pixels[px] + 0.587 * pixels[px + 1] + 0.114 * pixels[px + 2]);
-                    let shade = gray > 192 ? 0 : gray > 128 ? 1 : gray > 64 ? 2 : 3;
-                    byte1 |= ((shade & 1) << (7 - col));
-                    byte2 |= (((shade >> 1) & 1) << (7 - col));
-                }
-                tiles.push(byte1);
-                tiles.push(byte2);
-            }
-        }
-    }
-
-    return new Uint8Array(tiles);
-}
-function printSelectedImage() {
-    const canvas = document.getElementById("preview-canvas");
-    const binaryData = canvasToTileData(canvas);
-    // Truncate to complete strips (640 bytes each = 2 tile rows = 16px)
-    const STRIP_SIZE = 640;
-    const totalStrips = Math.floor(binaryData.length / STRIP_SIZE);
-    const trimmedLen = totalStrips * STRIP_SIZE;
-    const trimmed = binaryData.slice(0, trimmedLen);
-    console.log(`Image: ${binaryData.length} bytes -> ${totalStrips} strips (${trimmedLen} bytes)`);
-    sendChunkedData(trimmed);
-}
-
-function sendChunkedData(binaryData, chunkSize = 256) {
-    const totalChunks = Math.ceil(binaryData.length / chunkSize);
-
-    function calculateChecksum(command, data) {
-        let sum = command + (data.length & 0xFF) + (data.length >> 8);
-        for (let i = 0; i < data.length; i++) {
-            sum = (sum + data[i]);
-        }
-        return sum & 0xFFFF;
-    }
-
-    const packetInit = "88330100000001000000";
-    const packetStatus = "88330f0000000f000000";
-
-    function createDataPacket(data) {
-        let header = "88330400";
-        let lenL = (data.length & 0xFF).toString(16).padStart(2, '0');
-        let lenH = (data.length >> 8).toString(16).padStart(2, '0');
-        let hexData = '';
-        for (let i = 0; i < data.length; i++) {
-            hexData += data[i].toString(16).padStart(2, '0');
-        }
-        let checksum = calculateChecksum(0x04, data);
-        let checkL = (checksum & 0xFF).toString(16).padStart(2, '0');
-        let checkH = (checksum >> 8).toString(16).padStart(2, '0');
-        return header + lenL + lenH + hexData + checkL + checkH + "0000";
-    }
-
-    function createPrintPacket() {
-        const exposure = parseInt(document.getElementById("print-exposure").value) || 0x40;
-        // The standard Game Boy Printer PRINT command (0x02) uses 4 data bytes:
-        // [sheets][margins][palette][exposure]
-        // sheets: 0x01 (one copy)
-        // margins: upper/lower margin (0x00 default)
-        // palette: 0xE4 (standard)
-        // exposure: 0x00-0x7F (0x40 default)
-        const expValue = Math.min(0x7F, exposure);
-        const data = new Uint8Array([0x01, 0x03, 0xE4, expValue]);
-        const header = "883302000400";
-        let hexData = "0103e4" + expValue.toString(16).padStart(2, '0');
-        const checksum = calculateChecksum(0x02, data);
-        const checkL = (checksum & 0xFF).toString(16).padStart(2, '0');
-        const checkH = (checksum >> 8).toString(16).padStart(2, '0');
-        return header + hexData + checkL + checkH + "0000";
-    }
-
-    let packets = [];
-    packets.push({ data: packetInit, name: "INIT" });
-    packets.push({ data: packetStatus, name: "STATUS" });
-
-    for (let i = 0; i < totalChunks; i++) {
-        const start = i * chunkSize;
-        const end = Math.min(start + chunkSize, binaryData.length);
-        const chunk = binaryData.slice(start, end);
-        packets.push({ data: createDataPacket(chunk), name: "DATA" });
-    }
-
-    // Empty DATA packet signals end of image data to the printer
-    packets.push({ data: "88330400000004000000", name: "DATA_END" });
-
-    // PRINT — exact same packet as working hello_usb.c
-    packets.push({ data: "8833020004000103E47F6D010000", name: "PRINT" });
-
-    // Status checks after print
-    packets.push({ data: packetStatus, name: "STATUS" });
-    packets.push({ data: packetStatus, name: "STATUS" });
-    packets.push({ data: packetStatus, name: "STATUS" });
-
-    let currentPrinterStatus = 0; // Local status for this print job
-    function getPrinterStatusDisplay(status) {
-        if (status === 0xFF) return "Disconnected";
-        if (status === 0) return "OK";
-        const flags = [
-            "Checksum Error",
-            "Printer Busy",
-            "Image Data Full",
-            "Unprocessed Data",
-            "Packet Error",
-            "Paper Jam",
-            "Other Error",
-            "Battery Low"
-        ];
-        const errors = [];
-        for (let i = 0; i < 8; i++) {
-            if (status & (1 << i)) errors.push(flags[i]);
-        }
-        return errors.length ? errors.join(", ") : "OK (" + status.toString(16).padStart(2, '0') + ")";
-    }
-
-    function updatePrinterStatusUI() {
-        const statusEl = document.getElementById("printer-status");
-        if (!statusEl) return;
-
-        fetch("/status.json")
-            .then(res => res.json())
-            .then(data => {
-                currentPrinterStatus = data.printer;
-                statusEl.textContent = "Printer Status: " + getPrinterStatusDisplay(currentPrinterStatus);
-                if (currentPrinterStatus === 0xFF) {
-                    statusEl.style.color = "red";
-                } else {
-                    statusEl.style.color = currentPrinterStatus === 0 ? "lightgreen" : "orange";
-                }
-            })
-            .catch(err => console.error("Failed to get status", err));
-    }
-
-    const statusInterval = setInterval(updatePrinterStatusUI, 5000);
-
-    // Buffer all packets to firmware, then trigger burst send
-    function bufferNextPacket(index) {
-        if (index >= packets.length) {
-            console.log(`All ${packets.length} packets buffered. Triggering burst send...`);
-            // done=1 triggers the firmware to send everything at once
-            fetch("/print_chunk?done=1")
-                .then(() => new Promise(resolve => setTimeout(resolve, 2000))) // wait for printing
-                .then(() => fetch("/status.json"))
-                .then(res => res.json())
-                .then(statusData => {
-                    clearInterval(statusInterval);
-                    const printerStatus = statusData.printer;
-                    console.log(`Final status: 0x${printerStatus.toString(16).padStart(2, '0')} (${getPrinterStatusDisplay(printerStatus)}) raw: [${statusData.dbg || ''}]`);
-                    alert("Print result: " + getPrinterStatusDisplay(printerStatus));
-                })
-                .catch(err => {
-                    clearInterval(statusInterval);
-                    console.error("Print failed", err);
-                });
-            return;
-        }
-
-        const packet = packets[index];
-        const url = `/print_chunk?data=${packet.data}`;
-        console.log(`[${index}/${packets.length}] Buffering ${packet.name} (${packet.data.length / 2} bytes)`);
-
-        fetch(url)
-            .then(res => {
-                if (!res.ok) throw new Error("Server error");
-                setTimeout(() => bufferNextPacket(index + 1), 50);
-            })
-            .catch(err => {
-                console.error("Buffer failed at packet " + index, err);
-            });
-    }
-
-    if (currentPrinterStatus === 0xFF) {
-        alert("Printer is disconnected. Please connect the printer before printing.");
-        return;
-    }
-
-    bufferNextPacket(0);
-}
-
-function handleFileInput(e) {
-    const file = e.target.files[0];
-    const nameDisplay = document.getElementById("file-name");
-    const printButton = document.getElementById("print-button");
-
-    if (file) {
-        const name = file.name;
-        const dotIndex = name.lastIndexOf(".");
-        const base = dotIndex > 0 ? name.substring(0, dotIndex) : name;
-        const ext = dotIndex > 0 ? name.substring(dotIndex) : "";
-        nameDisplay.textContent = base.length > 47 ? base.substring(0, 30) + "..." + base.substring(base.length - 3, base.length) + ext : name;
-        printButton.style.display = "block";
-        document.getElementById("printer-controls").style.display = "flex";
-    } else {
-        nameDisplay.textContent = "No file selected";
-        printButton.style.display = "none";
-        document.getElementById("printer-controls").style.display = "none";
-        return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = function (evt) {
-        const img = new Image();
-        img.onload = function () {
-            const canvas = document.getElementById("preview-canvas");
-            const ctx = canvas.getContext("2d");
-            canvas.width = 160;
-            canvas.height = 144;
-            ctx.drawImage(img, 0, 0, 160, 144);
-
-            const imageData = ctx.getImageData(0, 0, 160, 144);
-            const data = imageData.data;
-            for (let i = 0; i < data.length; i += 4) {
-                const gray = (data[i] + data[i + 1] + data[i + 2]) / 3;
-                let level = gray > 192 ? 255 : gray > 128 ? 170 : gray > 64 ? 85 : 0;
-                data[i] = data[i + 1] = data[i + 2] = level;
-            }
-            ctx.putImageData(imageData, 0, 0);
-        };
-        img.src = evt.target.result;
-    };
-    reader.readAsDataURL(file);
-}
-
-const logoImg = document.getElementById("logo-img");
-let currentMode = "scanner";
-logoImg.addEventListener("click", () => {
-    const scanner = document.getElementById("scanner-mode");
-    const printer = document.getElementById("printer-mode");
-    if (currentMode === "scanner") {
-        scanner.style.display = "none";
-        printer.style.display = "block";
-        currentMode = "printer";
-        // Immediately trigger periodic_fetch to clear fast interval if it was running
-        periodic_fetch();
-        pollPrinterStatus();
-    } else {
-        scanner.style.display = "block";
-        printer.style.display = "none";
-        currentMode = "scanner";
-    }
-});
-
-window.addEventListener("DOMContentLoaded", () => {
-    const canvas = document.getElementById("preview-canvas");
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#004d25";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "#fff";
-    ctx.font = "18px monospace";
-    ctx.textAlign = "center";
-    ctx.fillText("No Image", canvas.width / 2, canvas.height / 2);
-});
+window.showFirmwarePopup = showFirmwarePopup;
+window.closeFirmwarePopup = closeFirmwarePopup;
+window.setLedColor = setLedColor;
+window.checkForUpdate = checkForUpdate;
 
 function decodePrinterStatus(byte) {
     if (byte === 0xFF) return "Disconnected";
@@ -1110,10 +885,8 @@ function decodePrinterStatus(byte) {
 }
 
 function pollPrinterStatus() {
-    // If we're in printer mode, the sendChunkedData function handles the status interval
-    // But we need a global one for when not currently sending data
-    if (currentMode !== "printer") return;
-    
+    if (typeof currentMode !== 'undefined' && currentMode !== "printer") return;
+
     fetch('/status.json')
         .then(r => r.json())
         .then(data => {
@@ -1134,10 +907,26 @@ function pollPrinterStatus() {
 
 setInterval(pollPrinterStatus, 3000);
 
-window.showFirmwarePopup = showFirmwarePopup;
-window.closeFirmwarePopup = closeFirmwarePopup;
-window.setLedColor = setLedColor;
-window.checkForUpdate = checkForUpdate;
+const logoImg = document.getElementById("logo-img");
+let currentMode = "scanner";
+if (logoImg) {
+    logoImg.addEventListener("click", () => {
+        const scanner = document.getElementById("scanner-mode");
+        const printer = document.getElementById("printer-mode");
+        if (currentMode === "scanner") {
+            if (scanner) scanner.style.display = "none";
+            if (printer) printer.style.display = "block";
+            currentMode = "printer";
+            // Immediately trigger periodic_fetch to clear fast interval if it was running
+            periodic_fetch();
+            pollPrinterStatus();
+        } else {
+            if (scanner) scanner.style.display = "block";
+            if (printer) printer.style.display = "none";
+            currentMode = "scanner";
+        }
+    });
+}
 window.startUpdate = startUpdate;
 window.saveAllPictures = saveAllPictures;
 window.closeGeneralPopup = closeGeneralPopup;

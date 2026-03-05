@@ -104,7 +104,13 @@ uint8_t protocol_data_process(uint8_t data_in) {
                 setRGB(base_r, base_g, base_b);
             }
             if(++receive_byte_counter == packet_data_length) printer_state = PRN_STATE_CHECKSUM_1;
-            receive_data_write(data_in);
+            if (printer_command == PRN_COMMAND_PRINT && receive_byte_counter == 4) {
+                // byte 4 of PRINT command is exposure (contrast)
+                // we force it to 0x40 (middle) regardless of what the game boy sends
+                receive_data_write(0x40);
+            } else {
+                receive_data_write(data_in);
+            }
             switch (printer_command) {
                 case PRN_COMMAND_PRINT:
                     data_commit = ((receive_byte_counter == 2) && (data_in == 0x03));
