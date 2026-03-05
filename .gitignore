@@ -3,4 +3,9 @@ build
 unused
 gen_build.bat
 lwip/
-/.idea/
+.idea/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.DS_Store
