@@ -6,7 +6,6 @@ set(PICO_SDK_FETCH_FROM_GIT TRUE)
 include(pico_sdk_import.cmake)
 project(pico_gb_printer)
 
-#set(PICO_CXX_ENABLE_EXCEPTIONS 1)
 pico_sdk_init()
 
 # LWIP
@@ -27,25 +26,33 @@ set(TINYUSB_LIBNETWORKING_SOURCES
 )
 
 add_executable(
-    ${PROJECT_NAME} 
+    pico_gb_printer
     src/ws2812.c
-    src/pico_gb_printer.c 
-    src/linkcable.c 
-    src/gb_printer.c 
-    src/datablocks.c 
-    src/tusb_lwip_glue.c 
+    src/pico_gb_printer.c
+    src/linkcable.c
+    src/gb_printer.c
+    src/datablocks.c
+    src/tusb_lwip_glue.c
     src/usb_descriptors.c
     src/cdc_sender.c
     ${TINYUSB_LIBNETWORKING_SOURCES}
 )
 
-pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/src/linkcable.pio)
-pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/src/linkcable_sm.pio)
-pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/src/ws2812.pio)
+pico_generate_pio_header(pico_gb_printer ${CMAKE_CURRENT_LIST_DIR}/src/linkcable.pio)
+pico_generate_pio_header(pico_gb_printer ${CMAKE_CURRENT_LIST_DIR}/src/linkcable_sm.pio)
+pico_generate_pio_header(pico_gb_printer ${CMAKE_CURRENT_LIST_DIR}/src/ws2812.pio)
 
-pico_enable_stdio_usb(${PROJECT_NAME} 0)
-pico_enable_stdio_uart(${PROJECT_NAME} 0)
-target_include_directories(${PROJECT_NAME} PRIVATE ${LWIP_INCLUDE_DIRS} ${PICO_TINYUSB_PATH}/src ${PICO_TINYUSB_PATH}/lib/networking)
-target_link_libraries(${PROJECT_NAME} pico_stdlib hardware_pio pico_unique_id tinyusb_device lwipallapps lwipcore hardware_clocks pico_flash)
-pico_add_extra_outputs(${PROJECT_NAME})
-target_compile_definitions(${PROJECT_NAME} PRIVATE PICO_ENTER_USB_BOOT_ON_EXIT=1)
+pico_enable_stdio_usb(pico_gb_printer 0)
+pico_enable_stdio_uart(pico_gb_printer 0)
+
+target_include_directories(pico_gb_printer PRIVATE ${LWIP_INCLUDE_DIRS} ${PICO_TINYUSB_PATH}/src ${PICO_TINYUSB_PATH}/lib/networking)
+
+target_link_libraries(pico_gb_printer pico_stdlib hardware_pio pico_unique_id tinyusb_device lwipallapps lwipcore hardware_clocks pico_flash)
+
+pico_add_extra_outputs(pico_gb_printer)
+
+target_compile_definitions(pico_gb_printer PRIVATE 
+    PICO_ENTER_USB_BOOT_ON_EXIT=1 
+    CFG_TUD_CDC=1 
+    CFG_TUD_NET_ENABLED=1
+)

@@ -22,10 +22,24 @@
  * THE SOFTWARE.
  *
  */
+#include <stdint.h>
+#include "globals.h"
+
+#ifndef CFG_TUD_CDC
 #define CFG_TUD_CDC 1
+#endif
 #define CFG_TUD_CDC_RX_BUFSIZE  1024
 #define CFG_TUD_CDC_TX_BUFSIZE  1024
 #define CFG_TUD_CDC_EP_BUFSIZE    64
+
+// USB Endpoints
+#define EPNUM_CDC_NOTIF     0x81
+#define EPNUM_CDC_OUT       0x02
+#define EPNUM_CDC_IN        0x82
+
+#define EPNUM_NET_NOTIF     0x83
+#define EPNUM_NET_OUT       0x04
+#define EPNUM_NET_IN        0x84
 
 #ifndef _TUSB_CONFIG_H_
 #define _TUSB_CONFIG_H_
@@ -72,7 +86,9 @@
 // Enable Device stack
 #define CFG_TUD_ENABLED       1
 
+#ifndef CFG_TUD_CDC
 #define CFG_TUD_CDC           1
+#endif
 
 // Default is max speed that hardware controller could support with on-chip PHY
 #define CFG_TUD_MAX_SPEED     BOARD_TUD_MAX_SPEED
@@ -102,12 +118,20 @@
 
 //------------- CLASS -------------//
 
+#ifndef CFG_TUD_NET_ENABLED
+#define CFG_TUD_NET_ENABLED 1
+#endif
+
 // Network class has 2 drivers: ECM/RNDIS and NCM.
 // Only one of the drivers can be enabled
+#if CFG_TUD_NET_ENABLED
+#define CFG_TUD_ECM_RNDIS     1
+#define CFG_TUD_NCM           0
+#else
 #define CFG_TUD_ECM_RNDIS     0
-#define CFG_TUD_NCM           1
+#define CFG_TUD_NCM           0
+#endif
 
-#define CFG_TUD_NET_ENDPOINT_SIZE 64
 #define CFG_TUD_NET_MTU           1500
 
 #ifdef __cplusplus

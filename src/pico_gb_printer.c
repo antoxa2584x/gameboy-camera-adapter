@@ -23,6 +23,7 @@
 
 #include "hardware/flash.h"
 #include "hardware/sync.h"
+#include "hardware/watchdog.h"
 
 #include "cdc_sender.h"
 
@@ -48,6 +49,8 @@ uint8_t led_mode = 0; // 0 = wave, 1 = static
 
 uint8_t saved_color[3] = {0};
 bool use_rgb_mode = true; // default mode string
+
+uint8_t mobile_compatibility = MODE_IOS;
 
 extern void setRGB(uint8_t r, uint8_t g, uint8_t b);
 
@@ -92,6 +95,10 @@ static bool query_get_bool(const char* qs, const char* key, bool* out) {
   return false;
 }
 
+// Forward declarations
+int64_t soft_restart(alarm_id_t id, void *user_data);
+int64_t reboot_callback(alarm_id_t id, void *user_data);
+
 // Handle one complete CDC line
 static void cdc_handle_line(const char* line) {
   // Ignore empty lines
@@ -101,6 +108,36 @@ static void cdc_handle_line(const char* line) {
   // Here we focus on the simple GET routes coming from Android.
   if (strncmp(line, "GET ", 4) == 0) {
     const char* path = line + 4;
+
+    if (strncmp(path, "/reset_mode", 11) == 0) {
+      mobile_compatibility = MODE_IOS;
+      save_color_to_flash(base_r, base_g, base_b, use_rgb_mode, mobile_compatibility);
+      cdc_send_string("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK - Mode Reset to IOS. Rebooting...\r\n");
+      add_alarm_in_ms(300, soft_restart, NULL, false);
+      return;
+    }
+
+    if (strncmp(path, "/set_mode_android", 17) == 0) {
+      mobile_compatibility = MODE_ANDROID;
+      save_color_to_flash(base_r, base_g, base_b, use_rgb_mode, mobile_compatibility);
+      cdc_send_string("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK - Mode set to Android (Both). Rebooting...\r\n");
+      add_alarm_in_ms(300, soft_restart, NULL, false);
+      return;
+    }
+
+    if (strncmp(path, "/set_mode_ios", 13) == 0) {
+      mobile_compatibility = MODE_IOS;
+      save_color_to_flash(base_r, base_g, base_b, use_rgb_mode, mobile_compatibility);
+      cdc_send_string("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK - Mode set to iOS (Web only). Rebooting...\r\n");
+      add_alarm_in_ms(300, soft_restart, NULL, false);
+      return;
+    }
+
+    if (strncmp(path, "/update", 7) == 0) {
+      cdc_send_string("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK - Entering Bootloader...\r\n");
+      add_alarm_in_ms(300, reboot_callback, NULL, false);
+      return;
+    }
 
     // e.g. "/led_status" or "/set_color?...". Find end of path/qs (space or end)
     const char* end = strchr(path, ' ');
@@ -149,23 +186,28 @@ static void cdc_handle_line(const char* line) {
       use_rgb_mode = rgb;
 
       // apply immediately (no reboot), persist to flash like your web path does
-      save_color_to_flash(base_r, base_g, base_b, use_rgb_mode);
+      save_color_to_flash(base_r, base_g, base_b, use_rgb_mode, mobile_compatibility);
       setRGB(base_r, base_g, base_b);
 
       // small ACK line so Android can readLine() without timing out
       static const char ok[] = "OK\n";
+#if CFG_TUD_CDC
       cdc_send_bytes((const uint8_t*)ok, sizeof(ok)-1, 1000);
+#endif
       return;
     }
   }
 
   // For anything else (or if you still want echo for debugging):
+#if CFG_TUD_CDC
   tud_cdc_write_str("UNKNOWN\n");
   tud_cdc_write_flush();
+#endif
 }
 
 
 static inline void flush_tail_and_done(void) {
+#if CFG_TUD_CDC
     // flush the last partial block, if any
     if (allocated_file && allocated_file->last) {
         datablock_t *last = allocated_file->last;
@@ -176,15 +218,18 @@ static inline void flush_tail_and_done(void) {
     // send trailer so host knows stream is complete
     static const char done[] = "DONE\n";
     (void) cdc_send_bytes((const uint8_t*)done, sizeof(done)-1, 2000);
+#endif
 }
 
 void receive_data_reset(void) {
     if (!allocated_file) return;
     last_file_len = allocated_file->size;
 
+#if CFG_TUD_CDC
     if (tud_cdc_connected()) {
         flush_tail_and_done();
-    }    
+    }
+#endif
     
     if (push_file(allocated_file)) picture_count++;
     allocated_file = NULL;
@@ -195,10 +240,12 @@ void receive_data_init(void) {
     if (double_init) receive_data_reset();
     double_init = true;
     
+#if CFG_TUD_CDC
     if (tud_cdc_connected()) {
         static const char init[] = "GBCA_PHOTO_TRANSFER\n";
         (void) cdc_send_bytes((const uint8_t*)init, sizeof(init)-1, 500);
     }
+#endif
 }
 
 void receive_data_write(uint8_t b) {
@@ -228,12 +275,14 @@ void receive_data_write(uint8_t b) {
     block->data[block->size++] = b;
     allocated_file->size++;
 
+#if CFG_TUD_CDC
     if (tud_cdc_connected()) {
         // Send only when the current block just became full
         if (block->size == DATABLOCK_SIZE) {
             (void) send_base64_chunk(block->data, DATABLOCK_SIZE);
         }
     }
+#endif
 }
 
 void receive_data_commit(uint8_t cmd) {
@@ -315,13 +364,14 @@ static const char *cgi_reset_usb_boot(int iIndex, int iNumParams, char *pcParam[
 
 #define FLASH_TARGET_OFFSET (256 * 1024) // adjust as needed (sector-aligned)
 
-void save_color_to_flash(uint8_t r, uint8_t g, uint8_t b, bool rgb_mode) {
+void save_color_to_flash(uint8_t r, uint8_t g, uint8_t b, bool rgb_mode, uint8_t mode) {
     uint8_t buffer[FLASH_PAGE_SIZE] = {0};
     buffer[0] = r;
     buffer[1] = g;
     buffer[2] = b;
     buffer[3] = 0xA5; // valid marker
     buffer[4] = rgb_mode ? 0x01 : 0x00; // actual mode
+    buffer[5] = mode;
 
     uint32_t ints = save_and_disable_interrupts();
     flash_range_erase(FLASH_TARGET_OFFSET, FLASH_SECTOR_SIZE);
@@ -340,11 +390,16 @@ void load_color_from_flash() {
         base_g = flash_data[1];
         base_b = flash_data[2];
         use_rgb_mode = (flash_data[4] == 0x01);
+        mobile_compatibility = flash_data[5];
+        if (mobile_compatibility == 0) { // Legacy MODE_AUTO
+            mobile_compatibility = MODE_IOS;
+        }
     } else {
         base_r = 0x00;
         base_g = 0xFF;
         base_b = 0x00;
         use_rgb_mode = true;
+        mobile_compatibility = MODE_IOS;
     }
 }
 
@@ -368,9 +423,10 @@ static const char *cgi_set_color(int iIndex, int iNumParams, char *pcParam[], ch
         else if (strcmp(pcParam[i], "g") == 0) base_g = atoi(pcValue[i]);
         else if (strcmp(pcParam[i], "b") == 0) base_b = atoi(pcValue[i]);
         else if (strcmp(pcParam[i], "use_rgb") == 0) use_rgb_mode = (strcmp(pcValue[i], "true") == 0);
+        else if (strcmp(pcParam[i], "mode") == 0) mobile_compatibility = atoi(pcValue[i]);
     }
 
-    save_color_to_flash(base_r, base_g, base_b, use_rgb_mode);
+    save_color_to_flash(base_r, base_g, base_b, use_rgb_mode, mobile_compatibility);
 
     // Schedule soft reboot after 300ms
     add_alarm_in_ms(300, soft_restart, NULL, false);
@@ -631,8 +687,8 @@ int fs_open_custom(struct fs_file *file, const char *name) {
         memset(file, 0, sizeof(struct fs_file));
         file->data  = file_buffer;
         file->len = snprintf(file_buffer, sizeof(file_buffer),
-            "{\"r\":%d,\"g\":%d,\"b\":%d,\"use_rgb\":%s}",
-            base_r, base_g, base_b, use_rgb_mode ? "true" : "false");
+            "{\"r\":%d,\"g\":%d,\"b\":%d,\"use_rgb\":%s,\"mode\":%d}",
+            base_r, base_g, base_b, use_rgb_mode ? "true" : "false", mobile_compatibility);
         file->index = file->len;
         return 1;
     }
@@ -644,6 +700,7 @@ void fs_close_custom(struct fs_file *file) {
     (void)(file);
 }
 
+#if CFG_TUD_CDC
 void tud_cdc_rx_cb(uint8_t itf) {
   (void) itf;
   uint8_t buf[64];
@@ -667,6 +724,7 @@ void tud_cdc_rx_cb(uint8_t itf) {
     }
   }
 }
+#endif
 
 
 // main loop
@@ -690,6 +748,9 @@ int main(void) {
     gpio_set_irq_enabled_with_callback(PIN_KEY, GPIO_IRQ_EDGE_RISE, true, &key_callback);
 #endif
 
+    // RGB LED
+    load_color_from_flash();
+
     // Initialize tinyusb, lwip, dhcpd, dnsd and httpd
     init_lwip();
 
@@ -705,10 +766,6 @@ int main(void) {
 
     LED_OFF;
 
-    // RGB LED
-
-    load_color_from_flash();
-
     setupOnboardRGB();
 
     while (true) {
@@ -717,9 +774,7 @@ int main(void) {
         tud_task();
         // process WEB
         service_traffic();
-
         uint64_t now = time_us_64();
-
         update_led_wave();
     }
 

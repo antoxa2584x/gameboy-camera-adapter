@@ -10,16 +10,16 @@
 <link rel="icon" type="image/png" href="/img/favicon-96x96.png" sizes="96x96">
 <link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
 <link rel="shortcut icon" href="/img/favicon.ico">
-<link rel="apple-touch-icon" sizes="180x180" href="/img/apple-touch-icon.png">
-<meta name="apple-mobile-web-app-title" content="GameBoy Camera Adapter">
-<link rel="manifest" href="site.webmanifest">
-<meta charset="UTF-8">
+<link rel="apple-touch-icon" sizes="180x180" href="/img/web-app-manifest-192x192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="white">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="GB Camera">
 <meta name="application-name" content="GameBoy Camera Adapter">
 <meta name="msapplication-TileColor" content="#ece6e6">
-<meta name="theme-color" content="#ece6e6">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#266d3f">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1.0, user-scalable=0">
+<link rel="manifest" href="site.webmanifest">
+<meta charset="UTF-8">
 <link rel="stylesheet" href="styles.css">
 <script src="piexifjs.js"></script>
 
@@ -29,7 +29,7 @@
          style="position: relative; background: #266d3f; padding: 2rem; border-radius: 10px; width: 90%; max-width: 500px; box-sizing: border-box;">
         <div style="display: flex; flex-direction: column; align-items: center;">
             <!-- Close Button -->
-            <button class="close-btn" onclick="closeFirmwarePopup()">✕</button>
+            <button class="close-btn" onclick="closeFirmwarePopup()">X</button>
             <p id="firmware-version-text" style="color: white; font-size: 1.5rem; margin-bottom: 2rem;">Current firmware
                 is v1.4.2</p>
             <!-- Color Picker + Button -->
@@ -57,7 +57,18 @@
                     <label for="colorMode" style="color: white;font-size: 1rem;text-align: left;">If color not as
                         expected, switch this</label>
                 </div>
-                <button onclick="setLedColor()">Set LED Color</button>
+
+                <!-- Mobile Compatibility Selector -->
+                <div style="display: flex; flex-direction: column; width: 100%; margin-top: 1.5rem; gap: 0.5rem;">
+                    <label style="color: white; font-size: 1rem; text-align: left;">Mobile Compatibility</label>
+                    <select id="mobileMode" style="padding: 0.5rem; border-radius: 5px; background: #1e4a2b; color: white; border: 1px solid #4caf50;">
+                        <option value="1">Android + Mac/Win/Other</option>
+                        <option value="2">iOS + Mac/Win/Other</option>
+                    </select>
+                    <label style="color: #ffcc00; font-size: 0.7rem; text-align: left;">Note: Changing this will reboot the adapter.</label>
+                </div>
+
+                <button onclick="setLedColor()">Save Settings</button>
             </div>
             <!-- Firmware Controls -->
             <button class="darkgreen" onclick="checkForUpdate()">Check for Update</button>
@@ -73,7 +84,7 @@
         <div class="general-popup-content"
              style="display:flex; flex-direction:column; align-items:center;">
         </div>
-        <button class="close-btn" onclick="closeGeneralPopup()">✕</button>
+        <button class="close-btn" onclick="closeGeneralPopup()">X</button>
     </div>
 </div>
 

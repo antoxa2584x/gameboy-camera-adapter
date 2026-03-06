@@ -122,7 +122,7 @@ function decode(is_compressed, sour, sour_size, sour_data_len, sour_ptr, dest, d
 let processed_data = new Uint8Array(1024 * 1024);
 
 async function get_camera_image(canvas, binPath) {
-    const res = await fetch(imageBinPath);
+    const res = await fetch(imageBinPath, { cache: "no-store" });
     if (!res.ok) return false;
     const resBody = await res.blob();
     const resBuf = await resBody.arrayBuffer();
@@ -328,7 +328,7 @@ function showPopupWithUpscaledImage(image) {
 
     // Create close button
     const closeButton = document.createElement("button");
-    closeButton.textContent = "✕";
+    closeButton.textContent = "X";
     closeButton.classList.add("popup-close-button");
 
     closeButton.onclick = () => {
@@ -727,8 +727,17 @@ function isNewerVersion(latest, current) {
 }
 
 async function checkGitHubRelease() {
+    // Only check if we have internet connection (best effort)
+    if (!navigator.onLine) return;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+
     try {
-        const response = await fetch('https://api.github.com/repos/antoxa2584x/gameboy-camera-adapter/releases/latest');
+        const response = await fetch('https://api.github.com/repos/antoxa2584x/gameboy-camera-adapter/releases/latest', {
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const release = await response.json();
@@ -773,13 +782,18 @@ document.addEventListener("DOMContentLoaded", () => {
         versionText.textContent = `Current firmware is v${dynamicVersion}`;
     }
 
-    // Run on load
-    fetchFirmwareVersion().then(() => {
-        checkGitHubRelease();
-    });
+    // Local initialization should be fast
     parseScheme();
     observeGalleryChanges();
     setupColorSchemeSelector();
+
+    // Background tasks
+    fetchFirmwareVersion().then(() => {
+        // Only check GitHub after some delay to ensure page is usable
+        setTimeout(() => {
+            checkGitHubRelease();
+        }, 1000);
+    });
 });
 
 
@@ -811,10 +825,15 @@ function startUpdate() {
 function setLedColor() {
     const hex = document.getElementById("ledColorPicker").value;
     const useRGB = document.getElementById("colorMode").checked;
+    const mobileMode = document.getElementById("mobileMode").value;
     const r = parseInt(hex.substr(1, 2), 16);
     const g = parseInt(hex.substr(3, 2), 16);
     const b = parseInt(hex.substr(5, 2), 16);
-    fetch(`/set_color?r=${r}&g=${g}&b=${b}&use_rgb=${useRGB}`);
+    fetch(`/set_color?r=${r}&g=${g}&b=${b}&use_rgb=${useRGB}&mode=${mobileMode}`)
+        .then(() => {
+            alert("Settings saved. The device will now reboot.");
+            window.location.reload();
+        });
 }
 
 function updatePreview() {
@@ -828,11 +847,14 @@ function loadLedStatus() {
     fetch('/led_status')
         .then(response => response.json())
         .then(data => {
-            const { r, g, b, use_rgb } = data;
-            const hex = "#" + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+            const { r, g, b, use_rgb, mode } = data;
+            const hex = "#" + [r, g, b].map(x => (x || 0).toString(16).padStart(2, '0')).join('');
             document.getElementById('ledColorPicker').value = hex;
             document.getElementById('colorPreview').style.backgroundColor = hex;
             document.getElementById('colorMode').checked = use_rgb === true;
+            if (mode !== undefined) {
+                document.getElementById('mobileMode').value = mode;
+            }
         })
         .catch(err => console.error("Failed to load LED status:", err));
 }
@@ -913,7 +935,7 @@ function decodePrinterStatus(byte) {
 function pollPrinterStatus() {
     if (typeof currentMode !== 'undefined' && currentMode !== "printer") return;
 
-    fetch('/status.json')
+    fetch('/status.json', { cache: "no-store" })
         .then(r => r.json())
         .then(data => {
             if (data.printer !== undefined) {
