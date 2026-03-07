@@ -918,7 +918,7 @@ function decodePrinterStatus(byte, ignoreBusyFull = false) {
         "Checksum Error",
         "Printing image",
         "Image Data Full",
-        "Unprocessed Data",
+        "",
         "Packet Error",
         "Paper Jam",
         "Other Error",
@@ -944,38 +944,48 @@ function pollPrinterStatus() {
         .then(r => r.json())
         .then(data => {
             if (data.printer !== undefined) {
-                const status = decodePrinterStatus(data.printer);
-                const el = document.getElementById("printer-status");
-                if (el) {
-                    el.textContent = "Printer Status: " + status;
-                    if (data.printer === 0xFF) {
-                        el.style.color = "red";
-                    } else {
-                        // Treat busy/full as "normal" orange, others as lightgreen if only busy/full
-                        const isError = (data.printer & ~0x06) !== 0 && data.printer !== 0x00;
-                        el.style.color = isError ? "red" : (data.printer === 0 ? "lightgreen" : "orange");
+                    const status = decodePrinterStatus(data.printer);
+                    const el = document.getElementById("printer-status");
+                    if (el) {
+                        el.textContent = "Printer Status: " + (status || "OK");
+                        if (data.printer === 0xFF) {
+                            el.style.color = "red";
+                        } else {
+                            // Treat busy/full as "normal" orange, others as lightgreen if only busy/full
+                            const isError = (data.printer & ~0x06) !== 0 && data.printer !== 0x00;
+                            el.style.color = isError ? "red" : (data.printer === 0 ? "lightgreen" : "orange");
+                        }
                     }
-                }
 
-                // Show overlay if busy, hide if OK or Disconnected
-                const overlay = document.getElementById("print-overlay");
-                const statusText = document.getElementById("print-status-text");
-                if (overlay && statusText) {
-                    if (data.printer & 0x02) { // Printer Busy (Printing image)
-                        overlay.style.display = "flex";
-                        statusText.textContent = "Printing image...";
-                    } else if (data.printer === 0x00 || data.printer === 0xFF) {
-                        overlay.style.display = "none";
-                    } else if (data.printer & 0x04) { // Image Data Full
-                        overlay.style.display = "flex";
-                        statusText.textContent = "Image Data Full";
-                        // Auto-hide full status after some time or let user click?
-                        // Requirement says "close when status ok or disconnected".
+                    // Show overlay if busy, hide if OK or Disconnected
+                    const overlay = document.getElementById("print-overlay");
+                    const statusText = document.getElementById("print-status-text");
+                    if (overlay && statusText) {
+                        if (data.printer === 0xFF) {
+                            overlay.style.display = "none";
+                        } else if (data.printer & 0x02) { // Printer Busy (Printing image)
+                            overlay.style.display = "flex";
+                            statusText.textContent = "Printing image...";
+                        } else if (data.printer === 0x00) {
+                            overlay.style.display = "none";
+                        } else if (data.printer & 0x04) { // Image Data Full
+                            overlay.style.display = "flex";
+                            statusText.textContent = "Image Data Full";
+                        } else if (data.printer !== 0x00) {
+                            // Any other error (except Unprocessed which we cleared)
+                            // We don't want to show overlay for unknown status unless it's busy/full
+                            // Actually, if it's an error like Checksum, should we show it?
+                            // User said "do not show printing image popup when printer status become disconnected"
+                            // and "do not show unprocessed data error at all".
+                        }
                     }
                 }
-            }
         })
-        .catch(err => console.error("Status error:", err));
+        .catch(err => {
+            console.error("Status error:", err);
+            const overlay = document.getElementById("print-overlay");
+            if (overlay) overlay.style.display = "none";
+        });
 }
 
 setInterval(pollPrinterStatus, 3000);
@@ -1042,16 +1052,28 @@ function canvasToTileData(canvas) {
     const w = canvas.width;
     const h = canvas.height;
 
-    for (let y = 0; y < h; y += 8) {
-        for (let x = 0; x < w; x += 8) {
+    // Pad to 160px width (centered) and next 8px boundary for height
+    const tileH = Math.ceil(h / 8) * 8;
+    const tileW = 160;
+    const offsetX = Math.floor((tileW - w) / 2);
+
+    for (let y = 0; y < tileH; y += 8) {
+        for (let x = 0; x < tileW; x += 8) {
             for (let row = 0; row < 8; row++) {
                 let byte1 = 0;
                 let byte2 = 0;
                 for (let col = 0; col < 8; col++) {
-                    let px = ((y + row) * w + (x + col)) * 4;
-                    // Game Boy grayscale uses inverted intensity: 0=White, 3=Black
-                    let gray = (0.299 * pixels[px] + 0.587 * pixels[px + 1] + 0.114 * pixels[px + 2]);
-                    let shade = gray > 192 ? 0 : gray > 128 ? 1 : gray > 64 ? 2 : 3;
+                    let shade = 0; // Default to white
+                    let curY = y + row;
+                    let curX = x + col - offsetX;
+
+                    if (curY < h && curX >= 0 && curX < w) {
+                        let px = (curY * w + curX) * 4;
+                        // Game Boy grayscale uses inverted intensity: 0=White, 3=Black
+                        let gray = (0.299 * pixels[px] + 0.587 * pixels[px + 1] + 0.114 * pixels[px + 2]);
+                        shade = gray > 192 ? 0 : gray > 128 ? 1 : gray > 64 ? 2 : 3;
+                    }
+                    
                     byte1 |= ((shade & 1) << (7 - col));
                     byte2 |= (((shade >> 1) & 1) << (7 - col));
                 }
@@ -1067,13 +1089,20 @@ function canvasToTileData(canvas) {
 function printSelectedImage() {
     const canvas = document.getElementById("preview-canvas");
     const binaryData = canvasToTileData(canvas);
-    // Truncate to complete strips (640 bytes each = 2 tile rows = 16px)
+    // Pad to complete strips (640 bytes each = 2 tile rows = 16px)
     const STRIP_SIZE = 640;
-    const totalStrips = Math.floor(binaryData.length / STRIP_SIZE);
-    const trimmedLen = totalStrips * STRIP_SIZE;
-    const trimmed = binaryData.slice(0, trimmedLen);
-    console.log(`Image: ${binaryData.length} bytes -> ${totalStrips} strips (${trimmedLen} bytes)`);
-    sendChunkedData(trimmed);
+    const totalStrips = Math.ceil(binaryData.length / STRIP_SIZE);
+    const targetLen = totalStrips * STRIP_SIZE;
+    
+    let finalData = binaryData;
+    if (binaryData.length < targetLen) {
+        finalData = new Uint8Array(targetLen);
+        finalData.set(binaryData);
+        // Rest is already 0 which is White for GB Printer
+    }
+    
+    console.log(`Image: ${binaryData.length} bytes -> ${totalStrips} strips (${targetLen} bytes)`);
+    sendChunkedData(finalData);
 }
 
 function sendChunkedData(binaryData, chunkSize = 256) {
@@ -1143,8 +1172,19 @@ function sendChunkedData(binaryData, chunkSize = 256) {
     const statusText = document.getElementById("print-status-text");
 
     if (printBtn) printBtn.style.display = "none";
-    if (overlay) overlay.style.display = "flex";
-    if (statusText) statusText.textContent = "Sending to printer...";
+    // Check current status before showing overlay
+    fetch("/status.json")
+        .then(res => res.json())
+        .then(data => {
+            if (data.printer !== 0xFF && data.printer !== undefined) {
+                if (overlay) overlay.style.display = "flex";
+                if (statusText) statusText.textContent = "Sending to printer...";
+            }
+        })
+        .catch(() => {
+             // If we can't even get status, don't show overlay
+             if (overlay) overlay.style.display = "none";
+        });
 
     // Buffer all packets to firmware, then trigger burst send
     function bufferNextPacket(index) {
@@ -1223,14 +1263,42 @@ function handleFileInput(e) {
         img.onload = function () {
             const canvas = document.getElementById("preview-canvas");
             const ctx = canvas.getContext("2d");
-            canvas.width = 160;
-            canvas.height = 144;
-            ctx.drawImage(img, 0, 0, 160, 144);
+            
+            if (img.height > img.width) {
+                showGeneralPopup();
+                updateGeneralPopup("IMAGE ERROR<br><br>The image height must be less than or equal to the width.<br><br>Portrait images are not supported.", true);
+                
+                // Reset UI
+                if (nameDisplay) nameDisplay.textContent = "No file selected";
+                printButton.style.display = "none";
+                document.getElementById("printer-controls").style.display = "none";
+                e.target.value = ""; // Clear file input
+                return;
+            }
 
-            const imageData = ctx.getImageData(0, 0, 160, 144);
+            let targetWidth = 160;
+            let targetHeight = Math.floor(img.height * (targetWidth / img.width));
+
+            // If image is square but height > 144, shrink to 144x144
+            if (img.width === img.height && targetHeight > 144) {
+                targetHeight = 144;
+                targetWidth = 144;
+            }
+            
+            canvas.width = targetWidth;
+            canvas.height = targetHeight;
+            
+            // Fill with white to handle transparency in PNGs
+            ctx.fillStyle = "white";
+            ctx.fillRect(0, 0, targetWidth, targetHeight);
+            
+            ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+            const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
             const data = imageData.data;
             for (let i = 0; i < data.length; i += 4) {
-                const gray = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                // Luminance-based grayscale conversion for preprocessing
+                const gray = (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
                 let level = gray > 192 ? 255 : gray > 128 ? 170 : gray > 64 ? 85 : 0;
                 data[i] = data[i + 1] = data[i + 2] = level;
             }

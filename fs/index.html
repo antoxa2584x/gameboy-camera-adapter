@@ -84,7 +84,7 @@
         <div class="general-popup-content"
              style="display:flex; flex-direction:column; align-items:center;">
         </div>
-        <button class="close-btn" onclick="closeGeneralPopup()">X</button>
+        <button class="close-btn general-popup-button-close-button" onclick="closeGeneralPopup()">X</button>
     </div>
 </div>
 
@@ -148,7 +148,7 @@
 
                 <label style="color: white; font-size: 1.1rem;">Upload Image for Printing</label>
 
-                <canvas id="preview-canvas" width="160" height="144" style="border: 1px solid white;"></canvas>
+                <canvas id="preview-canvas" width="160" height="144" style="border: 1px solid white; max-width: 160px;"></canvas>
 
                 <input type="file" id="file-input" accept="image/*" onchange="handleFileInput(event)"
                        style="display: none;">
