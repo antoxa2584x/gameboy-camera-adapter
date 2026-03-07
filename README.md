@@ -33,7 +33,22 @@ Special thanks to Raphael-Boichot, please check this repo: https://github.com/Ra
 
 ## Printer Support
 
-This project also supports printing to a real Game Boy Printer. For detailed information about the protocol implementation, see [PRINTER_PROTOCOL.md](PRINTER_PROTOCOL.md).
+This project supports both receiving photos from a Game Boy and **printing** images to a real Game Boy Printer.
+
+### Receiving Photos (Scanner Mode)
+
+By default, the adapter acts as a "Game Boy Printer Emulator". When you select "Print" on your Game Boy, the photos will appear in the web interface Gallery.
+
+### Printing to Game Boy (Printer Mode)
+
+You can switch the web interface to **Printer Mode** by clicking the **Game Boy Camera Adapter logo** at the top. This mode allows you to print any image from your computer or phone to a real Game Boy Printer connected to the adapter.
+
+- **Image Upload**: Supports standard image formats. The image is automatically converted to the Game Boy's 4-color grayscale and tiled format.
+- **Live Preview**: See how your image will look before printing.
+- **Exposure Control**: Adjust the print darkness (0-127) using the slider.
+- **Status Monitoring**: Real-time feedback from the printer (e.g., OK, Paper Jam, Battery Low).
+
+For detailed information about the protocol implementation, see [PRINTER_PROTOCOL.md](PRINTER_PROTOCOL.md).
 
 ## Schematics
 
