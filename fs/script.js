@@ -912,11 +912,11 @@ window.checkForUpdate = checkForUpdate;
 window.downloadImage = downloadImage;
 window.saveAllPictures = saveAllPictures;
 
-function decodePrinterStatus(byte) {
+function decodePrinterStatus(byte, ignoreBusyFull = false) {
     if (byte === 0xFF) return "Disconnected";
     const flags = [
         "Checksum Error",
-        "Printer Busy",
+        "Printing image",
         "Image Data Full",
         "Unprocessed Data",
         "Packet Error",
@@ -927,7 +927,10 @@ function decodePrinterStatus(byte) {
     const errors = [];
     if (byte === 0) return "OK";
     for (let i = 0; i < 8; i++) {
-        if (byte & (1 << i)) errors.push(flags[i]);
+        if (byte & (1 << i)) {
+            if (ignoreBusyFull && (i === 1 || i === 2)) continue;
+            errors.push(flags[i]);
+        }
     }
     return errors.length ? errors.join(", ") : "OK";
 }
@@ -935,17 +938,39 @@ function decodePrinterStatus(byte) {
 function pollPrinterStatus() {
     if (typeof currentMode !== 'undefined' && currentMode !== "printer") return;
 
-    fetch('/status.json', { cache: "no-store" })
+    // Trigger status update on firmware if in printer mode
+    fetch('/print_chunk?done=1')
+        .then(() => fetch('/status.json', { cache: "no-store" }))
         .then(r => r.json())
         .then(data => {
             if (data.printer !== undefined) {
+                const status = decodePrinterStatus(data.printer);
                 const el = document.getElementById("printer-status");
                 if (el) {
-                    el.textContent = "Printer Status: " + decodePrinterStatus(data.printer);
+                    el.textContent = "Printer Status: " + status;
                     if (data.printer === 0xFF) {
                         el.style.color = "red";
                     } else {
-                        el.style.color = data.printer === 0 ? "lightgreen" : "orange";
+                        // Treat busy/full as "normal" orange, others as lightgreen if only busy/full
+                        const isError = (data.printer & ~0x06) !== 0 && data.printer !== 0x00;
+                        el.style.color = isError ? "red" : (data.printer === 0 ? "lightgreen" : "orange");
+                    }
+                }
+
+                // Show overlay if busy, hide if OK or Disconnected
+                const overlay = document.getElementById("print-overlay");
+                const statusText = document.getElementById("print-status-text");
+                if (overlay && statusText) {
+                    if (data.printer & 0x02) { // Printer Busy (Printing image)
+                        overlay.style.display = "flex";
+                        statusText.textContent = "Printing image...";
+                    } else if (data.printer === 0x00 || data.printer === 0xFF) {
+                        overlay.style.display = "none";
+                    } else if (data.printer & 0x04) { // Image Data Full
+                        overlay.style.display = "flex";
+                        statusText.textContent = "Image Data Full";
+                        // Auto-hide full status after some time or let user click?
+                        // Requirement says "close when status ok or disconnected".
                     }
                 }
             }
@@ -1110,40 +1135,45 @@ function sendChunkedData(binaryData, chunkSize = 256) {
     packets.push({ data: packetStatus, name: "STATUS" });
 
     function getPrinterStatusDisplay(status) {
-        if (status === 0xFF) return "Disconnected";
-        if (status === 0) return "OK";
-        const flags = [
-            "Checksum Error",
-            "Printer Busy",
-            "Image Data Full",
-            "Unprocessed Data",
-            "Packet Error",
-            "Paper Jam",
-            "Other Error",
-            "Battery Low"
-        ];
-        const errors = [];
-        for (let i = 0; i < 8; i++) {
-            if (status & (1 << i)) errors.push(flags[i]);
-        }
-        return errors.length ? errors.join(", ") : "OK (" + status.toString(16).padStart(2, '0') + ")";
+        return decodePrinterStatus(status, true);
     }
+
+    const printBtn = document.getElementById("print-button");
+    const overlay = document.getElementById("print-overlay");
+    const statusText = document.getElementById("print-status-text");
+
+    if (printBtn) printBtn.style.display = "none";
+    if (overlay) overlay.style.display = "flex";
+    if (statusText) statusText.textContent = "Sending to printer...";
 
     // Buffer all packets to firmware, then trigger burst send
     function bufferNextPacket(index) {
         if (index >= packets.length) {
             console.log(`All ${packets.length} packets buffered. Triggering burst send...`);
+            if (statusText) statusText.textContent = "Starting print...";
             fetch("/print_chunk?done=1")
                 .then(() => new Promise(resolve => setTimeout(resolve, 2000))) // wait for printing
                 .then(() => fetch("/status.json"))
                 .then(res => res.json())
                 .then(statusData => {
+                    if (printBtn) printBtn.style.display = "block";
+                    // Note: overlay is managed by pollPrinterStatus from now on
                     const printerStatus = statusData.printer;
                     console.log(`Final status: 0x${printerStatus.toString(16).padStart(2, '0')} (${getPrinterStatusDisplay(printerStatus)})`);
-                    alert("Print result: " + getPrinterStatusDisplay(printerStatus));
+                    const statusDesc = getPrinterStatusDisplay(printerStatus);
+
+                    if (printerStatus === 0x00 || printerStatus === 0xFF) {
+                        if (overlay) overlay.style.display = "none";
+                    } else if (statusDesc !== "OK") {
+                        if (statusText) statusText.textContent = statusDesc;
+                        // If it's a real error (not just busy), maybe keep it visible?
+                        // "close when status ok or disconected" - implies we close on those.
+                    }
                 })
                 .catch(err => {
                     console.error("Print failed", err);
+                    if (printBtn) printBtn.style.display = "block";
+                    if (overlay) overlay.style.display = "none";
                 });
             return;
         }

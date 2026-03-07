@@ -586,7 +586,7 @@ const char *cgi_print_chunk(int iIndex, int iNumParams, char *pcParam[], char *p
 
         if (pkt_queue_count < PKT_MAX_PACKETS && pkt_queue_used + byte_len <= PKT_QUEUE_SIZE) {
             pkt_queue_offsets[pkt_queue_count] = pkt_queue_used;
-            pkt_queue_lengths[pkt_queue_count] = byte_len;
+            pkt_queue_lengths[pkt_queue_count] = (int)byte_len;
             for (size_t i = 0; i < byte_len; i++) {
                 char byte_str[3] = { payload[i*2], payload[i*2 + 1], 0 };
                 pkt_queue_buf[pkt_queue_used + i] = (uint8_t)strtol(byte_str, NULL, 16);
@@ -597,12 +597,19 @@ const char *cgi_print_chunk(int iIndex, int iNumParams, char *pcParam[], char *p
     }
 
     if (is_done) {
-        // Send ALL buffered packets in one burst (like hello_usb.c)
-        for (int p = 0; p < pkt_queue_count; p++) {
-            printer_send_packet(
-                &pkt_queue_buf[pkt_queue_offsets[p]],
-                pkt_queue_lengths[p]
-            );
+        // Special case: if is_done=1 and no packets are buffered,
+        // send a status packet (88330f0000000f000000) to fetch current status.
+        if (pkt_queue_count == 0) {
+            static const uint8_t status_packet[] = {0x88, 0x33, 0x0f, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00};
+            printer_send_packet(status_packet, sizeof(status_packet));
+        } else {
+            // Send ALL buffered packets in one burst (like hello_usb.c)
+            for (int p = 0; p < pkt_queue_count; p++) {
+                printer_send_packet(
+                    &pkt_queue_buf[pkt_queue_offsets[p]],
+                    pkt_queue_lengths[p]
+                );
+            }
         }
         // Reset queue
         pkt_queue_count = 0;
