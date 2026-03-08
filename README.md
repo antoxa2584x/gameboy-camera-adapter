@@ -48,7 +48,7 @@ You can switch the web interface to **Printer Mode** by clicking the **Game Boy 
 - **Exposure Control**: Adjust the print darkness (0-127) using the slider.
 - **Status Monitoring**: Real-time feedback from the printer (e.g., OK, Paper Jam, Battery Low).
 
-For detailed information about the protocol implementation, see [PRINTER_PROTOCOL.md](PRINTER_PROTOCOL.md).
+For detailed information about the protocol implementation, see [COMMUNICATION.md](COMMUNICATION.md).
 
 ## Schematics
 

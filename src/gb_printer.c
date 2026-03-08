@@ -20,7 +20,7 @@ extern void setRGB(uint8_t r, uint8_t g, uint8_t b);
 
 // printer packet state machine
 void protocol_reset() {
-    PRINTER_RESET;
+    printer_state = PRN_STATE_WAIT_FOR_SYNC_1;
 }
 
 uint8_t protocol_data_init() {

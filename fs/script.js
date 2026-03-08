@@ -1148,7 +1148,8 @@ function sendChunkedData(binaryData, chunkSize = 256) {
     packets.push({ data: "88330400000004000000", name: "DATA_END" });
 
     // PRINT packet
-    const exposure = parseInt(document.getElementById("print-exposure").value) || 0x40;
+    const exposureVal = document.getElementById("print-exposure").value;
+    const exposure = (exposureVal !== "" && exposureVal !== null) ? parseInt(exposureVal) : 0x40;
     const expValue = Math.min(0x7F, exposure);
     const printData = new Uint8Array([0x01, 0x03, 0xE4, expValue]);
     const printHeader = "883302000400";
@@ -1235,6 +1236,8 @@ function sendChunkedData(binaryData, chunkSize = 256) {
     bufferNextPacket(0);
 }
 
+let currentImage = null;
+
 function handleFileInput(e) {
     const file = e.target.files[0];
     const nameDisplay = document.getElementById("file-name");
@@ -1261,54 +1264,91 @@ function handleFileInput(e) {
     reader.onload = function (evt) {
         const img = new Image();
         img.onload = function () {
-            const canvas = document.getElementById("preview-canvas");
-            const ctx = canvas.getContext("2d");
-            
-            if (img.height > img.width) {
-                showGeneralPopup();
-                updateGeneralPopup("IMAGE ERROR<br><br>The image height must be less than or equal to the width.<br><br>Portrait images are not supported.", true);
-                
-                // Reset UI
-                if (nameDisplay) nameDisplay.textContent = "No file selected";
-                printButton.style.display = "none";
-                document.getElementById("printer-controls").style.display = "none";
-                e.target.value = ""; // Clear file input
-                return;
-            }
+            currentImage = img;
+            const targetRatio = 160 / 144;
+            const imgRatio = img.width / img.height;
 
-            let targetWidth = 160;
-            let targetHeight = Math.floor(img.height * (targetWidth / img.width));
-
-            // If image is square but height > 144, shrink to 144x144
-            if (img.width === img.height && targetHeight > 144) {
-                targetHeight = 144;
-                targetWidth = 144;
-            }
-            
-            canvas.width = targetWidth;
-            canvas.height = targetHeight;
-            
-            // Fill with white to handle transparency in PNGs
-            ctx.fillStyle = "white";
-            ctx.fillRect(0, 0, targetWidth, targetHeight);
-            
-            ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-
-            const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
-            const data = imageData.data;
-            for (let i = 0; i < data.length; i += 4) {
-                // Luminance-based grayscale conversion for preprocessing
-                const gray = (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-                let level = gray > 192 ? 255 : gray > 128 ? 170 : gray > 64 ? 85 : 0;
-                data[i] = data[i + 1] = data[i + 2] = level;
-            }
-            ctx.putImageData(imageData, 0, 0);
+            const modeSelect = document.getElementById("image-mode");
+            modeSelect.value = "fit"; // Default to fit
+            refreshPreview();
         };
         img.src = evt.target.result;
     };
     reader.readAsDataURL(file);
 }
 
+function refreshPreview() {
+    if (!currentImage) return;
+    const mode = document.getElementById("image-mode").value;
+    processImage(currentImage, mode);
+}
+
+function processImage(img, mode) {
+    const canvas = document.getElementById("preview-canvas");
+    const ctx = canvas.getContext("2d");
+
+    let targetWidth = 160;
+    let targetHeight = 144;
+    let sourceX = 0, sourceY = 0, sourceWidth = img.width, sourceHeight = img.height;
+    let destX = 0, destY = 0, destWidth = 160, destHeight = 144;
+
+    if (mode === 'crop') {
+        const targetRatio = 160 / 144;
+        const imgRatio = img.width / img.height;
+
+        if (imgRatio > targetRatio) {
+            // Wider than target: crop sides
+            sourceWidth = img.height * targetRatio;
+            sourceX = (img.width - sourceWidth) / 2;
+        } else {
+            // Taller than target: crop top/bottom
+            sourceHeight = img.width / targetRatio;
+            sourceY = (img.height - sourceHeight) / 2;
+        }
+    } else if (mode === 'fit') {
+        const targetRatio = 160 / 144;
+        const imgRatio = img.width / img.height;
+
+        if (imgRatio > targetRatio) {
+            // Wider than target: scale to 160 width, add vertical borders
+            destHeight = 160 / imgRatio;
+            destY = (144 - destHeight) / 2;
+        } else {
+            // Taller than target: scale to 144 height, add horizontal borders
+            destWidth = 144 * imgRatio;
+            destX = (160 - destWidth) / 2;
+        }
+    }
+
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+
+    // Fill with white
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, targetWidth, targetHeight);
+
+    ctx.drawImage(img, sourceX, sourceY, sourceWidth, sourceHeight, destX, destY, destWidth, destHeight);
+
+    const exposureVal = document.getElementById("print-exposure").value;
+    const exposure = (exposureVal !== "" && exposureVal !== null) ? parseInt(exposureVal) : 64;
+    // Exposure in GB printer increases the intensity (darkness).
+    // Standard thresholds are 64, 128, 192 (inverted).
+    // Let's shift thresholds based on exposure value.
+    // 64 is middle (0x40). 
+    // Higher exposure = darker image = lower thresholds.
+    const offset = (exposure - 64) * 0.8; 
+
+    const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+        const gray = (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+        let level = gray > (192 - offset) ? 255 : gray > (128 - offset) ? 170 : gray > (64 - offset) ? 85 : 0;
+        data[i] = data[i + 1] = data[i + 2] = level;
+    }
+    ctx.putImageData(imageData, 0, 0);
+}
+
 window.handleFileInput = handleFileInput;
+window.refreshPreview = refreshPreview;
 window.printSelectedImage = printSelectedImage;
 window.showPopupWithUpscaledImage = showPopupWithUpscaledImage;

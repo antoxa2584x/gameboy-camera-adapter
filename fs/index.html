@@ -161,9 +161,16 @@
 
                 <div id="printer-controls"
                      style="display: none; flex-direction: column; gap: 0.2rem; width: 100%; margin-top: 1rem;">
+                    <div style="display: flex; flex-direction: column; align-items: center; color: white; gap: 0.5rem; margin-bottom: 1rem;">
+                        <label for="image-mode" style="font-size: 0.8rem;">Crop mode:</label>
+                        <select id="image-mode" onchange="refreshPreview()" style="padding: 0.4rem; border-radius: 5px; background: #1e4a2b; color: white; border: 1px solid #4caf50; width: 200px;">
+                            <option value="crop">Crop to 160x144</option>
+                            <option value="fit">Fit with white borders</option>
+                        </select>
+                    </div>
                     <div style="display: flex; justify-content: center; align-items: center; color: white; gap: 0.5rem;">
                         <label for="print-exposure" style="font-size: 0.8rem;">Exposure:</label>
-                        <input type="range" id="print-exposure" min="0" max="127" value="64" style="width: 150px;">
+                        <input type="range" id="print-exposure" min="0" max="127" value="64" style="width: 150px;" oninput="refreshPreview()">
                     </div>
                 </div>
 

@@ -344,6 +344,15 @@ static const char *cgi_reset(int iIndex, int iNumParams, char *pcParam[], char *
     return STATUS_FILE;
 }
 
+// Packet queue: buffer all packets, send in one burst
+#define PKT_QUEUE_SIZE 8192
+#define PKT_MAX_PACKETS 64
+static uint8_t pkt_queue_buf[PKT_QUEUE_SIZE];
+static int pkt_queue_offsets[PKT_MAX_PACKETS]; // start offset of each packet
+static int pkt_queue_lengths[PKT_MAX_PACKETS]; // length of each packet
+static int pkt_queue_count = 0;
+static int pkt_queue_used = 0;
+
 // Callback that runs later (outside of CGI handler)
 int64_t reboot_callback(alarm_id_t id, void *user_data) {
     reset_usb_boot(0, 0);
@@ -464,15 +473,6 @@ void update_led_wave() {
 const int halfDelay = 62; // microseconds (~8kHz, matches Game Boy serial speed)
 
 uint8_t current_printer_status = PRINTER_STATUS_DISCONNECTED;
-
-// Packet queue: buffer all packets, send in one burst
-#define PKT_QUEUE_SIZE 8192
-#define PKT_MAX_PACKETS 64
-static uint8_t pkt_queue_buf[PKT_QUEUE_SIZE];
-static int pkt_queue_offsets[PKT_MAX_PACKETS]; // start offset of each packet
-static int pkt_queue_lengths[PKT_MAX_PACKETS]; // length of each packet
-static int pkt_queue_count = 0;
-static int pkt_queue_used = 0;
 
 // Debug: store raw responses from last packet
 #define DBG_MAX 32
