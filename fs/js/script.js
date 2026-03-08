@@ -22,7 +22,7 @@ const deleteSelectedBtn = document.getElementById("delete_selected_btn");
 const selectAllBtn = document.getElementById("select_all_btn");
 const averageSelectedBtn = document.getElementById("average_selected_btn");
 
-const CURRENT_VERSION = "1.4.8"; // Fallback version
+const CURRENT_VERSION = "2.0.0"; // Fallback version
 let dynamicVersion = CURRENT_VERSION;
 
 Date.prototype.today = function(delim) {
@@ -284,15 +284,17 @@ function showPopupWithUpscaledImage(image) {
     img.crossOrigin = "Anonymous"; // This enables CORS
     img.src = image.src;
     img.onload = function() {
+        const width = img.naturalWidth || img.width;
+        const height = img.naturalHeight || img.height;
         // Set canvas dimensions to 10 times the image dimensions
-        canvas.width = img.width * 10;
-        canvas.height = img.height * 10;
+        canvas.width = width * 10;
+        canvas.height = height * 10;
 
         // Disable image smoothing for Nearest Neighbor scaling
         ctx.imageSmoothingEnabled = false;
 
         // Draw the image scaled up by 10 times
-        ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, width, height, 0, 0, canvas.width, canvas.height);
     };
 
     popup.appendChild(canvas);
@@ -363,37 +365,52 @@ async function downloadImage(image) {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
 
-    const img = new Image();
-    img.crossOrigin = "Anonymous";
-    img.src = image.src;
-    img.onload = function () {
-        canvas.width = img.width * 10;
-        canvas.height = img.height * 10;
+    const processImage = (img) => {
+        const width = img.naturalWidth || img.width;
+        const height = img.naturalHeight || img.height;
+        canvas.width = width * 10;
+        canvas.height = height * 10;
         ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, width, height, 0, 0, canvas.width, canvas.height);
 
         // Convert to JPEG base64
         let jpegDataUrl = canvas.toDataURL("image/jpeg", 1.0);
 
-        // Add EXIF metadata
-        const zeroth = {};
-        zeroth[piexif.ImageIFD.Make] = "Nintendo";
-        zeroth[piexif.ImageIFD.Model] = "Game Boy Camera";
-        zeroth[piexif.ImageIFD.Software] = "GameBoy Camera Adapter";
-        const exifObj = { "0th": zeroth };
-        const exifBytes = piexif.dump(exifObj);
-
-        const jpegWithExif = piexif.insert(exifBytes, jpegDataUrl);
+        try {
+            // Add EXIF metadata if piexif is available
+            if (typeof piexif !== "undefined") {
+                const zeroth = {};
+                zeroth[piexif.ImageIFD.Make] = "Nintendo";
+                zeroth[piexif.ImageIFD.Model] = "Game Boy Camera";
+                zeroth[piexif.ImageIFD.Software] = "GameBoy Camera Adapter";
+                const exifObj = {"0th": zeroth};
+                const exifBytes = piexif.dump(exifObj);
+                jpegDataUrl = piexif.insert(exifBytes, jpegDataUrl);
+            }
+        } catch (e) {
+            console.error("EXIF error:", e);
+        }
 
         // Trigger download
         const a = document.createElement("a");
-        a.href = jpegWithExif;
+        a.href = jpegDataUrl;
         a.download = file_name;
         a.style.display = "none";
         document.body.appendChild(a);
         a.click();
-        a.remove();
+        setTimeout(() => a.remove(), 100);
     };
+
+    if (image.complete && image.naturalWidth !== 0) {
+        processImage(image);
+    } else {
+        const img = new Image();
+        img.crossOrigin = "Anonymous";
+        img.src = image.src;
+        img.onload = function () {
+            processImage(img);
+        };
+    }
 }
 
 
@@ -860,26 +877,22 @@ function loadLedStatus() {
 }
 
 function saveAllPictures() {
-    const buttons = document.querySelectorAll('.gallery-image button');
-    const total = buttons.length;
+    const images = document.querySelectorAll('.gallery-image img');
+    const total = images.length;
 
     if (total == 0) {
         return;
     }
 
     showGeneralPopup();
-
     updateGeneralPopup('SAVING PHOTOS', false);
 
-    buttons.forEach((btn, index) => {
+    images.forEach((img, index) => {
         setTimeout(() => {
-            let showButton = false;
-            if (index == total - 1) {
-                showButton = true;
-            }
+            let showButton = (index == total - 1);
             updateGeneralPopup(`SAVING PHOTO ${index + 1}/${total}`, showButton);
-            btn.click();
-        }, 1000 * index);
+            downloadImage(img);
+        }, 500 * index);
     });
 }
 
@@ -1040,7 +1053,6 @@ if (logoImg) {
     });
 }
 window.startUpdate = startUpdate;
-window.saveAllPictures = saveAllPictures;
 window.closeGeneralPopup = closeGeneralPopup;
 
 function canvasToTileData(canvas) {
