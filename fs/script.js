@@ -241,6 +241,19 @@ function addCanvasToGallery(canvas) {
         label.appendChild(img);
         div.appendChild(label);
 
+        const closeBtn = document.createElement("button");
+        closeBtn.textContent = "X";
+        closeBtn.classList.add("popup-close-button");
+        closeBtn.classList.add("gallery-delete-btn");
+        closeBtn.classList.add("shake");
+        closeBtn.addEventListener("click", function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            div.remove();
+            updateButtonStates();
+        });
+        div.appendChild(closeBtn);
+
         label.addEventListener("click", function() {
             const inp = div.querySelector("input[type='checkbox']");
             inp.checked = !inp.checked;

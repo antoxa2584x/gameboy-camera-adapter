@@ -313,6 +313,15 @@ footer .links img:hover {
 	/* Ensure consistent spacing around buttons */
 }
 
+.gallery-delete-btn.popup-close-button {
+	top: 2px;
+	right: 2px;
+	width: 28px;
+	height: 28px;
+	font-size: 0.6rem;
+	margin: 0;
+}
+
 #description {
 	color: white;
 	justify-content: center;
@@ -322,7 +331,6 @@ footer .links img:hover {
 	/* Vertically center the description */
 	margin: auto;
 }
-
 
 #image-link {
 	bottom: 10px;
