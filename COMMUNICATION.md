@@ -1,6 +1,6 @@
 ### Game Boy Camera Adapter Communication Documentation
 
-This document describes the communication protocols used between the adapter firmware (Pico), the Game Boy, the Web-App, and external clients.
+This document describes the communication protocols used between the adapter firmware (RP2040 Zero), the Game Boy, the Web-App, and external clients.
 
 ---
 
@@ -10,9 +10,9 @@ The firmware interacts with the Game Boy or a Game Boy Printer using a standard 
 - **Clock Frequency**: ~2.5kHz (200µs per half-cycle).
 - **Inter-byte Delay**: 10µs to ensure reliable processing.
 - **Signal Logic**:
-  - **SCK (Serial Clock)**: Driven by the Pico (as Master) or by the Game Boy (as Slave).
-  - **SIN (Serial In)**: Data received by the Pico.
-  - **SOUT (Serial Out)**: Data sent by the Pico.
+  - **SCK (Serial Clock)**: Driven by the RP2040 Zero (as Master) or by the Game Boy (as Slave).
+  - **SIN (Serial In)**: Data received by the RP2040 Zero.
+  - **SOUT (Serial Out)**: Data sent by the RP2040 Zero.
   - **Pull-ups**: Enabled on `PIN_SIN` to detect disconnected state (returns `0xFF`).
 
 ---
@@ -104,7 +104,7 @@ Sets the adapter's LED color and compatibility mode.
 Resets the internal data buffers and protocol state.
 
 ##### GET `/update`
-Reboots the Pico into USB Bootloader mode.
+Reboots the RP2040 Zero into USB Bootloader mode.
 
 ##### GET `/print_chunk?data=HEX_PACKET&done=0/1`
 Sends a Game Boy Printer packet to a physical printer connected to the adapter.
