@@ -78,7 +78,7 @@ Returns the current system status.
   "result": "ok",
   "options": { "debug": "off/on" },
   "status": { "last_size": 1234, "total_files": 1 },
-  "system": { "fast": "true/false", "version": "2.0.0", "uptime": 3600 },
+  "system": { "fast": "true/false", "version": "2.0.1", "uptime": 3600 },
   "printer": 0,
   "dbg": ""
 }

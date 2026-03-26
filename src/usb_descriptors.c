@@ -154,7 +154,7 @@ static char const* string_desc_arr [] = {
     [STRID_LANGID]       = (const char[]) { 0x09, 0x04 }, // supported language is English (0x0409)
     [STRID_MANUFACTURER] = "RetroGaming UA",               // Manufacturer
     [STRID_PRODUCT]      = "GameBoy Camera Adapter [" FIRMWARE_VERSION "]",   // Product
-    [STRID_SERIAL]       = "GBCA2.0.0",                                        // Serial
+    [STRID_SERIAL]       = "GBCA2.0.1",                                        // Serial
     [STRID_INTERFACE]    = "GameBoy Camera Adapter USB Network Interface",    // Interface Description
     [STRID_MAC]          = "0002846A9600"                                      // MAC
 };
