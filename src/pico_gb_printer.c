@@ -559,7 +559,7 @@ void printer_send_packet(const uint8_t* packet, int length) {
         current_printer_status = PRINTER_STATUS_DISCONNECTED;
     }
 
-    sleep_us(200);
+    sleep_us(400);
     // Leave SCK HIGH (as printer_send_byte left it) — do NOT pull LOW or re-enable PIO.
     // A spurious falling edge would desync the printer.
     // PIO re-enabled only when JS sends done=1.
@@ -603,13 +603,59 @@ const char *cgi_print_chunk(int iIndex, int iNumParams, char *pcParam[], char *p
             static const uint8_t status_packet[] = {0x88, 0x33, 0x0f, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00};
             printer_send_packet(status_packet, sizeof(status_packet));
         } else {
-            // Send ALL buffered packets in one burst (like hello_usb.c)
+            // Collect all DATA payloads and reassemble into 640-byte strips.
+            // The GB Printer requires exactly 640-byte DATA packets (2 tile rows).
+            // HTTP chunks may be smaller (e.g. 256 bytes), so we reassemble here.
+            #define GB_STRIP_SIZE 640
+            #define GB_MAX_IMAGE  (9 * GB_STRIP_SIZE)
+            static uint8_t data_accum[GB_MAX_IMAGE];
+            int data_total = 0;
+
+            // Find index range of non-zero DATA packets
+            int first_data = -1, last_data = -1;
             for (int p = 0; p < pkt_queue_count; p++) {
-                printer_send_packet(
-                    &pkt_queue_buf[pkt_queue_offsets[p]],
-                    pkt_queue_lengths[p]
-                );
+                uint8_t *pkt = &pkt_queue_buf[pkt_queue_offsets[p]];
+                int     len  = pkt_queue_lengths[p];
+                if (len >= 10 && pkt[0] == 0x88 && pkt[1] == 0x33 && pkt[2] == 0x04) {
+                    int dlen = pkt[4] | (pkt[5] << 8);
+                    if (dlen > 0) {
+                        if (first_data < 0) first_data = p;
+                        last_data = p;
+                        if (data_total + dlen <= GB_MAX_IMAGE)
+                            memcpy(data_accum + data_total, pkt + 6, dlen);
+                        data_total += dlen;
+                    }
+                }
             }
+
+            // Send packets before the first DATA packet (INIT, STATUS)
+            int pre_end = (first_data >= 0) ? first_data : pkt_queue_count;
+            for (int p = 0; p < pre_end; p++)
+                printer_send_packet(&pkt_queue_buf[pkt_queue_offsets[p]], pkt_queue_lengths[p]);
+
+            // Send reassembled 640-byte DATA strips
+            for (int offset = 0; offset < data_total; offset += GB_STRIP_SIZE) {
+                int chunk = data_total - offset;
+                if (chunk > GB_STRIP_SIZE) chunk = GB_STRIP_SIZE;
+
+                uint8_t strip[GB_STRIP_SIZE + 10];
+                strip[0] = 0x88; strip[1] = 0x33; strip[2] = 0x04; strip[3] = 0x00;
+                strip[4] = chunk & 0xFF; strip[5] = (chunk >> 8) & 0xFF;
+                memcpy(strip + 6, data_accum + offset, chunk);
+
+                uint16_t chk = 0x04 + (chunk & 0xFF) + ((chunk >> 8) & 0xFF);
+                for (int i = 0; i < chunk; i++) chk += data_accum[offset + i];
+                strip[6 + chunk] = chk & 0xFF;
+                strip[7 + chunk] = (chk >> 8) & 0xFF;
+                strip[8 + chunk] = 0x00; strip[9 + chunk] = 0x00;
+
+                printer_send_packet(strip, chunk + 10);
+            }
+
+            // Send packets after the last DATA packet (DATA_END, PRINT, STATUS)
+            int post_start = (last_data >= 0) ? last_data + 1 : 0;
+            for (int p = post_start; p < pkt_queue_count; p++)
+                printer_send_packet(&pkt_queue_buf[pkt_queue_offsets[p]], pkt_queue_lengths[p]);
         }
         // Reset queue
         pkt_queue_count = 0;

@@ -948,8 +948,11 @@ function decodePrinterStatus(byte, ignoreBusyFull = false) {
     return errors.length ? errors.join(", ") : "OK";
 }
 
+let isPrintingActive = false;
+
 function pollPrinterStatus() {
     if (typeof currentMode !== 'undefined' && currentMode !== "printer") return;
+    if (isPrintingActive) return;
 
     // Trigger status update on firmware if in printer mode
     fetch('/print_chunk?done=1')
@@ -1184,6 +1187,7 @@ function sendChunkedData(binaryData, chunkSize = 256) {
     const overlay = document.getElementById("print-overlay");
     const statusText = document.getElementById("print-status-text");
 
+    isPrintingActive = true;
     if (printBtn) printBtn.style.display = "none";
     // Check current status before showing overlay
     fetch("/status.json")
@@ -1209,6 +1213,7 @@ function sendChunkedData(binaryData, chunkSize = 256) {
                 .then(() => fetch("/status.json"))
                 .then(res => res.json())
                 .then(statusData => {
+                    isPrintingActive = false;
                     if (printBtn) printBtn.style.display = "block";
                     // Note: overlay is managed by pollPrinterStatus from now on
                     const printerStatus = statusData.printer;
@@ -1224,6 +1229,7 @@ function sendChunkedData(binaryData, chunkSize = 256) {
                     }
                 })
                 .catch(err => {
+                    isPrintingActive = false;
                     console.error("Print failed", err);
                     if (printBtn) printBtn.style.display = "block";
                     if (overlay) overlay.style.display = "none";
@@ -1241,6 +1247,7 @@ function sendChunkedData(binaryData, chunkSize = 256) {
                 setTimeout(() => bufferNextPacket(index + 1), 50);
             })
             .catch(err => {
+                isPrintingActive = false;
                 console.error("Buffer failed at packet " + index, err);
             });
     }

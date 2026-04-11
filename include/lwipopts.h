@@ -49,12 +49,12 @@
 
 #define TCP_MSS                         (1500 /*mtu*/ - 20 /*iphdr*/ - 20 /*tcphhr*/)
 #define TCP_SND_BUF                     (2 * TCP_MSS)
-#define TCP_WND                         (TCP_MSS)
+#define TCP_WND                         (2 * TCP_MSS)
 
 #define ETHARP_SUPPORT_STATIC_ENTRIES   1
 
 #define LWIP_HTTPD_CGI                  1
-#define LWIP_HTTPD_MAX_REQUEST_URI_LEN  1024
+#define LWIP_HTTPD_MAX_REQUEST_URI_LEN  1400
 //#define LWIP_HTTPD_CGI_SSI              1
 //#define LWIP_HTTPD_FILE_STATE           1
 
