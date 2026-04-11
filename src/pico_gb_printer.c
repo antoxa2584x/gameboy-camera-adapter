@@ -19,11 +19,20 @@
 #include "ws2812.pio.h"
 
 #include <string.h>
+#include <stdlib.h>
 
 #include "hardware/flash.h"
 #include "hardware/sync.h"
+#include "hardware/watchdog.h"
 
 #include "cdc_sender.h"
+
+// GameBoy Printer status
+#define PRINTER_STATUS_OK           0x00
+#define PRINTER_STATUS_FULL         0x04
+#define PRINTER_STATUS_BUSY         0x02
+#define PRINTER_STATUS_CHECKSUM     0x01
+#define PRINTER_STATUS_DISCONNECTED 0xFF
 
 bool debug_enable = ENABLE_DEBUG;
 bool speed_240_MHz = false;
@@ -40,6 +49,8 @@ uint8_t led_mode = 0; // 0 = wave, 1 = static
 
 uint8_t saved_color[3] = {0};
 bool use_rgb_mode = true; // default mode string
+
+uint8_t mobile_compatibility = MODE_IOS;
 
 extern void setRGB(uint8_t r, uint8_t g, uint8_t b);
 
@@ -84,6 +95,10 @@ static bool query_get_bool(const char* qs, const char* key, bool* out) {
   return false;
 }
 
+// Forward declarations
+int64_t soft_restart(alarm_id_t id, void *user_data);
+int64_t reboot_callback(alarm_id_t id, void *user_data);
+
 // Handle one complete CDC line
 static void cdc_handle_line(const char* line) {
   // Ignore empty lines
@@ -93,6 +108,36 @@ static void cdc_handle_line(const char* line) {
   // Here we focus on the simple GET routes coming from Android.
   if (strncmp(line, "GET ", 4) == 0) {
     const char* path = line + 4;
+
+    if (strncmp(path, "/reset_mode", 11) == 0) {
+      mobile_compatibility = MODE_IOS;
+      save_color_to_flash(base_r, base_g, base_b, use_rgb_mode, mobile_compatibility);
+      cdc_send_string("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK - Mode Reset to IOS. Rebooting...\r\n");
+      add_alarm_in_ms(300, soft_restart, NULL, false);
+      return;
+    }
+
+    if (strncmp(path, "/set_mode_android", 17) == 0) {
+      mobile_compatibility = MODE_ANDROID;
+      save_color_to_flash(base_r, base_g, base_b, use_rgb_mode, mobile_compatibility);
+      cdc_send_string("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK - Mode set to Android (Both). Rebooting...\r\n");
+      add_alarm_in_ms(300, soft_restart, NULL, false);
+      return;
+    }
+
+    if (strncmp(path, "/set_mode_ios", 13) == 0) {
+      mobile_compatibility = MODE_IOS;
+      save_color_to_flash(base_r, base_g, base_b, use_rgb_mode, mobile_compatibility);
+      cdc_send_string("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK - Mode set to iOS (Web only). Rebooting...\r\n");
+      add_alarm_in_ms(300, soft_restart, NULL, false);
+      return;
+    }
+
+    if (strncmp(path, "/update", 7) == 0) {
+      cdc_send_string("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK - Entering Bootloader...\r\n");
+      add_alarm_in_ms(300, reboot_callback, NULL, false);
+      return;
+    }
 
     // e.g. "/led_status" or "/set_color?...". Find end of path/qs (space or end)
     const char* end = strchr(path, ' ');
@@ -141,23 +186,28 @@ static void cdc_handle_line(const char* line) {
       use_rgb_mode = rgb;
 
       // apply immediately (no reboot), persist to flash like your web path does
-      save_color_to_flash(base_r, base_g, base_b, use_rgb_mode);
+      save_color_to_flash(base_r, base_g, base_b, use_rgb_mode, mobile_compatibility);
       setRGB(base_r, base_g, base_b);
 
       // small ACK line so Android can readLine() without timing out
       static const char ok[] = "OK\n";
+#if CFG_TUD_CDC
       cdc_send_bytes((const uint8_t*)ok, sizeof(ok)-1, 1000);
+#endif
       return;
     }
   }
 
   // For anything else (or if you still want echo for debugging):
+#if CFG_TUD_CDC
   tud_cdc_write_str("UNKNOWN\n");
   tud_cdc_write_flush();
+#endif
 }
 
 
 static inline void flush_tail_and_done(void) {
+#if CFG_TUD_CDC
     // flush the last partial block, if any
     if (allocated_file && allocated_file->last) {
         datablock_t *last = allocated_file->last;
@@ -168,15 +218,18 @@ static inline void flush_tail_and_done(void) {
     // send trailer so host knows stream is complete
     static const char done[] = "DONE\n";
     (void) cdc_send_bytes((const uint8_t*)done, sizeof(done)-1, 2000);
+#endif
 }
 
 void receive_data_reset(void) {
     if (!allocated_file) return;
     last_file_len = allocated_file->size;
 
+#if CFG_TUD_CDC
     if (tud_cdc_connected()) {
         flush_tail_and_done();
-    }    
+    }
+#endif
     
     if (push_file(allocated_file)) picture_count++;
     allocated_file = NULL;
@@ -187,10 +240,12 @@ void receive_data_init(void) {
     if (double_init) receive_data_reset();
     double_init = true;
     
+#if CFG_TUD_CDC
     if (tud_cdc_connected()) {
         static const char init[] = "GBCA_PHOTO_TRANSFER\n";
         (void) cdc_send_bytes((const uint8_t*)init, sizeof(init)-1, 500);
     }
+#endif
 }
 
 void receive_data_write(uint8_t b) {
@@ -220,26 +275,30 @@ void receive_data_write(uint8_t b) {
     block->data[block->size++] = b;
     allocated_file->size++;
 
+#if CFG_TUD_CDC
     if (tud_cdc_connected()) {
         // Send only when the current block just became full
         if (block->size == DATABLOCK_SIZE) {
             (void) send_base64_chunk(block->data, DATABLOCK_SIZE);
         }
     }
+#endif
 }
 
 void receive_data_commit(uint8_t cmd) {
     if (cmd == CAM_COMMAND_TRANSFER) receive_data_reset();
 }
 
-// link cable
+// link cableD
 bool link_cable_data_received = false;
+volatile bool printing_active = false;
 void link_cable_ISR(void) {
     linkcable_send(protocol_data_process(linkcable_receive()));
     link_cable_data_received = true;
 }
 
 int64_t link_cable_watchdog(alarm_id_t id, void *user_data) {
+    if (printing_active) return MS(300); // Don't touch PIO/pins during printing
     if (!link_cable_data_received) {
         linkcable_reset();
         protocol_reset();
@@ -285,6 +344,15 @@ static const char *cgi_reset(int iIndex, int iNumParams, char *pcParam[], char *
     return STATUS_FILE;
 }
 
+// Packet queue: buffer all packets, send in one burst
+#define PKT_QUEUE_SIZE 8192
+#define PKT_MAX_PACKETS 64
+static uint8_t pkt_queue_buf[PKT_QUEUE_SIZE];
+static int pkt_queue_offsets[PKT_MAX_PACKETS]; // start offset of each packet
+static int pkt_queue_lengths[PKT_MAX_PACKETS]; // length of each packet
+static int pkt_queue_count = 0;
+static int pkt_queue_used = 0;
+
 // Callback that runs later (outside of CGI handler)
 int64_t reboot_callback(alarm_id_t id, void *user_data) {
     reset_usb_boot(0, 0);
@@ -305,13 +373,14 @@ static const char *cgi_reset_usb_boot(int iIndex, int iNumParams, char *pcParam[
 
 #define FLASH_TARGET_OFFSET (256 * 1024) // adjust as needed (sector-aligned)
 
-void save_color_to_flash(uint8_t r, uint8_t g, uint8_t b, bool rgb_mode) {
+void save_color_to_flash(uint8_t r, uint8_t g, uint8_t b, bool rgb_mode, uint8_t mode) {
     uint8_t buffer[FLASH_PAGE_SIZE] = {0};
     buffer[0] = r;
     buffer[1] = g;
     buffer[2] = b;
     buffer[3] = 0xA5; // valid marker
     buffer[4] = rgb_mode ? 0x01 : 0x00; // actual mode
+    buffer[5] = mode;
 
     uint32_t ints = save_and_disable_interrupts();
     flash_range_erase(FLASH_TARGET_OFFSET, FLASH_SECTOR_SIZE);
@@ -324,17 +393,22 @@ void load_color_from_flash() {
     const uint8_t *flash_data = (const uint8_t *)(XIP_BASE + FLASH_TARGET_OFFSET);
 
     bool is_valid = (flash_data[3] == 0xA5); // magic byte check
-    
+
     if (is_valid) {
         base_r = flash_data[0];
         base_g = flash_data[1];
         base_b = flash_data[2];
         use_rgb_mode = (flash_data[4] == 0x01);
+        mobile_compatibility = flash_data[5];
+        if (mobile_compatibility == 0) { // Legacy MODE_AUTO
+            mobile_compatibility = MODE_IOS;
+        }
     } else {
         base_r = 0x00;
         base_g = 0xFF;
         base_b = 0x00;
         use_rgb_mode = true;
+        mobile_compatibility = MODE_IOS;
     }
 }
 
@@ -358,9 +432,10 @@ static const char *cgi_set_color(int iIndex, int iNumParams, char *pcParam[], ch
         else if (strcmp(pcParam[i], "g") == 0) base_g = atoi(pcValue[i]);
         else if (strcmp(pcParam[i], "b") == 0) base_b = atoi(pcValue[i]);
         else if (strcmp(pcParam[i], "use_rgb") == 0) use_rgb_mode = (strcmp(pcValue[i], "true") == 0);
+        else if (strcmp(pcParam[i], "mode") == 0) mobile_compatibility = atoi(pcValue[i]);
     }
 
-    save_color_to_flash(base_r, base_g, base_b, use_rgb_mode);
+    save_color_to_flash(base_r, base_g, base_b, use_rgb_mode, mobile_compatibility);
 
     // Schedule soft reboot after 300ms
     add_alarm_in_ms(300, soft_restart, NULL, false);
@@ -391,11 +466,214 @@ void update_led_wave() {
     }
 }
 
+#define PIN_SCK    2  // CLK: from Pico to printer
+#define PIN_SOUT   3  // SIN: from Pico to printer
+#define PIN_SIN    0  // SOUT: from printer to Pico
+
+const int halfDelay = 62; // microseconds (~8kHz, matches Game Boy serial speed)
+
+uint8_t current_printer_status = PRINTER_STATUS_DISCONNECTED;
+
+// Debug: store raw responses from last packet
+#define DBG_MAX 32
+uint8_t dbg_responses[DBG_MAX];
+int dbg_count = 0;
+
+uint8_t get_printer_status() {
+    return current_printer_status;
+}
+
+uint8_t printer_send_byte(uint8_t byteToSend) {
+    uint8_t gbReply = 0;
+    for (int i = 0; i < 8; i++) {
+        gpio_put(PIN_SOUT, (byteToSend >> (7 - i)) & 1);
+        gpio_put(PIN_SCK, 0);
+        sleep_us(halfDelay);
+        bool readBit = gpio_get(PIN_SIN);
+        gbReply = (gbReply << 1) | (readBit ? 1 : 0);
+        gpio_put(PIN_SCK, 1);
+        sleep_us(halfDelay);
+    }
+    gpio_put(PIN_SOUT, 0);
+    sleep_us(halfDelay);
+    return gbReply;
+}
+
+void printer_send_packet(const uint8_t* packet, int length) {
+    // First call: disable PIO and configure GPIO (subsequent calls reuse same pin config)
+    if (!printing_active) {
+        pio_sm_set_enabled(LINKCABLE_PIO, LINKCABLE_SM, false);
+        pio_set_irq0_source_enabled(LINKCABLE_PIO, pis_interrupt0, false);
+        printing_active = true;
+
+        gpio_init(PIN_SCK);
+        gpio_set_dir(PIN_SCK, GPIO_OUT);
+        gpio_put(PIN_SCK, 0);
+
+        gpio_init(PIN_SOUT);
+        gpio_set_dir(PIN_SOUT, GPIO_OUT);
+        gpio_put(PIN_SOUT, 0);
+
+        gpio_init(PIN_SIN);
+        gpio_set_dir(PIN_SIN, GPIO_IN);
+        gpio_disable_pulls(PIN_SIN);
+    }
+
+    uint8_t last_response = 0x00;
+    uint8_t status_byte = 0x00;
+    bool has_response = false;
+    bool sync_received = false;
+    dbg_count = 0;
+    for (int i = 0; i < length; i++) {
+        uint8_t response = printer_send_byte(packet[i]);
+        if (dbg_count < DBG_MAX) dbg_responses[dbg_count++] = response;
+        
+        if (sync_received) {
+            status_byte = response;
+            sync_received = false; // We got the status after sync
+            has_response = true;
+        } else if (response == 0x81) {
+            sync_received = true;
+            has_response = true;
+        } else if (response != 0x00 && response != 0xFF) {
+            // Backup in case we missed sync but got something else
+            last_response = response;
+            has_response = true;
+        }
+        
+        sleep_us(10);
+    }
+
+    if (has_response) {
+        if (status_byte != 0x00) {
+            current_printer_status = status_byte;
+        } else if (last_response != 0x81 && last_response != 0xFF && last_response != 0x00) {
+            current_printer_status = last_response;
+        } else {
+            // If we only got 0x81 or 0x00 as last response, it might be OK
+            // but usually status follows 0x81.
+            // If status_byte is 0x00, it means the printer is likely OK.
+            current_printer_status = status_byte; 
+        }
+    } else {
+        current_printer_status = PRINTER_STATUS_DISCONNECTED;
+    }
+
+    sleep_us(400);
+    // Leave SCK HIGH (as printer_send_byte left it) — do NOT pull LOW or re-enable PIO.
+    // A spurious falling edge would desync the printer.
+    // PIO re-enabled only when JS sends done=1.
+}
+
+// Web interface endpoint: buffer packets, then send all at once on done=1
+const char *cgi_print_chunk(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
+    int is_done = 0;
+    const char *payload = NULL;
+
+    for (int i = 0; i < iNumParams; i++) {
+        if (strcmp(pcParam[i], "data") == 0) {
+            payload = pcValue[i];
+        } else if (strcmp(pcParam[i], "done") == 0) {
+            is_done = atoi(pcValue[i]);
+        }
+    }
+
+    if (payload && !is_done) {
+        // Buffer the packet (don't send yet)
+        size_t hex_len = strlen(payload);
+        if (hex_len > 2048) return "/index.html";
+        size_t byte_len = hex_len / 2;
+
+        if (pkt_queue_count < PKT_MAX_PACKETS && pkt_queue_used + byte_len <= PKT_QUEUE_SIZE) {
+            pkt_queue_offsets[pkt_queue_count] = pkt_queue_used;
+            pkt_queue_lengths[pkt_queue_count] = (int)byte_len;
+            for (size_t i = 0; i < byte_len; i++) {
+                char byte_str[3] = { payload[i*2], payload[i*2 + 1], 0 };
+                pkt_queue_buf[pkt_queue_used + i] = (uint8_t)strtol(byte_str, NULL, 16);
+            }
+            pkt_queue_used += byte_len;
+            pkt_queue_count++;
+        }
+    }
+
+    if (is_done) {
+        // Special case: if is_done=1 and no packets are buffered,
+        // send a status packet (88330f0000000f000000) to fetch current status.
+        if (pkt_queue_count == 0) {
+            static const uint8_t status_packet[] = {0x88, 0x33, 0x0f, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00};
+            printer_send_packet(status_packet, sizeof(status_packet));
+        } else {
+            // Collect all DATA payloads and reassemble into 640-byte strips.
+            // The GB Printer requires exactly 640-byte DATA packets (2 tile rows).
+            // HTTP chunks may be smaller (e.g. 256 bytes), so we reassemble here.
+            #define GB_STRIP_SIZE 640
+            #define GB_MAX_IMAGE  (9 * GB_STRIP_SIZE)
+            static uint8_t data_accum[GB_MAX_IMAGE];
+            int data_total = 0;
+
+            // Find index range of non-zero DATA packets
+            int first_data = -1, last_data = -1;
+            for (int p = 0; p < pkt_queue_count; p++) {
+                uint8_t *pkt = &pkt_queue_buf[pkt_queue_offsets[p]];
+                int     len  = pkt_queue_lengths[p];
+                if (len >= 10 && pkt[0] == 0x88 && pkt[1] == 0x33 && pkt[2] == 0x04) {
+                    int dlen = pkt[4] | (pkt[5] << 8);
+                    if (dlen > 0) {
+                        if (first_data < 0) first_data = p;
+                        last_data = p;
+                        if (data_total + dlen <= GB_MAX_IMAGE)
+                            memcpy(data_accum + data_total, pkt + 6, dlen);
+                        data_total += dlen;
+                    }
+                }
+            }
+
+            // Send packets before the first DATA packet (INIT, STATUS)
+            int pre_end = (first_data >= 0) ? first_data : pkt_queue_count;
+            for (int p = 0; p < pre_end; p++)
+                printer_send_packet(&pkt_queue_buf[pkt_queue_offsets[p]], pkt_queue_lengths[p]);
+
+            // Send reassembled 640-byte DATA strips
+            for (int offset = 0; offset < data_total; offset += GB_STRIP_SIZE) {
+                int chunk = data_total - offset;
+                if (chunk > GB_STRIP_SIZE) chunk = GB_STRIP_SIZE;
+
+                uint8_t strip[GB_STRIP_SIZE + 10];
+                strip[0] = 0x88; strip[1] = 0x33; strip[2] = 0x04; strip[3] = 0x00;
+                strip[4] = chunk & 0xFF; strip[5] = (chunk >> 8) & 0xFF;
+                memcpy(strip + 6, data_accum + offset, chunk);
+
+                uint16_t chk = 0x04 + (chunk & 0xFF) + ((chunk >> 8) & 0xFF);
+                for (int i = 0; i < chunk; i++) chk += data_accum[offset + i];
+                strip[6 + chunk] = chk & 0xFF;
+                strip[7 + chunk] = (chk >> 8) & 0xFF;
+                strip[8 + chunk] = 0x00; strip[9 + chunk] = 0x00;
+
+                printer_send_packet(strip, chunk + 10);
+            }
+
+            // Send packets after the last DATA packet (DATA_END, PRINT, STATUS)
+            int post_start = (last_data >= 0) ? last_data + 1 : 0;
+            for (int p = post_start; p < pkt_queue_count; p++)
+                printer_send_packet(&pkt_queue_buf[pkt_queue_offsets[p]], pkt_queue_lengths[p]);
+        }
+        // Reset queue
+        pkt_queue_count = 0;
+        pkt_queue_used = 0;
+        // Restore link cable
+        printing_active = false;
+        linkcable_init(link_cable_ISR);
+    }
+
+    return "/index.html";
+}
+
 /* Add to CGI handler list */
 static const tCGI cgi_handlers[] = {
     { "/download", cgi_download },
     { "/update", cgi_update },
     { "/set_color", cgi_set_color },
+    { "/print_chunk", cgi_print_chunk },
 };
 
 int fs_open_custom(struct fs_file *file, const char *name) {
@@ -428,15 +706,26 @@ int fs_open_custom(struct fs_file *file, const char *name) {
     } else if (!strcmp(name, STATUS_FILE)) {
         memset(file, 0, sizeof(struct fs_file));
         file->data  = file_buffer;
+        // Build debug response hex string
+        char dbg_hex[DBG_MAX * 3 + 1];
+        int dpos = 0;
+        for (int i = 0; i < dbg_count && dpos < (int)sizeof(dbg_hex) - 3; i++) {
+            if (i > 0) dbg_hex[dpos++] = ' ';
+            dpos += snprintf(dbg_hex + dpos, sizeof(dbg_hex) - dpos, "%02x", dbg_responses[i]);
+        }
+        dbg_hex[dpos] = '\0';
         file->len   = snprintf(file_buffer, sizeof(file_buffer),
                                "{\"result\":\"ok\"," \
                                "\"options\":{\"debug\":\"%s\"}," \
                                "\"status\":{\"last_size\":%d,\"total_files\":%d},"\
-                               "\"system\":{\"fast\":%s,\"version\":\"%s\"}}",
+                               "\"system\":{\"fast\":%s,\"version\":\"%s\"}," \
+                               "\"printer\":%u," \
+                               "\"dbg\":\"%s\"}",
                                on_off[debug_enable],
                                last_file_len, picture_count,
-                               true_false[speed_240_MHz],
-                               FIRMWARE_VERSION);
+                               true_false[speed_240_MHz], FIRMWARE_VERSION,
+                               (unsigned int)get_printer_status(),
+                               dbg_hex);
         file->index = file->len;
         return 1;
     } else if (!strcmp(name, LIST_FILE)) {
@@ -451,11 +740,12 @@ int fs_open_custom(struct fs_file *file, const char *name) {
         memset(file, 0, sizeof(struct fs_file));
         file->data  = file_buffer;
         file->len = snprintf(file_buffer, sizeof(file_buffer),
-            "{\"r\":%d,\"g\":%d,\"b\":%d,\"use_rgb\":%s}",
-            base_r, base_g, base_b, use_rgb_mode ? "true" : "false");
+            "{\"r\":%d,\"g\":%d,\"b\":%d,\"use_rgb\":%s,\"mode\":%d}",
+            base_r, base_g, base_b, use_rgb_mode ? "true" : "false", mobile_compatibility);
         file->index = file->len;
         return 1;
     }
+
     return 0;
 }
 
@@ -463,6 +753,7 @@ void fs_close_custom(struct fs_file *file) {
     (void)(file);
 }
 
+#if CFG_TUD_CDC
 void tud_cdc_rx_cb(uint8_t itf) {
   (void) itf;
   uint8_t buf[64];
@@ -486,6 +777,7 @@ void tud_cdc_rx_cb(uint8_t itf) {
     }
   }
 }
+#endif
 
 
 // main loop
@@ -509,6 +801,9 @@ int main(void) {
     gpio_set_irq_enabled_with_callback(PIN_KEY, GPIO_IRQ_EDGE_RISE, true, &key_callback);
 #endif
 
+    // RGB LED
+    load_color_from_flash();
+
     // Initialize tinyusb, lwip, dhcpd, dnsd and httpd
     init_lwip();
 
@@ -524,10 +819,6 @@ int main(void) {
 
     LED_OFF;
 
-    // RGB LED
-
-    load_color_from_flash();
-
     setupOnboardRGB();
 
     while (true) {
@@ -536,9 +827,7 @@ int main(void) {
         tud_task();
         // process WEB
         service_traffic();
-
         uint64_t now = time_us_64();
-
         update_led_wave();
     }
 

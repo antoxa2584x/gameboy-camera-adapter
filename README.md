@@ -14,7 +14,41 @@ Lets the Pico pretend to be a USB Ethernet device. Runs the webinterface at http
 
 Now with Android app support! You can use the [GameBoy Camera Adapter Companion](https://github.com/antoxa2584x/gameboy-camera-adapter-companion) to easily receive and manage your photos on your Android device.
 
+### Mobile Compatibility Modes
+
+The adapter supports two modes for better compatibility with different devices. You can switch between them in the web interface settings or via serial commands:
+
+1.  **iOS + Mac/Win/Other (Default)**: Optimized for iOS and general web use. USB Serial (CDC) is disabled to ensure the web interface (RNDIS/ECM) is prioritized and recognized correctly by iOS.
+2.  **Android + Mac/Win/Other**: Enables both USB Serial (CDC) and the Web interface (RNDIS). This mode is required for the Android companion app but also works with other systems.
+
+#### Switching modes via Serial
+
+If you cannot access the web interface, you can switch modes by sending these commands to the USB Serial (CDC) port:
+- `GET /set_mode_ios`: Switches to iOS mode and reboots.
+- `GET /set_mode_android`: Switches to Android mode and reboots.
+- `GET /reset_mode`: Resets to iOS mode and reboots.
+- `GET /update`: Triggers the bootloader mode for firmware updates.
+
 Special thanks to Raphael-Boichot, please check this repo: https://github.com/Raphael-Boichot/The-Arduino-SD-Game-Boy-Printer
+
+## Printer Support
+
+This project supports both receiving photos from a Game Boy and **printing** images to a real Game Boy Printer.
+
+### Receiving Photos (Scanner Mode)
+
+By default, the adapter acts as a "Game Boy Printer Emulator". When you select "Print" on your Game Boy, the photos will appear in the web interface Gallery.
+
+### Printing to Game Boy (Printer Mode)
+
+You can switch the web interface to **Printer Mode** by clicking the **Game Boy Camera Adapter logo** at the top. This mode allows you to print any image from your computer or phone to a real Game Boy Printer connected to the adapter.
+
+- **Image Upload**: Supports standard image formats. The image is automatically converted to the Game Boy's 4-color grayscale and tiled format.
+- **Live Preview**: See how your image will look before printing.
+- **Exposure Control**: Adjust the print darkness (0-127) using the slider.
+- **Status Monitoring**: Real-time feedback from the printer (e.g., OK, Paper Jam, Battery Low).
+
+For detailed information about the protocol implementation, see [COMMUNICATION.md](COMMUNICATION.md).
 
 ## Schematics
 

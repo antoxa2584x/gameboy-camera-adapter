@@ -33,8 +33,13 @@
  * Auto ProductID layout's Bitmap:
  *   [MSB]       NET | VENDOR | MIDI | HID | MSC | CDC          [LSB]
  */
-#define _PID_MAP(itf, n)  ((CFG_TUD_##itf) << (n))
-#define USB_PID           (0x4000 | _PID_MAP(CDC, 0) | _PID_MAP(MSC, 1) | _PID_MAP(HID, 2) | _PID_MAP(MIDI, 3) | _PID_MAP(VENDOR, 4) | _PID_MAP(ECM_RNDIS, 5) | _PID_MAP(NCM, 5))
+#define _PID_MAP(itf, n)  ((itf) << (n))
+
+uint16_t get_usb_pid(void) {
+    uint8_t cdc_en = (mobile_compatibility == MODE_ANDROID);
+    uint8_t net_en = true; // Always enable network
+    return 0x4000 | _PID_MAP(cdc_en, 0) | _PID_MAP(net_en, 5);
+}
 
 // String Descriptor Index
 enum {
@@ -47,11 +52,15 @@ enum {
 };
 
 enum {
+#if CFG_TUD_NET_ENABLED
     ITF_NUM_NET = 0,
     ITF_NUM_NET_DATA,
+#endif
 
+#if CFG_TUD_CDC
     ITF_NUM_CDC_ACM,
     ITF_NUM_CDC_ACM_DATA,
+#endif
 
     ITF_NUM_TOTAL
 };
@@ -70,126 +79,70 @@ enum {
 //--------------------------------------------------------------------+
 // Device Descriptors
 //--------------------------------------------------------------------+
-tusb_desc_device_t const desc_device = {
-    .bLength            = sizeof(tusb_desc_device_t),
-    .bDescriptorType    = TUSB_DESC_DEVICE,
-    .bcdUSB             = 0x0200,
-
-    // Use Interface Association Descriptor (IAD) device class
-    .bDeviceClass       = TUSB_CLASS_MISC,
-    .bDeviceSubClass    = MISC_SUBCLASS_COMMON,
-    .bDeviceProtocol    = MISC_PROTOCOL_IAD,
-
-    .bMaxPacketSize0    = CFG_TUD_ENDPOINT0_SIZE,
-
-    .idVendor           = 0xCafe,
-    .idProduct          = USB_PID,
-    .bcdDevice          = 0x0101,
-
-    .iManufacturer      = STRID_MANUFACTURER,
-    .iProduct           = STRID_PRODUCT,
-    .iSerialNumber      = STRID_SERIAL,
-
-    .bNumConfigurations = CONFIG_ID_COUNT // multiple configurations
-};
-
 // Invoked when received GET DEVICE DESCRIPTOR
 // Application return pointer to descriptor
 uint8_t const * tud_descriptor_device_cb(void) {
-    return (uint8_t const *) &desc_device;
+    static tusb_desc_device_t desc = {
+        .bLength            = sizeof(tusb_desc_device_t),
+        .bDescriptorType    = TUSB_DESC_DEVICE,
+        .bcdUSB             = 0x0200,
+
+        // Use Interface Association Descriptor (IAD) device class
+        .bDeviceClass       = TUSB_CLASS_MISC,
+        .bDeviceSubClass    = MISC_SUBCLASS_COMMON,
+        .bDeviceProtocol    = MISC_PROTOCOL_IAD,
+
+        .bMaxPacketSize0    = CFG_TUD_ENDPOINT0_SIZE,
+
+        .idVendor           = 0xCafe,
+        .idProduct          = 0,
+        .bcdDevice          = 0x0101,
+
+        .iManufacturer      = STRID_MANUFACTURER,
+        .iProduct           = STRID_PRODUCT,
+        .iSerialNumber      = STRID_SERIAL,
+
+        .bNumConfigurations = 0
+    };
+    desc.idProduct = get_usb_pid();
+    desc.bNumConfigurations = (mobile_compatibility == MODE_ANDROID) ? 1 : 2;
+    return (uint8_t const *) &desc;
 }
 
 //--------------------------------------------------------------------+
 // Configuration Descriptor
 //--------------------------------------------------------------------+
-#define MAIN_CONFIG_TOTAL_LEN    (TUD_CONFIG_DESC_LEN + TUD_RNDIS_DESC_LEN + TUD_CDC_DESC_LEN)
-#define ALT_CONFIG_TOTAL_LEN     (TUD_CONFIG_DESC_LEN + TUD_CDC_ECM_DESC_LEN + TUD_CDC_DESC_LEN)
-#define NCM_CONFIG_TOTAL_LEN     (TUD_CONFIG_DESC_LEN + TUD_CDC_NCM_DESC_LEN + TUD_CDC_DESC_LEN)
+#define CONFIG_TOTAL_LEN_IOS     (TUD_CONFIG_DESC_LEN + TUD_RNDIS_DESC_LEN)
+#define CONFIG_TOTAL_LEN_ECM     (TUD_CONFIG_DESC_LEN + TUD_CDC_ECM_DESC_LEN)
+#define CONFIG_TOTAL_LEN_ANDROID (TUD_CONFIG_DESC_LEN + TUD_RNDIS_DESC_LEN + TUD_CDC_DESC_LEN)
 
-#if CFG_TUSB_MCU == OPT_MCU_LPC175X_6X || CFG_TUSB_MCU == OPT_MCU_LPC177X_8X || CFG_TUSB_MCU == OPT_MCU_LPC40XX
-    // LPC 17xx and 40xx endpoint type (bulk/interrupt/iso) are fixed by its number
-    // 0 control, 1 In, 2 Bulk, 3 Iso, 4 In etc ...
-    #define EPNUM_NET_NOTIF   0x81
-    #define EPNUM_NET_OUT     0x02
-    #define EPNUM_NET_IN      0x82
-
-#elif CFG_TUSB_MCU == OPT_MCU_SAMG  || CFG_TUSB_MCU ==  OPT_MCU_SAMX7X
-    // SAMG doesn't support a same endpoint number with different direction IN and OUT
-    //    e.g EP1 OUT & EP1 IN cannot exist together
-    #define EPNUM_NET_NOTIF   0x81
-    #define EPNUM_NET_OUT     0x02
-    #define EPNUM_NET_IN      0x83
-
-#else
-    #define EPNUM_NET_NOTIF   0x81
-    #define EPNUM_NET_OUT     0x02
-    #define EPNUM_NET_IN      0x82
-#endif
-
-#define EPNUM_CDC_NOTIF   0x84
-#define EPNUM_CDC_OUT     0x03
-#define EPNUM_CDC_IN      0x85
-
-#if CFG_TUD_ECM_RNDIS
-
-static uint8_t const rndis_configuration[] = {
-    // Config number (index+1), interface count, string index, total length, attribute, power in mA
-    TUD_CONFIG_DESCRIPTOR(CONFIG_ID_RNDIS+1, ITF_NUM_TOTAL, 0, MAIN_CONFIG_TOTAL_LEN, 0, 100),
-
-    // Interface number, string index, EP notification address and size, EP data address (out, in) and size.
-    TUD_RNDIS_DESCRIPTOR(ITF_NUM_NET, STRID_INTERFACE, EPNUM_NET_NOTIF, 8, EPNUM_NET_OUT, EPNUM_NET_IN, CFG_TUD_NET_ENDPOINT_SIZE),
-
-    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_ACM, 0,
-                       EPNUM_CDC_NOTIF, 8,
-                       EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
+static uint8_t const ios_configuration[] = {
+    TUD_CONFIG_DESCRIPTOR(1, 2, 0, CONFIG_TOTAL_LEN_IOS, 0, 100),
+    TUD_RNDIS_DESCRIPTOR(0, STRID_INTERFACE, EPNUM_NET_NOTIF, 8, EPNUM_NET_OUT, EPNUM_NET_IN, 64),
 };
 
 static uint8_t const ecm_configuration[] = {
-    // Config number (index+1), interface count, string index, total length, attribute, power in mA
-    TUD_CONFIG_DESCRIPTOR(CONFIG_ID_ECM+1, ITF_NUM_TOTAL, 0, ALT_CONFIG_TOTAL_LEN, 0, 100),
-
-    // Interface number, description string index, MAC address string index, EP notification address and size, EP data address (out, in), and size, max segment size.
-    TUD_CDC_ECM_DESCRIPTOR(ITF_NUM_NET, STRID_INTERFACE, STRID_MAC, EPNUM_NET_NOTIF, 64, EPNUM_NET_OUT, EPNUM_NET_IN, CFG_TUD_NET_ENDPOINT_SIZE, CFG_TUD_NET_MTU),
-
-    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_ACM, 0,
-                       EPNUM_CDC_NOTIF, 8,
-                       EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
+    TUD_CONFIG_DESCRIPTOR(2, 2, 0, CONFIG_TOTAL_LEN_ECM, 0, 100),
+    TUD_CDC_ECM_DESCRIPTOR(0, STRID_INTERFACE, STRID_MAC, EPNUM_NET_NOTIF, 64, EPNUM_NET_OUT, EPNUM_NET_IN, 64, CFG_TUD_NET_MTU),
 };
 
-#else
-
-static uint8_t const ncm_configuration[] = {
-    // Config number (index+1), interface count, string index, total length, attribute, power in mA
-    TUD_CONFIG_DESCRIPTOR(CONFIG_ID_NCM+1, ITF_NUM_TOTAL, 0, NCM_CONFIG_TOTAL_LEN, 0, 100),
-
-    // Interface number, description string index, MAC address string index, EP notification address and size, EP data address (out, in), and size, max segment size.
-    TUD_CDC_NCM_DESCRIPTOR(ITF_NUM_NET, STRID_INTERFACE, STRID_MAC, EPNUM_NET_NOTIF, 64, EPNUM_NET_OUT, EPNUM_NET_IN, CFG_TUD_NET_ENDPOINT_SIZE, CFG_TUD_NET_MTU),
-
-    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_ACM, 0,
-                       EPNUM_CDC_NOTIF, 8,
-                       EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
-};
-
-#endif
-
-// Configuration array: RNDIS and CDC-ECM
-// - Windows only works with RNDIS
-// - MacOS only works with CDC-ECM
-// - Linux will work on both
-static uint8_t const * const configuration_arr[CONFIG_ID_COUNT] = {
-#if CFG_TUD_ECM_RNDIS
-    [CONFIG_ID_RNDIS] = rndis_configuration,
-    [CONFIG_ID_ECM  ] = ecm_configuration
-#else
-    [CONFIG_ID_NCM  ] = ncm_configuration
-#endif
+static uint8_t const android_configuration[] = {
+    TUD_CONFIG_DESCRIPTOR(1, 4, 0, CONFIG_TOTAL_LEN_ANDROID, 0, 100),
+    TUD_RNDIS_DESCRIPTOR(0, STRID_INTERFACE, EPNUM_NET_NOTIF, 8, EPNUM_NET_OUT, EPNUM_NET_IN, 64),
+    TUD_CDC_DESCRIPTOR(2, 0, EPNUM_CDC_NOTIF, 8, EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
 };
 
 // Invoked when received GET CONFIGURATION DESCRIPTOR
 // Application return pointer to descriptor
-// Descriptor contents must exist long enough for transfer to complete
 uint8_t const * tud_descriptor_configuration_cb(uint8_t index) {
-    return (index < CONFIG_ID_COUNT) ? configuration_arr[index] : NULL;
+    if (mobile_compatibility == MODE_ANDROID) return android_configuration;
+    
+    // For IOS mode, we provide two configurations: RNDIS and ECM
+    // Windows/iOS might pick one
+    if (index == 0) return ios_configuration;
+    if (index == 1) return ecm_configuration;
+    
+    return NULL;
 }
 
 //--------------------------------------------------------------------+
@@ -201,7 +154,7 @@ static char const* string_desc_arr [] = {
     [STRID_LANGID]       = (const char[]) { 0x09, 0x04 }, // supported language is English (0x0409)
     [STRID_MANUFACTURER] = "RetroGaming UA",               // Manufacturer
     [STRID_PRODUCT]      = "GameBoy Camera Adapter [" FIRMWARE_VERSION "]",   // Product
-    [STRID_SERIAL]       = "GBCA1.4.8",                                        // Serial
+    [STRID_SERIAL]       = "GBCA2.0.1",                                        // Serial
     [STRID_INTERFACE]    = "GameBoy Camera Adapter USB Network Interface",    // Interface Description
     [STRID_MAC]          = "0002846A9600"                                      // MAC
 };

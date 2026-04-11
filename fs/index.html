@@ -1,36 +1,41 @@
 <html lang="en">
-   <head>
-      <title>GameBoy Camera Adapter</title>
-   </head>
-   <body>
-      <button id="firmware-version-btn" onclick="showFirmwarePopup()" style="color:white;position:absolute;margin:1rem;right:0;top:0;font-size: 1em;text-decoration: underline;">Settings</button>
-      <link rel="icon" type="image/png" href="/img/favicon-96x96.png" sizes="96x96">
-      <link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
-      <link rel="shortcut icon" href="/img/favicon.ico">
-      <link rel="apple-touch-icon" sizes="180x180" href="/img/apple-touch-icon.png">
-      <meta name="apple-mobile-web-app-title" content="GameBoy Camera Adapter">
-      <link rel="manifest" href="site.webmanifest">
-      <meta charset="UTF-8">
-      <meta name="apple-mobile-web-app-capable" content="yes">
-      <meta name="apple-mobile-web-app-status-bar-style" content="white">
-      <meta name="application-name" content="GameBoy Camera Adapter">
-      <meta name="msapplication-TileColor" content="#ece6e6">
-      <meta name="theme-color" content="#ece6e6">
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <link rel="stylesheet" href="styles.css">
-      <script src="piexifjs.js"></script>
+<head>
+    <title>GameBoy Camera Adapter</title>
+</head>
+<body>
+<button id="firmware-version-btn" onclick="showFirmwarePopup()"
+        style="color:white;position:absolute;margin:1rem;right:0;top:0;font-size: 1em;text-decoration: underline;">
+    Settings
+</button>
+<link rel="icon" type="image/png" href="img/favicon-96x96.png" sizes="96x96">
+<link rel="icon" type="image/svg+xml" href="img/favicon.svg">
+<link rel="shortcut icon" href="img/favicon.ico">
+<link rel="apple-touch-icon" sizes="180x180" href="img/web-app-manifest-192x192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="GB Camera">
+<meta name="application-name" content="GameBoy Camera Adapter">
+<meta name="msapplication-TileColor" content="#ece6e6">
+<meta name="theme-color" content="#266d3f">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1.0, user-scalable=0">
+<link rel="manifest" href="img/site.webmanifest">
+<meta charset="UTF-8">
+<link rel="stylesheet" href="css/styles.css">
+<script src="js/piexifjs.js"></script>
 
-      <!-- Firmware Update Dialog -->
-      <div id="fw-popup" class="popup-overlay" style="display: none;">
-         <div class="popup-container">
-            <div style="display: flex; flex-direction: column; align-items: center; background: #266d3f; padding: 2rem; border-radius: 10px; width: 100%; max-width: 500px;">
-               <!-- Close Button -->
-               <button class="close-btn" onclick="closeFirmwarePopup()">✕</button>
-               <p id="firmware-version-text" style="color: white; font-size: 1.5rem; margin-bottom: 2rem;">Current firmware is v1.4.2</p>
-               <!-- Color Picker + Button -->
-               <div class="settings-container">
-                  <div style="/* flex:1; */display: flex;flex-direction: row;align-content: center;">
-                     <label class="led-color">
+<!-- Firmware Update Dialog -->
+<div id="fw-popup" class="popup-overlay" style="display: none;">
+    <div class="popup-container"
+         style="position: relative; background: #266d3f; padding: 2rem; border-radius: 10px; width: 90%; max-width: 500px; box-sizing: border-box;">
+        <div style="display: flex; flex-direction: column; align-items: center;">
+            <!-- Close Button -->
+            <button class="close-btn" onclick="closeFirmwarePopup()">X</button>
+            <p id="firmware-version-text" style="color: white; font-size: 1.5rem; margin-bottom: 2rem;">Current firmware
+                is v2.0.2</p>
+            <!-- Color Picker + Button -->
+            <div class="settings-container">
+                <div style="/* flex:1; */display: flex;flex-direction: row;align-content: center;">
+                    <label class="led-color">
                         <input type="color" id="ledColorPicker" value="#00ff00" style="position: absolute;
                            cursor: pointer;
                            opacity: 0;">
@@ -39,72 +44,166 @@
                            background-color: #00ff00;
                            cursor: pointer;">
                         </div>
-                     </label>
-                     <label style="color: white;font-size: 1rem;text-align: left;flex: 1;align-content: center;margin-left: 1rem;">Choose LED color</label>
-                  </div>
-                  <!-- Color Mode Selector -->
-                  <div style="display: flex;justify-content: space-between;align-items: center;width: 100%;margin-top: 1rem;">
-                     <label class="switch">
-                     <input type="checkbox" id="colorMode" checked>
-                     <span class="slider round"></span>
-                     </label>
-                     <label for="colorMode" style="color: white;font-size: 1rem;text-align: left;">If color not as expected, switch this</label>
-                  </div>
-                  <button onclick="setLedColor()">Set LED Color</button>
-               </div>
-               <!-- Firmware Controls -->
-               <button class="darkgreen" onclick="checkForUpdate()">Check for Update</button>
-               <button class="red" onclick="startUpdate()">Update</button>
-               <label style="color: white;font-size: 0.7rem;text-align: center;margin-top: 1rem;">Click here only to update Adapter Firmware</label>
+                    </label>
+                    <label style="color: white;font-size: 1rem;text-align: left;flex: 1;align-content: center;margin-left: 1rem;">Choose
+                        LED color</label>
+                </div>
+                <!-- Color Mode Selector -->
+                <div style="display: flex;justify-content: space-between;align-items: center;width: 100%;margin-top: 1rem;">
+                    <label class="switch">
+                        <input type="checkbox" id="colorMode" checked>
+                        <span class="slider round"></span>
+                    </label>
+                    <label for="colorMode" style="color: white;font-size: 1rem;text-align: left;">If color not as
+                        expected, switch this</label>
+                </div>
+
+                <!-- Mobile Compatibility Selector -->
+                <div style="display: flex; flex-direction: column; width: 100%; margin-top: 1.5rem; gap: 0.5rem;">
+                    <label style="color: white; font-size: 1rem; text-align: left;">Mobile Compatibility</label>
+                    <select id="mobileMode" style="padding: 0.5rem; border-radius: 5px; background: #1e4a2b; color: white; border: 1px solid #4caf50;">
+                        <option value="1">Android + Mac/Win/Other</option>
+                        <option value="2">iOS + Mac/Win/Other</option>
+                    </select>
+                    <label style="color: #ffcc00; font-size: 0.7rem; text-align: left;">Note: Changing this will reboot the adapter.</label>
+                </div>
+
+                <button onclick="setLedColor()">Save Settings</button>
             </div>
-         </div>
-      </div>
-      <div id="general-popup" class="popup-overlay" style="display:none;">
-         <div class="popup-container">
-            <div class="general-popup-content"
-               style="display:flex; flex-direction:column; align-items:center; background:#266d3f; padding: 2rem; border-radius: 10px; color: white; padding: 60px;">
-            </div>
-            <button class="close-btn" onclick="closeGeneralPopup()">✕</button>
-         </div>
-      </div>
-      <div id="content" class="container">
-         <div id="header">
-            <div id="update-alert" style="display:none; color: yellow; font-size: 12px; text-align: center; padding: 10px;">
-               🔔 Update available: <span id="latest-version"></span>
-            </div>
-            <img src="img/logo.webp" alt="logo" style="padding:10%;width:80%;flex:auto;padding-top: 15%;">
+            <!-- Firmware Controls -->
+            <button class="darkgreen" onclick="checkForUpdate()">Check for Update</button>
+            <button class="red" onclick="startUpdate()">Update</button>
+            <label style="color: white;font-size: 0.7rem;text-align: center;margin-top: 1rem;">Click here only to update
+                Adapter Firmware</label>
+        </div>
+    </div>
+</div>
+<div id="general-popup" class="popup-overlay" style="display:none;">
+    <div class="popup-container"
+         style="position: relative; background: #266d3f; padding: 2rem; border-radius: 10px; color: white; width: 90%; max-width: 500px; box-sizing: border-box;">
+        <div class="general-popup-content"
+             style="display:flex; flex-direction:column; align-items:center;">
+        </div>
+        <button class="close-btn general-popup-button-close-button" onclick="closeGeneralPopup()">X</button>
+    </div>
+</div>
+
+<div id="content" class="container">
+    <div id="header">
+        <div id="update-alert" style="display:none; color: yellow; font-size: 12px; text-align: center; padding: 10px;">
+            🔔 Update available: <span id="latest-version"></span>
+        </div>
+        <img src="https://rgaming.com.ua/camera_adapter/assets/logo.webp" alt="logo" id="logo-img"
+             style="width:80%;flex:auto;padding: 15% 10% 5%;cursor: pointer;">
+        <div id="mode-indicator" style="color: white; margin-bottom: 2rem;">
+            <div id="mode-name" style="font-size: 1.5rem; margin-bottom: 0.5rem;">Gallery</div>
+            <div id="mode-switch-hint" style="font-size: 0.6rem; opacity: 0.8;">(Click logo to switch mode)</div>
+        </div>
+    </div>
+
+    <!-- Mode Containers -->
+    <div id="scanner-mode" class="mode-block">
+        <div>
             <button style="display:none" id="get_image_btn">Get Images</button>
             <button style="display:none" id="tear_btn">Tear</button>
             <button style="display:none" id="select_all_btn" disabled="">Select All</button>
             <button style="display:none" id="delete_selected_btn" disabled="">Delete</button>
             <button style="display:none" id="average_selected_btn" disabled="">Average</button>
             <div id="color-selector">
-               <div class="color-circle active" style="background:linear-gradient(to right, #ffffff 25%, #bfbfbf 25% 50%, #7f7f7f 50% 75%, #3f3f3f 75%)" data-scheme="grayscale"></div>
-               <div class="color-circle" style="background:linear-gradient(to right, #d0d93c 25%, #78a46a 25% 50%, #545854 50% 75%, #244624 75%)" data-scheme="game-boy"></div>
-               <div class="color-circle" style="background:linear-gradient(to right, #ffffff 25%, #b5b3bd 25% 50%, #545367 50% 75%, #090713 75%)" data-scheme="super-game-boy"></div>
-               <div class="color-circle" style="background:linear-gradient(to right, #f0f0f0 25%, #dac46a 25% 50%, #705834 50% 75%, #1e1e1e 75%)" data-scheme="game-boy-color-jpn"></div>
-               <div class="color-circle" style="background:linear-gradient(to right, #f0f0f0 25%, #dca0a0 25% 50%, #884e4e 50% 75%, #1e1e1e 75%)" data-scheme="game-boy-color-usa-gold"></div>
-               <div class="color-circle" style="background:linear-gradient(to right, #f0f0f0 25%, #86c864 25% 50%, #3a6084 50% 75%, #1e1e1e 75%)" data-scheme="game-boy-color-usa-eur"></div>
+                <div class="color-circle active"
+                     style="background:linear-gradient(to right, #ffffff 25%, #bfbfbf 25% 50%, #7f7f7f 50% 75%, #3f3f3f 75%)"
+                     data-scheme="grayscale"></div>
+                <div class="color-circle"
+                     style="background:linear-gradient(to right, #d0d93c 25%, #78a46a 25% 50%, #545854 50% 75%, #244624 75%)"
+                     data-scheme="game-boy"></div>
+                <div class="color-circle"
+                     style="background:linear-gradient(to right, #ffffff 25%, #b5b3bd 25% 50%, #545367 50% 75%, #090713 75%)"
+                     data-scheme="super-game-boy"></div>
+                <div class="color-circle"
+                     style="background:linear-gradient(to right, #f0f0f0 25%, #dac46a 25% 50%, #705834 50% 75%, #1e1e1e 75%)"
+                     data-scheme="game-boy-color-jpn"></div>
+                <div class="color-circle"
+                     style="background:linear-gradient(to right, #f0f0f0 25%, #dca0a0 25% 50%, #884e4e 50% 75%, #1e1e1e 75%)"
+                     data-scheme="game-boy-color-usa-gold"></div>
+                <div class="color-circle"
+                     style="background:linear-gradient(to right, #f0f0f0 25%, #86c864 25% 50%, #3a6084 50% 75%, #1e1e1e 75%)"
+                     data-scheme="game-boy-color-usa-eur"></div>
             </div>
             <br>
-         </div>
-         <div>
+        </div>
+        <div style="display: flex; justify-content: center; width: 100%;">
             <button id="save_all_btn" style="display:none" onclick="saveAllPictures()">Save All</button>
-         </div>
-         <div id="gallery"></div>
-      </div>
-      <p id="description">Start printing on your Game Boy<br>Photos will appear on this page</p>
-      <footer>
-         <div class="links">
-            <a href="https://github.com/untoxa/pico-gb-printer" target="_blank" id="image-link" aria-label="untoxa/pico-gb-printer">
-            <img src="img/github.png" alt="GitHub Project">
-            </a>
-            <a href="https://www.instagram.com/retrogaming_ua/" target="_blank" id="image-link" aria-label="Instagram">
-            <img src="img/instagram.png" alt="Instagram">
-            </a>
-         </div>
-      </footer>
+        </div>
+        <div id="gallery"></div>
 
-      <script defer="" src="script.js"></script>
-   </body>
+        <p id="description">Start printing on your Game Boy<br>Photos will appear on this page</p>
+    </div>
+
+    <div id="printer-mode" class="mode-block" style="display: none; padding-bottom: 2rem;">
+        <div style="display: flex; justify-content: center; align-items: center; width: 100%; margin-top: 20px;">
+            <div style="text-align: center; display: flex; flex-direction: column; gap: 1.5rem; align-items: center;">
+                <div id="printer-status" style="color:white; text-align:center; margin-top:10px;">
+                    Printer Status: OK
+                </div>
+
+                <label style="color: white; font-size: 1.1rem;">Upload Image for Printing</label>
+
+                <canvas id="preview-canvas" width="160" height="144" style="border: 1px solid white; max-width: 160px;"></canvas>
+
+                <input type="file" id="file-input" accept="image/*" onchange="handleFileInput(event)"
+                       style="display: none;">
+
+                <div style="display: flex; flex-direction: column; align-items: center;">
+                    <label for="file-input"
+                           style="background: #4caf50; color: white; padding: 0.5rem 1rem; border-radius: 5px; cursor: pointer; font-weight: bold; margin-bottom: 0.5rem;">Choose
+                        File</label>
+                </div>
+
+                <div id="printer-controls"
+                     style="display: none; flex-direction: column; gap: 0.2rem; width: 100%; margin-top: 1rem;">
+                    <div style="display: flex; flex-direction: column; align-items: center; color: white; gap: 0.5rem; margin-bottom: 1rem;">
+                        <label for="image-mode" style="font-size: 0.8rem;">Crop mode:</label>
+                        <select id="image-mode" onchange="refreshPreview()" style="padding: 0.4rem; border-radius: 5px; background: #1e4a2b; color: white; border: 1px solid #4caf50; width: 200px;">
+                            <option value="crop">Crop to 160x144</option>
+                            <option value="fit">Fit with white borders</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; justify-content: center; align-items: center; color: white; gap: 0.5rem;">
+                        <label for="print-exposure" style="font-size: 0.8rem;">Exposure:</label>
+                        <input type="range" id="print-exposure" min="0" max="127" value="64" style="width: 150px;" oninput="refreshPreview()">
+                    </div>
+                </div>
+
+                <button id="print-button" class="darkgreen" onclick="printSelectedImage()"
+                        style="display: none; margin-top: 1rem;">Print to Game Boy
+                </button>
+            </div>
+        </div>
+        <p class="description" style="margin-top: 2rem; text-align: center; color: white; opacity: 0.5; font-size: 0.6rem;">
+            This is a beta feature.<br>
+            It may work incorrectly with some printer models.
+        </p>
+    </div>
+</div>
+
+<!-- Print Progress Overlay -->
+<div id="print-overlay" class="popup-overlay" style="display: none;">
+    <div class="popup-container"
+         style="position: relative; background: #266d3f; padding: 2rem; border-radius: 10px; width: 90%; max-width: 400px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; color: white;">
+        <div class="loader-spinner"></div>
+        <div id="print-status-text" style="margin-top: 1.5rem; font-size: 1rem; text-align: center;">Sending to printer...</div>
+    </div>
+</div>
+
+<footer>
+    <div class="links">
+        <a href="https://github.com/antoxa2584x/gameboy-camera-adapter" class="footer-link" target="_blank">GITHUB</a>
+        <a href="https://github.com/antoxa2584x/gameboy-camera-adapter-companion" class="footer-link" target="_blank">ANDROID
+            APP</a>
+        <a href="https://www.instagram.com/retrogaming_ua/" class="footer-link" target="_blank">INSTAGRAM</a>
+    </div>
+</footer>
+
+<script defer="" src="js/script.js"></script>
+</body>
 </html>

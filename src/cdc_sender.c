@@ -27,6 +27,7 @@ static bool wait_until_true_or_timeout(bool (*cond)(void), uint32_t timeout_ms) 
   return cond();
 }
 
+#if CFG_TUD_CDC
 bool cdc_send_bytes(const uint8_t* data, uint32_t len, uint32_t timeout_ms) {
     if (!data || !len) return true;
     if (timeout_ms == 0) timeout_ms = 2000;
@@ -77,6 +78,7 @@ bool cdc_send_bytes(const uint8_t* data, uint32_t len, uint32_t timeout_ms) {
 
     return true;
 }
+#endif
 
 static uint32_t base64_encode(const uint8_t *in, uint32_t inlen,
                               char *out, uint32_t outmax)
@@ -100,6 +102,7 @@ static uint32_t base64_encode(const uint8_t *in, uint32_t inlen,
     return outlen;
 }
 
+#if CFG_TUD_CDC
 void send_base64_chunk(const uint8_t* data, uint32_t len) {
     static char encoded[2048]; // moved to static to save stack
     uint32_t out_len = base64_encode(data, len, encoded, sizeof(encoded));
@@ -131,3 +134,9 @@ bool cdc_send_file_framed(const datafile_t* f, uint32_t timeout_ms) {
 
     return true;
 }
+
+bool cdc_send_string(const char* str) {
+    if (!str || !*str) return true;
+    return cdc_send_bytes((const uint8_t*)str, strlen(str), 2000);
+}
+#endif

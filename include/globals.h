@@ -1,10 +1,23 @@
 #ifndef _GLOBALS_H_INCLUDE_
 #define _GLOBALS_H_INCLUDE_
 
-#define FIRMWARE_VERSION        "1.4.8"
+#include <stdint.h>
+#include <stdbool.h>
+
+#define FIRMWARE_VERSION        "2.0.2"
 #define ENABLE_DEBUG            false
 #define BUFFER_SIZE_KB          128
 #define FILE_BUFFER_SIZE        16384
+
+// Mobile compatibility modes
+#define MODE_ANDROID        1  // Both (CDC + Network)
+#define MODE_IOS            2  // Server only (Network)
+
+extern uint8_t mobile_compatibility;
+
+// Function declarations to avoid implicit declarations
+void save_color_to_flash(uint8_t r, uint8_t g, uint8_t b, bool rgb_mode, uint8_t mode);
+void setupOnboardRGB(void);
 
 // LED pin, undefine to disable
 #define LED_PIN                 25

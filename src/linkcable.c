@@ -29,10 +29,20 @@ void linkcable_reset(void) {
 }
 
 void linkcable_init(irq_handler_t onDataReceive) {
+    static bool program_added = false;
+    if (!program_added) {
 #ifdef STACKSMASHING
-    linkcable_sm_program_init(LINKCABLE_PIO, LINKCABLE_SM, linkcable_pio_initial_pc = pio_add_program(LINKCABLE_PIO, &linkcable_sm_program));
+        linkcable_pio_initial_pc = pio_add_program(LINKCABLE_PIO, &linkcable_sm_program);
 #else
-    linkcable_program_init(LINKCABLE_PIO, LINKCABLE_SM, linkcable_pio_initial_pc = pio_add_program(LINKCABLE_PIO, &linkcable_program), CABLE_PINS_START);
+        linkcable_pio_initial_pc = pio_add_program(LINKCABLE_PIO, &linkcable_program);
+#endif
+        program_added = true;
+    }
+
+#ifdef STACKSMASHING
+    linkcable_sm_program_init(LINKCABLE_PIO, LINKCABLE_SM, linkcable_pio_initial_pc);
+#else
+    linkcable_program_init(LINKCABLE_PIO, LINKCABLE_SM, linkcable_pio_initial_pc, CABLE_PINS_START);
 #endif
 //    pio_sm_put_blocking(LINKCABLE_PIO, LINKCABLE_SM, LINKCABLE_BITS - 1);
     pio_enable_sm_mask_in_sync(LINKCABLE_PIO, (1u << LINKCABLE_SM));
