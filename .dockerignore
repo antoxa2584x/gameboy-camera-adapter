@@ -1,0 +1,11 @@
+# Local build artifacts — the container does a fresh cmake configure in /project/build;
+# a host CMakeCache.txt (with host paths) copied in via `COPY . .` breaks it.
+build/
+output/
+
+# Not needed inside the image
+.git/
+.claude/
+*.uf2
+preview_*.jpg
+schematics.jpg
