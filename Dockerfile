@@ -19,6 +19,7 @@ WORKDIR /project
 COPY . .
 
 RUN mkdir -p build && \
+  python3 inline_assets.py && \
   gcc -o build/makefsdata -I$PICO_SDK_PATH/lib/lwip/src/include/ -Iinclude -I. makefsdata/makefsdata.c && \
   ./build/makefsdata ./fs -f:include/pico_printer_fs.c && \
   cd build && \

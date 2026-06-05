@@ -6,6 +6,9 @@ if [ ! -f makefsdata ]; then
     gcc -o build/makefsdata -Ibuild/pico-sdk/lib/lwip/src/include/ -Iinclude -I. makefsdata/makefsdata.c
 fi
 
+echo Inlining assets
+python3 inline_assets.py
+
 echo Regenerating fsdata.c
 ./build/makefsdata ./fs -f:include/pico_printer_fs.c
 echo Done
