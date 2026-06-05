@@ -167,6 +167,7 @@ async function get_camera_image(canvas, binPath) {
 
                 if (render(canvas, processed_data, buffer_start, ptr, PRINTER_WIDTH, sheets, margins, palette, exposure)) {
                     console.log("Rendering completed, adding canvas to gallery...");
+                    normalizeToCanonicalGrayscale(canvas);
                     addCanvasToGallery(canvas);
                     reset_canvas(canvas);
 
@@ -187,6 +188,7 @@ async function get_camera_image(canvas, binPath) {
 
                 console.log("Rendering transfer image...");
                 render(canvas, processed_data, current_image_start, ptr, CAMERA_WIDTH, 1, 0x03, 0xE4, 0xFF);
+                normalizeToCanonicalGrayscale(canvas);
                 addCanvasToGallery(canvas);
                 reset_canvas(canvas);
                 buffer_start = ptr;
@@ -215,6 +217,41 @@ async function get_camera_image(canvas, binPath) {
         reset_canvas(canvas);
     }
     return res.ok
+}
+
+// Remap the 4 grey levels produced by render() to the canonical values expected
+// by pocketCameraPalettes (reverseColorMapping keys). render() outputs variable
+// grey levels depending on the exposure byte; without this, reverseColorMapping
+// fails for non-white pixels and applyColorScheme leaves them in their original
+// grey shade while only the lightest pixels get the palette colour — producing
+// "random green pixels" (or whatever the palette's lightest colour is) on a grey
+// image (issue #4).
+function normalizeToCanonicalGrayscale(canvas) {
+    const ctx = canvas.getContext("2d");
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    const graySet = new Set();
+    for (let i = 0; i < data.length; i += 4) {
+        if (data[i] === data[i + 1] && data[i + 1] === data[i + 2]) {
+            graySet.add(data[i]);
+        }
+    }
+    // sort brightest-first; map to the same 4 levels used in pocketCameraPalettes
+    const sorted = [...graySet].sort((a, b) => b - a);
+    const canonical = [255, 191, 127, 63];
+    const remap = {};
+    sorted.forEach((v, idx) => { if (idx < canonical.length) remap[v] = canonical[idx]; });
+    let changed = false;
+    for (let i = 0; i < data.length; i += 4) {
+        if (data[i] === data[i + 1] && data[i + 1] === data[i + 2]) {
+            const mapped = remap[data[i]];
+            if (mapped !== undefined && mapped !== data[i]) {
+                data[i] = data[i + 1] = data[i + 2] = mapped;
+                changed = true;
+            }
+        }
+    }
+    if (changed) ctx.putImageData(imageData, 0, 0);
 }
 
 function addCanvasToGallery(canvas) {
