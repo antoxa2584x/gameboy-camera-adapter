@@ -39,7 +39,7 @@ bool speed_240_MHz = false;
 
 uint8_t file_buffer[FILE_BUFFER_SIZE];              // buffer for rendering of status json
 
-datafile_t * allocated_file = NULL;
+datafile_t * volatile allocated_file = NULL; // written in IRQ context, read from main loop
 uint32_t last_file_len = 0;
 uint32_t picture_count = 0;
 
@@ -55,11 +55,73 @@ uint8_t mobile_compatibility = MODE_IOS;
 extern void setRGB(uint8_t r, uint8_t g, uint8_t b);
 
 // --- CDC line parser state ---
-#define CDC_RX_MAX 256
+// Must fit a full "GET /print_chunk?data=<hex packet>" line (266-byte packet = 532 hex chars)
+#define CDC_RX_MAX 2048
 static char cdc_line[CDC_RX_MAX];
 static uint32_t cdc_len = 0;
 
 static inline void cdc_reset_line(void) { cdc_len = 0; cdc_line[0] = 0; }
+
+// --- Deferred CDC photo stream ---
+// The link-cable ISR must never touch USB: cdc_send_bytes() blocks and pumps
+// tud_task(), which is unsafe in IRQ context and stalls the GB link protocol
+// (the Game Boy expects a reply byte within microseconds). The IRQ side pushes
+// records into this ring; the main loop drains it and does the actual sends.
+#define CDC_REC_DATA 0
+#define CDC_REC_INIT 1
+#define CDC_REC_DONE 2
+#define CDC_RING_LEN 4096 // records; link data arrives at ~1 KB/s, so this is ~4s of slack
+typedef struct { uint8_t type; uint8_t val; } cdc_rec_t;
+static cdc_rec_t cdc_ring[CDC_RING_LEN];
+static volatile uint32_t cdc_ring_head = 0; // written in IRQ context only
+static volatile uint32_t cdc_ring_tail = 0; // written in main loop only
+
+static inline void cdc_ring_push(uint8_t type, uint8_t val) {
+#if CFG_TUD_CDC
+    if (!tud_cdc_connected()) return;
+    uint32_t next = (cdc_ring_head + 1) % CDC_RING_LEN;
+    if (next == cdc_ring_tail) return; // full: drop, the CDC stream is best-effort
+    cdc_ring[cdc_ring_head].type = type;
+    cdc_ring[cdc_ring_head].val  = val;
+    cdc_ring_head = next;
+#endif
+}
+
+// Drain the CDC photo stream ring. Main loop only: cdc_send_* may block.
+static void cdc_stream_service(void) {
+#if CFG_TUD_CDC
+    static uint8_t chunk[DATABLOCK_SIZE];
+    static uint32_t chunk_len = 0;
+    if (cdc_ring_tail == cdc_ring_head) return;
+    if (!tud_cdc_connected()) { // host gone: drop the pending stream
+        cdc_ring_tail = cdc_ring_head;
+        chunk_len = 0;
+        return;
+    }
+    while (cdc_ring_tail != cdc_ring_head) {
+        cdc_rec_t rec = cdc_ring[cdc_ring_tail];
+        cdc_ring_tail = (cdc_ring_tail + 1) % CDC_RING_LEN;
+        switch (rec.type) {
+            case CDC_REC_INIT:
+                chunk_len = 0;
+                cdc_send_string("GBCA_PHOTO_TRANSFER\n");
+                break;
+            case CDC_REC_DATA:
+                chunk[chunk_len++] = rec.val;
+                if (chunk_len == sizeof(chunk)) {
+                    send_base64_chunk(chunk, chunk_len);
+                    chunk_len = 0;
+                }
+                break;
+            case CDC_REC_DONE:
+                if (chunk_len) send_base64_chunk(chunk, chunk_len);
+                chunk_len = 0;
+                cdc_send_string("DONE\n");
+                break;
+        }
+    }
+#endif
+}
 
 // Trim trailing CR
 static void cdc_finish_line(void) {
@@ -98,6 +160,12 @@ static bool query_get_bool(const char* qs, const char* key, bool* out) {
 // Forward declarations
 int64_t soft_restart(alarm_id_t id, void *user_data);
 int64_t reboot_callback(alarm_id_t id, void *user_data);
+uint8_t get_printer_status(void);
+static bool print_queue_add_hex(const char *payload, size_t hex_len);
+static void print_queue_flush(void);
+// Set by the CDC handler on done=1; the burst send runs in the main loop so the
+// USB RX callback is not blocked for the multi-second bit-banged transfer.
+static volatile bool print_flush_pending = false;
 
 // Handle one complete CDC line
 static void cdc_handle_line(const char* line) {
@@ -136,6 +204,46 @@ static void cdc_handle_line(const char* line) {
     if (strncmp(path, "/update", 7) == 0) {
       cdc_send_string("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK - Entering Bootloader...\r\n");
       add_alarm_in_ms(300, reboot_callback, NULL, false);
+      return;
+    }
+
+    if (strncmp(path, "/printer_status", 15) == 0) {
+      // Reply with the last known printer status (updated on every packet sent)
+      char resp[32];
+      int n = snprintf(resp, sizeof(resp), "{\"printer\":%u}\n", get_printer_status());
+      cdc_send_bytes((const uint8_t*)resp, (uint32_t)n, 1000);
+      return;
+    }
+
+    if (strncmp(path, "/print_chunk", 12) == 0) {
+      // Parse directly from `path`: the hex payload may exceed the small req[] buffer below
+      const char* qs = strchr(path, '?');
+      const char* data = NULL;
+      size_t data_len = 0;
+      int is_done = 0;
+
+      if (qs) {
+        qs++;
+        const char* d = strstr(qs, "data=");
+        if (d) {
+          d += 5;
+          const char* e = d;
+          while (*e && *e != '&' && *e != ' ') e++;
+          data = d;
+          data_len = (size_t)(e - d);
+        }
+        const char* dn = strstr(qs, "done=");
+        if (dn) is_done = atoi(dn + 5);
+      }
+
+      if (is_done) {
+        // Burst send is slow (bit-banged link cable) — defer to the main loop.
+        // The {"printer":N} response is sent there once the flush completes.
+        print_flush_pending = true;
+      } else {
+        bool queued = (data && data_len) ? print_queue_add_hex(data, data_len) : false;
+        cdc_send_string(queued ? "PRINT_QUEUED\n" : "PRINT_ERR\n");
+      }
       return;
     }
 
@@ -206,31 +314,13 @@ static void cdc_handle_line(const char* line) {
 }
 
 
-static inline void flush_tail_and_done(void) {
-#if CFG_TUD_CDC
-    // flush the last partial block, if any
-    if (allocated_file && allocated_file->last) {
-        datablock_t *last = allocated_file->last;
-        if (last->size > 0 && last->size < DATABLOCK_SIZE) {
-            (void) send_base64_chunk(last->data, last->size);
-        }
-    }
-    // send trailer so host knows stream is complete
-    static const char done[] = "DONE\n";
-    (void) cdc_send_bytes((const uint8_t*)done, sizeof(done)-1, 2000);
-#endif
-}
-
 void receive_data_reset(void) {
     if (!allocated_file) return;
     last_file_len = allocated_file->size;
 
-#if CFG_TUD_CDC
-    if (tud_cdc_connected()) {
-        flush_tail_and_done();
-    }
-#endif
-    
+    // tail flush + "DONE" trailer, sent later from the main loop
+    cdc_ring_push(CDC_REC_DONE, 0);
+
     if (push_file(allocated_file)) picture_count++;
     allocated_file = NULL;
 }
@@ -239,13 +329,9 @@ bool double_init = false;
 void receive_data_init(void) {
     if (double_init) receive_data_reset();
     double_init = true;
-    
-#if CFG_TUD_CDC
-    if (tud_cdc_connected()) {
-        static const char init[] = "GBCA_PHOTO_TRANSFER\n";
-        (void) cdc_send_bytes((const uint8_t*)init, sizeof(init)-1, 500);
-    }
-#endif
+
+    // "GBCA_PHOTO_TRANSFER" marker, sent later from the main loop
+    cdc_ring_push(CDC_REC_INIT, 0);
 }
 
 void receive_data_write(uint8_t b) {
@@ -275,22 +361,16 @@ void receive_data_write(uint8_t b) {
     block->data[block->size++] = b;
     allocated_file->size++;
 
-#if CFG_TUD_CDC
-    if (tud_cdc_connected()) {
-        // Send only when the current block just became full
-        if (block->size == DATABLOCK_SIZE) {
-            (void) send_base64_chunk(block->data, DATABLOCK_SIZE);
-        }
-    }
-#endif
+    // mirror the byte into the CDC stream; sent later from the main loop
+    cdc_ring_push(CDC_REC_DATA, b);
 }
 
 void receive_data_commit(uint8_t cmd) {
     if (cmd == CAM_COMMAND_TRANSFER) receive_data_reset();
 }
 
-// link cableD
-bool link_cable_data_received = false;
+// link cable
+volatile bool link_cable_data_received = false;
 volatile bool printing_active = false;
 void link_cable_ISR(void) {
     linkcable_send(protocol_data_process(linkcable_receive()));
@@ -318,29 +398,21 @@ static void key_callback(uint gpio, uint32_t events) {
 #endif
 
 // Webserver dynamic handling
-#define ROOT_PAGE   "/index.html"
 #define IMAGE_FILE  "/image.bin"
 #define STATUS_FILE "/status.json"
 #define LIST_FILE   "/list.json"
-
-static const char *cgi_options(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
-    for (int i = 0; i < iNumParams; i++) {
-        if (!strcmp(pcParam[i], "debug")) debug_enable = (!strcmp(pcValue[i], "on"));
-    }
-    return STATUS_FILE;
-}
 
 static const char *cgi_download(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
     return IMAGE_FILE;
 }
 
-static const char *cgi_list(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
-    return LIST_FILE;
-}
-
 static const char *cgi_reset(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
+    // runs in main (lwIP) context; guard against the link-cable ISR mutating
+    // allocated_file mid-reset
+    uint32_t ints = save_and_disable_interrupts();
     receive_data_reset();
     protocol_reset();
+    restore_interrupts(ints);
     return STATUS_FILE;
 }
 
@@ -364,11 +436,6 @@ const char* cgi_update(int iIndex, int iNumParams, char *pcParam[], char *pcValu
     add_alarm_in_ms(300, reboot_callback, NULL, false);
 
     return "/updating.html";
-}
-
-static const char *cgi_reset_usb_boot(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
-    if (debug_enable) reset_usb_boot(0, 0);
-    return ROOT_PAGE;
 }
 
 #define FLASH_TARGET_OFFSET (256 * 1024) // adjust as needed (sector-aligned)
@@ -443,11 +510,6 @@ static const char *cgi_set_color(int iIndex, int iNumParams, char *pcParam[], ch
     return "/index.html";
 }
 
-void startGreenWave() {
-    led_mode = 0;
-}
-
-/* Example loop (call from main): */
 uint64_t last_blink = 0;
 const uint32_t interval = 150000; // 200ms
 
@@ -565,39 +627,34 @@ void printer_send_packet(const uint8_t* packet, int length) {
     // PIO re-enabled only when JS sends done=1.
 }
 
-// Web interface endpoint: buffer packets, then send all at once on done=1
-const char *cgi_print_chunk(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
-    int is_done = 0;
-    const char *payload = NULL;
+static inline uint8_t hex_nibble(char c) {
+    if (c >= '0' && c <= '9') return (uint8_t)(c - '0');
+    if (c >= 'a' && c <= 'f') return (uint8_t)(c - 'a' + 10);
+    if (c >= 'A' && c <= 'F') return (uint8_t)(c - 'A' + 10);
+    return 0;
+}
 
-    for (int i = 0; i < iNumParams; i++) {
-        if (strcmp(pcParam[i], "data") == 0) {
-            payload = pcValue[i];
-        } else if (strcmp(pcParam[i], "done") == 0) {
-            is_done = atoi(pcValue[i]);
-        }
+// Buffer a hex-encoded packet in the print queue (shared by web CGI and CDC serial)
+static bool print_queue_add_hex(const char *payload, size_t hex_len) {
+    if (!payload || hex_len == 0 || hex_len > 2048 || (hex_len & 1)) return false;
+    size_t byte_len = hex_len / 2;
+
+    if (pkt_queue_count >= PKT_MAX_PACKETS || pkt_queue_used + byte_len > PKT_QUEUE_SIZE) return false;
+
+    pkt_queue_offsets[pkt_queue_count] = pkt_queue_used;
+    pkt_queue_lengths[pkt_queue_count] = (int)byte_len;
+    for (size_t i = 0; i < byte_len; i++) {
+        pkt_queue_buf[pkt_queue_used + i] =
+            (uint8_t)((hex_nibble(payload[i*2]) << 4) | hex_nibble(payload[i*2 + 1]));
     }
+    pkt_queue_used += byte_len;
+    pkt_queue_count++;
+    return true;
+}
 
-    if (payload && !is_done) {
-        // Buffer the packet (don't send yet)
-        size_t hex_len = strlen(payload);
-        if (hex_len > 2048) return "/index.html";
-        size_t byte_len = hex_len / 2;
-
-        if (pkt_queue_count < PKT_MAX_PACKETS && pkt_queue_used + byte_len <= PKT_QUEUE_SIZE) {
-            pkt_queue_offsets[pkt_queue_count] = pkt_queue_used;
-            pkt_queue_lengths[pkt_queue_count] = (int)byte_len;
-            for (size_t i = 0; i < byte_len; i++) {
-                char byte_str[3] = { payload[i*2], payload[i*2 + 1], 0 };
-                pkt_queue_buf[pkt_queue_used + i] = (uint8_t)strtol(byte_str, NULL, 16);
-            }
-            pkt_queue_used += byte_len;
-            pkt_queue_count++;
-        }
-    }
-
-    if (is_done) {
-        // Special case: if is_done=1 and no packets are buffered,
+// Send all buffered packets to the printer in one burst (shared by web CGI and CDC serial)
+static void print_queue_flush(void) {
+        // Special case: if no packets are buffered,
         // send a status packet (88330f0000000f000000) to fetch current status.
         if (pkt_queue_count == 0) {
             static const uint8_t status_packet[] = {0x88, 0x33, 0x0f, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00};
@@ -633,9 +690,10 @@ const char *cgi_print_chunk(int iIndex, int iNumParams, char *pcParam[], char *p
             for (int p = 0; p < pre_end; p++)
                 printer_send_packet(&pkt_queue_buf[pkt_queue_offsets[p]], pkt_queue_lengths[p]);
 
-            // Send reassembled 640-byte DATA strips
-            for (int offset = 0; offset < data_total; offset += GB_STRIP_SIZE) {
-                int chunk = data_total - offset;
+            // Send reassembled 640-byte DATA strips (only up to what was actually copied)
+            int send_total = data_total < GB_MAX_IMAGE ? data_total : GB_MAX_IMAGE;
+            for (int offset = 0; offset < send_total; offset += GB_STRIP_SIZE) {
+                int chunk = send_total - offset;
                 if (chunk > GB_STRIP_SIZE) chunk = GB_STRIP_SIZE;
 
                 uint8_t strip[GB_STRIP_SIZE + 10];
@@ -663,6 +721,27 @@ const char *cgi_print_chunk(int iIndex, int iNumParams, char *pcParam[], char *p
         // Restore link cable
         printing_active = false;
         linkcable_init(link_cable_ISR);
+}
+
+// Web interface endpoint: buffer packets, then send all at once on done=1
+const char *cgi_print_chunk(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
+    int is_done = 0;
+    const char *payload = NULL;
+
+    for (int i = 0; i < iNumParams; i++) {
+        if (strcmp(pcParam[i], "data") == 0) {
+            payload = pcValue[i];
+        } else if (strcmp(pcParam[i], "done") == 0) {
+            is_done = atoi(pcValue[i]);
+        }
+    }
+
+    if (payload && !is_done) {
+        print_queue_add_hex(payload, strlen(payload));
+    }
+
+    if (is_done) {
+        print_queue_flush();
     }
 
     return "/index.html";
@@ -671,6 +750,7 @@ const char *cgi_print_chunk(int iIndex, int iNumParams, char *pcParam[], char *p
 /* Add to CGI handler list */
 static const tCGI cgi_handlers[] = {
     { "/download", cgi_download },
+    { "/reset", cgi_reset }, // used by the web UI "Tear" button
     { "/update", cgi_update },
     { "/set_color", cgi_set_color },
     { "/print_chunk", cgi_print_chunk },
@@ -717,12 +797,13 @@ int fs_open_custom(struct fs_file *file, const char *name) {
         file->len   = snprintf(file_buffer, sizeof(file_buffer),
                                "{\"result\":\"ok\"," \
                                "\"options\":{\"debug\":\"%s\"}," \
-                               "\"status\":{\"last_size\":%d,\"total_files\":%d},"\
+                               "\"status\":{\"last_size\":%d,\"total_files\":%d,\"receiving\":%d},"\
                                "\"system\":{\"fast\":%s,\"version\":\"%s\"}," \
                                "\"printer\":%u," \
                                "\"dbg\":\"%s\"}",
                                on_off[debug_enable],
                                last_file_len, picture_count,
+                               (allocated_file != NULL) ? 1 : 0,
                                true_false[speed_240_MHz], FIRMWARE_VERSION,
                                (unsigned int)get_printer_status(),
                                dbg_hex);
@@ -827,7 +908,22 @@ int main(void) {
         tud_task();
         // process WEB
         service_traffic();
-        uint64_t now = time_us_64();
+        // forward photo bytes queued by the link-cable ISR to the CDC host
+        cdc_stream_service();
+
+        // Deferred print burst requested over CDC (GET /print_chunk?done=1)
+        if (print_flush_pending) {
+            print_queue_flush();
+            print_flush_pending = false;
+#if CFG_TUD_CDC
+            if (tud_cdc_connected()) {
+                char resp[32];
+                int n = snprintf(resp, sizeof(resp), "{\"printer\":%u}\n", get_printer_status());
+                cdc_send_bytes((const uint8_t*)resp, (uint32_t)n, 2000);
+            }
+#endif
+        }
+
         update_led_wave();
     }
 

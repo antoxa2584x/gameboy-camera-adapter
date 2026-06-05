@@ -23,10 +23,6 @@ void protocol_reset() {
     printer_state = PRN_STATE_WAIT_FOR_SYNC_1;
 }
 
-uint8_t protocol_data_init() {
-    return 0x00;
-}
-
 uint8_t protocol_data_process(uint8_t data_in) {
     static uint8_t printer_status = PRN_STATUS_OK, next_printer_status = PRN_STATUS_OK;
     static uint8_t printer_command = 0;

@@ -104,35 +104,13 @@ static uint32_t base64_encode(const uint8_t *in, uint32_t inlen,
 
 #if CFG_TUD_CDC
 void send_base64_chunk(const uint8_t* data, uint32_t len) {
-    static char encoded[2048]; // moved to static to save stack
+    // sized for one datablock: base64(512) = 684 chars + '\n'
+    static char encoded[((DATABLOCK_SIZE + 2) / 3) * 4 + 2]; // static to save stack
     uint32_t out_len = base64_encode(data, len, encoded, sizeof(encoded));
     if (out_len + 1 <= sizeof(encoded)) {
         encoded[out_len] = '\n';
         cdc_send_bytes((const uint8_t*)encoded, out_len + 1, 5000);
     }
-}
-
-bool cdc_send_file_framed(const datafile_t* f, uint32_t timeout_ms) {
-    if (!f) return false;
-
-    static const char init[] = "GBCA_PHOTO_TRANSFER_BASE64\n";
-    (void) cdc_send_bytes((const uint8_t*)init, sizeof(init)-1, 500);
-
-    for (const datablock_t* b = f->first; b; b = b->next) {
-        uint32_t remain = b->size;
-        uint32_t off = 0;
-        while (remain) {
-            uint32_t slice = remain > 1024 ? 1024 : remain;
-            send_base64_chunk(b->data + off, slice);
-            off    += slice;
-            remain -= slice;
-        }
-    }
-
-    static const char done[] = "DONE\n";
-    (void) cdc_send_bytes((const uint8_t*)done, sizeof(done)-1, 5000);
-
-    return true;
 }
 
 bool cdc_send_string(const char* str) {
