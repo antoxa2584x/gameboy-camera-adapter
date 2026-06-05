@@ -65,7 +65,13 @@ static const dhcp_config_t dhcp_config = {
 static err_t linkoutput_fn(struct netif *netif, struct pbuf *p) {
     (void)netif;
 
-    for (;;) {
+    /* bounded retries: a stalled USB host must not spin the lwIP stack forever.
+     * 50 000 iterations at ~1 µs each ≈ 50 ms — enough for the host to drain its
+     * receive buffer across any USB FS frame boundary.
+     * Return ERR_MEM (not ERR_WOULDBLOCK): lwIP's TCP layer handles ERR_MEM by
+     * keeping the segment in the retransmit queue; ERR_WOULDBLOCK is a socket-API
+     * error that can cause lwIP to abort the TCP connection with RST. */
+    for (int retries = 0; retries < 50000; retries++) {
         /* if TinyUSB isn't ready, we must signal back to lwip that there is nothing we can do */
         if (!tud_ready()) return ERR_USE;
 
@@ -78,6 +84,7 @@ static err_t linkoutput_fn(struct netif *netif, struct pbuf *p) {
         /* transfer execution to TinyUSB in the hopes that it will finish transmitting the prior packet */
         tud_task();
     }
+    return ERR_MEM;
 }
 
 static err_t output_fn(struct netif *netif, struct pbuf *p, const ip_addr_t *addr) {
