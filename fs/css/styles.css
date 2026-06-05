@@ -13,7 +13,8 @@ body {
 
 @font-face {
     font-family: 'Press Start 2P';
-    src: url('../fonts/PressStart2P-Regular.ttf') format('truetype');
+    /* subset to ASCII + … + ✔ (full TTF was 116 KB; flash is precious) */
+    src: url('../fonts/PressStart2P-Regular.woff2') format('woff2');
     font-weight: normal;
     font-style: normal;
 }
@@ -113,27 +114,6 @@ button.darkgreen:hover {
     position: absolute;
     right: -20px;
     top: -20px;
-    margin: 0;
-    transition: background-color 0.2s ease;
-    z-index: 1001;
-}
-
-.popup-close-button {
-    width: 40px;
-    height: 40px;
-    background-color: #D32F2F;
-    color: white;
-    border: none;
-    cursor: pointer;
-    font-size: 1rem;
-    font-family: 'Press Start 2P', cursive;
-    border-radius: 50%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    position: absolute;
-    right: -20px;
-    top: -40px;
     margin: 0;
     transition: background-color 0.2s ease;
     z-index: 1001;
@@ -478,7 +458,6 @@ footer .links {
 }
 
 /* Overlay Styles */
-/* Overlay Styles */
 .popup-overlay {
     position: fixed;
     top: 0;
@@ -532,6 +511,8 @@ footer .links {
     justify-content: center;
     align-items: center;
     padding: 0;
+    margin: 0;
+    transition: background-color 0.2s ease;
     z-index: 1001;
 }
 
@@ -733,4 +714,276 @@ input:checked + .slider:before {
 
 @keyframes spin {
     to { transform: rotate(360deg); }
+}
+
+/* --- Component classes (extracted from former inline styles in index.html) --- */
+
+.hidden {
+    display: none;
+}
+
+.popup-overlay.hidden {
+    display: none;
+}
+
+.flex-col-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+#firmware-version-btn {
+    color: white;
+    position: absolute;
+    margin: 1rem;
+    right: 0;
+    top: 0;
+    font-size: 1em;
+    text-decoration: underline;
+}
+
+.popup-box {
+    position: relative;
+    background: #266d3f;
+    padding: 2rem;
+    border-radius: 10px;
+    color: white;
+    width: 90%;
+    max-width: 500px;
+    box-sizing: border-box;
+}
+
+.popup-box--progress {
+    max-width: 400px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+#firmware-version-text {
+    color: white;
+    font-size: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.led-color-row {
+    display: flex;
+    flex-direction: row;
+    align-content: center;
+}
+
+#ledColorPicker {
+    position: absolute;
+    cursor: pointer;
+    opacity: 0;
+}
+
+#colorPreview {
+    width: 52px;
+    height: 28px;
+    background-color: #00ff00;
+    cursor: pointer;
+}
+
+.led-color-label {
+    color: white;
+    font-size: 1rem;
+    text-align: left;
+    flex: 1;
+    align-content: center;
+    margin-left: 1rem;
+}
+
+.switch-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    margin-top: 1rem;
+}
+
+.switch-label {
+    color: white;
+    font-size: 1rem;
+    text-align: left;
+}
+
+.mobile-mode-block {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    margin-top: 1.5rem;
+    gap: 0.5rem;
+}
+
+.gb-select {
+    padding: 0.5rem;
+    border-radius: 5px;
+    background: #1e4a2b;
+    color: white;
+    border: 1px solid #4caf50;
+}
+
+.mobile-mode-note {
+    color: #ffcc00;
+    font-size: 0.7rem;
+    text-align: left;
+}
+
+.fw-update-hint {
+    color: white;
+    font-size: 0.7rem;
+    text-align: center;
+    margin-top: 1rem;
+}
+
+#update-alert {
+    display: none;
+    color: yellow;
+    font-size: 12px;
+    text-align: center;
+    padding: 10px;
+}
+
+#logo-img {
+    width: 80%;
+    flex: auto;
+    padding: 15% 10% 5%;
+    cursor: pointer;
+}
+
+#mode-indicator {
+    color: white;
+    margin-bottom: 2rem;
+}
+
+#mode-name {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+#mode-switch-hint {
+    font-size: 0.6rem;
+    opacity: 0.8;
+}
+
+.save-all-row {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+}
+
+#printer-mode {
+    padding-bottom: 2rem;
+}
+
+.printer-wrap {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    margin-top: 20px;
+}
+
+.printer-panel {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    align-items: center;
+}
+
+#printer-status {
+    color: white;
+    text-align: center;
+    margin-top: 10px;
+}
+
+.upload-label {
+    color: white;
+    font-size: 1.1rem;
+}
+
+#preview-canvas {
+    border: 1px solid white;
+    max-width: 160px;
+}
+
+#file-input {
+    display: none;
+}
+
+.file-btn {
+    background: #4caf50;
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+}
+
+#printer-controls {
+    display: none; /* shown via JS once a file is chosen */
+    flex-direction: column;
+    gap: 0.2rem;
+    width: 100%;
+    margin-top: 1rem;
+}
+
+.crop-row {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    color: white;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.small-label {
+    font-size: 0.8rem;
+}
+
+#image-mode {
+    padding: 0.4rem;
+    width: 200px;
+}
+
+.exposure-row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    gap: 0.5rem;
+}
+
+#print-button {
+    display: none; /* shown via JS once a file is chosen */
+    margin-top: 1rem;
+}
+
+.beta-note {
+    margin-top: 2rem;
+    text-align: center;
+    color: white;
+    opacity: 0.5;
+    font-size: 0.6rem;
+}
+
+.receive-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    color: white;
+}
+
+.receive-text {
+    margin-top: 1rem;
+    font-size: 0.8rem;
+}
+
+#print-status-text {
+    margin-top: 1.5rem;
+    font-size: 1rem;
+    text-align: center;
 }

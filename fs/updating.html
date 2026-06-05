@@ -1,22 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Updating...</title>
     <link rel="icon" type="image/png" href="img/favicon-96x96.png" sizes="96x96">
-    <link rel="icon" type="image/svg+xml" href="img/favicon.svg">
-    <link rel="shortcut icon" href="img/favicon.ico">
-    <link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
+    <link rel="apple-touch-icon" sizes="192x192" href="img/web-app-manifest-192x192.png">
     <meta name="apple-mobile-web-app-title" content="GameBoy Camera Adapter">
     <link rel="manifest" href="img/site.webmanifest">
-    <link rel="mask-icon" href="safari-pinned-tab.svg" color="#cc3366">
-    <meta charset="UTF-8">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="white">
     <meta name="application-name" content="GameBoy Camera Adapter">
     <meta name="msapplication-TileColor" content="#ece6e6">
     <meta name="theme-color" content="#ece6e6">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Updating...</title>
-    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <script>
         async function checkOnline() {
             try {
@@ -38,6 +34,15 @@
         }, 5000);
     </script>
     <style>
+        /* local subset font (browser usually has it cached from the main page;
+           the device is offline during the update, so no external font CDN) */
+        @font-face {
+            font-family: 'Press Start 2P';
+            src: url('fonts/PressStart2P-Regular.woff2') format('woff2');
+            font-weight: normal;
+            font-style: normal;
+        }
+
         body {
             font-family: 'Press Start 2P', cursive;
             text-align: center;
