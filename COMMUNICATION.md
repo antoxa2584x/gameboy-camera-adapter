@@ -77,12 +77,13 @@ Returns the current system status.
 {
   "result": "ok",
   "options": { "debug": "off/on" },
-  "status": { "last_size": 1234, "total_files": 1 },
+  "status": { "last_size": 1234, "total_files": 1, "receiving": 0 },
   "system": { "fast": "true/false", "version": "2.0.2", "uptime": 3600 },
   "printer": 0,
   "dbg": ""
 }
 ```
+- `status.receiving`: `1` while a photo transfer from the Game Boy is in progress (used by the web UI to show a receive loader), `0` otherwise.
 
 ##### GET `/download` (or `/image.bin`)
 Retrieves the stored binary data of the last captured print job.
@@ -124,6 +125,28 @@ When enabled (`mode=1`), the firmware can send data over USB Serial.
 - **Handshake**: `GBCA_PHOTO_TRANSFER\n`
 - **Data**: Base64 encoded chunks of image data.
 - **Framing**: Starts with `GBCA_PHOTO_TRANSFER_BASE64\n`, followed by chunks and ending with `DONE\n`.
+
+##### CDC Commands (text lines, `\n` terminated)
+The mobile app sends HTTP-style GET lines over the serial port:
+
+| Command | Response | Description |
+| :--- | :--- | :--- |
+| `GET /led_status` | `{"r":..,"g":..,"b":..,"use_rgb":..}\n` | Query LED state. |
+| `GET /set_color?r=..&g=..&b=..&use_rgb=..` | `OK\n` | Set LED color (no reboot). |
+| `GET /print_chunk?data=HEX` | `PRINT_QUEUED\n` or `PRINT_ERR\n` | Buffer one hex-encoded printer packet (same queue as the Web API). `PRINT_ERR` means the packet was malformed or the queue is full. |
+| `GET /print_chunk?done=1` | `{"printer":N}\n` | Send all buffered packets to the printer over the Link Cable, then report the printer status byte. With an empty queue, sends a single `STATUS` packet (used for polling). The response is sent only after the burst completes (can take several seconds). |
+| `GET /printer_status` | `{"printer":N}\n` | Return the last cached printer status without touching the Link Cable. |
+
+`N` is the printer status byte (see Status Byte Decoding above); `255` (`0xFF`) means no printer detected.
+
+##### Print Flow (Mobile App)
+1. `GET /print_chunk?data=88330100000001000000` (INIT) → `PRINT_QUEUED`
+2. `GET /print_chunk?data=88330f0000000f000000` (STATUS) → `PRINT_QUEUED`
+3. One `GET /print_chunk?data=...` per DATA packet (≤256 byte payloads; the firmware reassembles 640-byte strips) → `PRINT_QUEUED`
+4. `GET /print_chunk?data=88330400000004000000` (empty DATA = end of image) → `PRINT_QUEUED`
+5. `GET /print_chunk?data=8833020004000103E4<exposure><checksum>0000` (PRINT) → `PRINT_QUEUED`
+6. `GET /print_chunk?done=1` → burst send → `{"printer":N}`
+7. Poll `GET /print_chunk?done=1` every few seconds while `N & 0x02` (busy) until `N == 0` (done) or an error bit is set.
 
 ---
 
