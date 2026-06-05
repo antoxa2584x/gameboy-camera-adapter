@@ -518,49 +518,57 @@ averageSelectedBtn.addEventListener("click", function() {
 // auto fetch images
 var fetch_skip = false;
 
+// Receive loader overlay (like the mobile app): shown while the Game Boy
+// is transferring a photo to the adapter, hidden once it lands in the gallery.
+let receiveOverlayVisible = false;
+
+function setReceiveOverlay(visible) {
+    if (visible === receiveOverlayVisible) return;
+    receiveOverlayVisible = visible;
+    const overlay = document.getElementById("receive-overlay");
+    if (overlay) overlay.style.display = visible ? "flex" : "none";
+}
+
+async function is_receiving() {
+    try {
+        const res = await fetch('/status.json', { cache: "no-store" });
+        if (!res.ok) return false;
+        const data = await res.json();
+        return data && data.status && data.status.receiving === 1;
+    } catch (_) {
+        return false;
+    }
+}
+
 async function periodic_fetch() {
     if (typeof currentMode !== 'undefined' && currentMode === "printer") {
+        setReceiveOverlay(false);
         return;
     }
     if (fetch_skip) return;
     fetch_skip = true;
 
     try {
+        const receiving = await is_receiving();
+        if (receiving) setReceiveOverlay(true);
+
         const fetch_ok = await get_camera_image(canvas, imageBinPath);
-        const next_interval = fetch_ok ? 500 : 2000;
+
+        // Hide the loader only after the finished photo has been fetched/rendered
+        if (!receiving) setReceiveOverlay(false);
+
+        // Poll fast while a transfer is in progress so the photo shows up promptly
+        const next_interval = (fetch_ok || receiving) ? 500 : 2000;
         setTimeout(periodic_fetch, next_interval);
     } catch (err) {
         console.error("Fetch error:", err);
+        setReceiveOverlay(false);
         setTimeout(periodic_fetch, 2000);
     } finally {
         fetch_skip = false;
     }
 }
 setTimeout(periodic_fetch, 1000);
-
-function generateExampleImage() {
-    // Create a canvas
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-
-    // Set canvas dimensions
-    canvas.width = 160;
-    canvas.height = 160;
-
-    // Draw a background color
-    ctx.fillStyle = "#004d25";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Draw some text
-    ctx.fillStyle = "white";
-    ctx.font = "20px 'Press Start 2P'";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("Example", canvas.width / 2, canvas.height / 2 - 20);
-    ctx.fillText("Image", canvas.width / 2, canvas.height / 2 + 20);
-
-    addCanvasToGallery(canvas);
-}
 
 const pocketCameraPalettes = {
     "grayscale": {
@@ -601,11 +609,12 @@ const pocketCameraPalettes = {
     }
 };
 
-// Map reverse colors back to grayscale before applying a new scheme
+// Map reverse colors back to grayscale before applying a new scheme.
+// Keyed by "r,g,b" — cheap to build per pixel (no JSON.stringify in the hot loop).
 const reverseColorMapping = {};
 Object.keys(pocketCameraPalettes).forEach(scheme => {
     Object.entries(pocketCameraPalettes[scheme]).forEach(([grayHex, rgb]) => {
-        reverseColorMapping[JSON.stringify(rgb)] = grayHex;
+        reverseColorMapping[rgb.join(",")] = grayHex;
     });
 });
 
@@ -627,9 +636,8 @@ function applyColorScheme(scheme) {
         const data = imageData.data;
 
         for (let i = 0; i < data.length; i += 4) {
-            const rgb = [data[i], data[i + 1], data[i + 2]];
-            const rgbString = JSON.stringify(rgb);
-            const grayHex = reverseColorMapping[rgbString] || rgbToHex(data[i], data[i + 1], data[i + 2]);
+            const rgbKey = data[i] + "," + data[i + 1] + "," + data[i + 2];
+            const grayHex = reverseColorMapping[rgbKey] || rgbToHex(data[i], data[i + 1], data[i + 2]);
 
             const newColor = selectedPalette[grayHex];
             if (newColor) {
@@ -659,6 +667,9 @@ function parseScheme() {
     const selectedCircle = document.querySelector(`.color-circle[data-scheme="${savedScheme}"]`);
 
     if (selectedCircle) {
+        // clear any other selection (e.g. the hardcoded default in index.html),
+        // otherwise two circles can show as active at once
+        document.querySelectorAll(".color-circle.active").forEach(c => c.classList.remove("active"));
         selectedCircle.classList.add("active");
     }
 
@@ -1004,7 +1015,20 @@ function pollPrinterStatus() {
         });
 }
 
-setInterval(pollPrinterStatus, 3000);
+// Poll printer status only while in printer mode (started/stopped on mode switch)
+let printerPollId = null;
+
+function startPrinterPolling() {
+    if (printerPollId !== null) return;
+    printerPollId = setInterval(pollPrinterStatus, 3000);
+}
+
+function stopPrinterPolling() {
+    if (printerPollId !== null) {
+        clearInterval(printerPollId);
+        printerPollId = null;
+    }
+}
 
 const logoImg = document.getElementById("logo-img");
 let currentMode = "scanner";
@@ -1028,6 +1052,7 @@ if (logoImg) {
                 currentMode = "printer";
                 periodic_fetch();
                 pollPrinterStatus();
+                startPrinterPolling();
             } else {
                 if (printer) {
                     printer.style.display = "none";
@@ -1039,6 +1064,7 @@ if (logoImg) {
                 }
                 if (modeName) modeName.textContent = "Gallery";
                 currentMode = "scanner";
+                stopPrinterPolling();
                 periodic_fetch();
             }
         };
