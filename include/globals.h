@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define FIRMWARE_VERSION        "2.0.2"
+#define FIRMWARE_VERSION        "2.0.5"
 #define ENABLE_DEBUG            false
 #define BUFFER_SIZE_KB          128
 #define FILE_BUFFER_SIZE        16384
