@@ -1,72 +1,88 @@
-# GameBoy Camera Photo Save Adapter
-
 <p align="center">
-   <img src="https://rgaming.com.ua/camera_adapter/assets/logo.webp"/>
-</p>
-<p align="center">
-   <img src="https://github.com/antoxa2584x/gameboy-camera-adapter/blob/main/preview_2.jpg?raw=true"/>
+  <img src="https://rgaming.com.ua/camera_adapter/assets/logo.webp" width="400">
 </p>
 
-Based on the original pico-gb-printer repo: https://github.com/untoxa/pico-gb-printer
-
-Webserver example that came with TinyUSB slightly modified to run on a Raspberry Pi Pico.
-Lets the Pico pretend to be a USB Ethernet device. Runs the webinterface at http://192.168.7.1/
-
-Now with Android app support! You can use the [GameBoy Camera Adapter Companion](https://github.com/antoxa2584x/gameboy-camera-adapter-companion) to easily receive and manage your photos on your Android device.
-
-### Mobile Compatibility Modes
-
-The adapter supports two modes for better compatibility with different devices. You can switch between them in the web interface settings or via serial commands:
-
-1.  **iOS + Mac/Win/Other (Default)**: Optimized for iOS and general web use. USB Serial (CDC) is disabled to ensure the web interface (RNDIS/ECM) is prioritized and recognized correctly by iOS.
-2.  **Android + Mac/Win/Other**: Enables both USB Serial (CDC) and the Web interface (RNDIS). This mode is required for the Android companion app but also works with other systems.
-
-#### Switching modes via Serial
-
-If you cannot access the web interface, you can switch modes by sending these commands to the USB Serial (CDC) port:
-- `GET /set_mode_ios`: Switches to iOS mode and reboots.
-- `GET /set_mode_android`: Switches to Android mode and reboots.
-- `GET /reset_mode`: Resets to iOS mode and reboots.
-- `GET /update`: Triggers the bootloader mode for firmware updates.
-
-Special thanks to Raphael-Boichot, please check this repo: https://github.com/Raphael-Boichot/The-Arduino-SD-Game-Boy-Printer
-
-## Printer Support
-
-This project supports both receiving photos from a Game Boy and **printing** images to a real Game Boy Printer.
-
-### Receiving Photos (Scanner Mode)
-
-By default, the adapter acts as a "Game Boy Printer Emulator". When you select "Print" on your Game Boy, the photos will appear in the web interface Gallery.
-
-### Printing to Game Boy (Printer Mode)
-
-You can switch the web interface to **Printer Mode** by clicking the **Game Boy Camera Adapter logo** at the top. This mode allows you to print any image from your computer or phone to a real Game Boy Printer connected to the adapter.
-
-- **Image Upload**: Supports standard image formats. The image is automatically converted to the Game Boy's 4-color grayscale and tiled format.
-- **Live Preview**: See how your image will look before printing.
-- **Exposure Control**: Adjust the print darkness (0-127) using the slider.
-- **Status Monitoring**: Real-time feedback from the printer (e.g., OK, Paper Jam, Battery Low).
-
-For detailed information about the protocol implementation, see [COMMUNICATION.md](COMMUNICATION.md).
-
-## Schematics
-
-You will need a Raspberry Pi, 1/2 of the game boy link cable and a four-channel 5v to 3.3v level shifter. Connect parts as shown:
-
 <p align="center">
-  <img src="https://github.com/antoxa2584x/gameboy-camera-adapter/blob/main/schematics.jpg?raw=true"/>
+  <img src="https://img.shields.io/badge/Firmware-v2.0.5-266d3f?style=for-the-badge&logo=raspberrypi" alt="Firmware Version">
+  <img src="https://img.shields.io/badge/Hardware-RP2040-004d25?style=for-the-badge" alt="Hardware">
+  <img src="https://img.shields.io/badge/Compatibility-iOS_%7C_Android_%7C_Web-4caf50?style=for-the-badge" alt="Compatibility">
 </p>
 
-This is the example of the ready-to-use device:
-
 <p align="center">
-  <img src="https://github.com/antoxa2584x/gameboy-camera-adapter/blob/main/preview_3.jpg?raw=true"/>
+  <b>A modern adapter to save GameBoy Camera photos to your PC or Phone via Web Interface.</b>
 </p>
 
-As finding which is SIN and SOUT is sometimes tricky as signals are crossed within the serial cable, you can also make your own PCB with a Pi Zero and a GBC/GBA serial socket [following the guide here](https://github.com/Raphael-Boichot/Collection-of-PCB-for-Game-Boy-Printer-Emulators). Just [route the LED to GPIO 8](https://github.com/Raphael-Boichot/pico-gb-printer/blob/c10a31e7458818ecd8ce3af9a09c53344a659cd4/include/globals.h#L8C33-L8C35) and the [Pushbutton to GPIO9](https://github.com/Raphael-Boichot/pico-gb-printer/blob/c10a31e7458818ecd8ce3af9a09c53344a659cd4/include/globals.h#L21) to make it shine and cut paper !
+---
 
-### 🐳 Docker Build (Cross-platform, no local dependencies)
+### 📸 Features
+
+<div align="center">
+<table>
+  <tr>
+    <td align="center"><b>🖼️ Web Gallery</b><br>Real-time photo receiving</td>
+    <td align="center"><b>🎨 Color Palettes</b><br>Retro GB & GBC styles</td>
+  </tr>
+  <tr>
+    <td align="center"><b>🖨️ Printer Mode</b><br>Print from PC to GameBoy</td>
+    <td align="center"><b>📱 Mobile Ready</b><br>iOS & Android Support</td>
+  </tr>
+</table>
+</div>
+
+### 🚀 Getting Started
+
+1.  **Build or Buy**: Get a Raspberry Pi Pico and follow the [Schematics](#-schematics) below.
+2.  **Flash**: Download the latest `.uf2` from [Releases](https://github.com/antoxa2584x/gameboy-camera-adapter/releases) or [build it yourself](#-docker-build).
+3.  **Connect**: Plug it into your PC/Phone. It will appear as a USB Ethernet device.
+4.  **Open**: Navigate to **[http://192.168.7.1/](http://192.168.7.1/)** in your browser.
+
+---
+
+### 🛠️ Compatibility Modes
+
+The adapter features two specialized modes to ensure it works across all your devices. Switch via Web UI Settings or Serial commands.
+
+*   **🍏 iOS + Desktop (Default)**: Optimized for Apple devices. Prioritizes the Web Interface.
+*   **🤖 Android + Desktop**: Enables USB Serial (CDC) for use with the [Android Companion App](https://github.com/antoxa2584x/gameboy-camera-adapter-companion).
+
+#### ⌨️ Serial Commands
+If the web UI is unreachable, use a serial terminal to send:
+*   `GET /set_mode_ios` / `GET /set_mode_android`
+*   `GET /update` (Reboots to Bootloader)
+
+---
+
+### 📟 Modes of Operation
+
+#### 📥 Scanner Mode (Default)
+Acts as a virtual **Game Boy Printer**. Simply select "Print" on your Game Boy, and photos will appear instantly in the web gallery.
+
+#### 📤 Printer Mode
+Click the **Logo** in the web interface to switch. Upload any image from your device to print it on a real Game Boy Printer connected to the adapter. Includes **Live Preview** and **Exposure Control**.
+
+---
+
+### 🔌 Schematics
+
+<p align="center">
+  <img src="https://github.com/antoxa2584x/gameboy-camera-adapter/blob/main/schematics.jpg?raw=true" width="600"/>
+</p>
+
+#### 💡 Hardware Tips
+*   Uses **GPIO 8** for the Status LED.
+*   Uses **GPIO 9** for the Action Button.
+*   Requires a **5V to 3.3V level shifter** for safe operation with the Game Boy's 5V logic.
+
+<p align="center">
+  <img src="https://github.com/antoxa2584x/gameboy-camera-adapter/blob/main/preview_3.jpg?raw=true" width="400"/>
+  <br><i>Example of a finished build.</i>
+</p>
+
+---
+
+### 🐳 Docker Build
+
+Build the firmware without installing any local dependencies:
 
 ```bash
 git clone --depth 1 https://github.com/antoxa2584x/gameboy-camera-adapter
@@ -75,6 +91,9 @@ git submodule update --init
 ./build.sh
 ```
 
-This will build the firmware inside a Docker container.  
-The final `pico_gb_printer.uf2` file will be placed in the `build/` directory.  
-Just drag and drop it to your Pi Pico device.
+---
+
+### 🤝 Credits & Links
+*   Based on [pico-gb-printer](https://github.com/untoxa/pico-gb-printer).
+*   Protocol insights from [Raphael-Boichot](https://github.com/Raphael-Boichot/The-Arduino-SD-Game-Boy-Printer).
+*   [Instagram @retrogaming_ua](https://www.instagram.com/retrogaming_ua/)
