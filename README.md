@@ -1,7 +1,7 @@
 # GameBoy Camera Photo Save Adapter
 
 <p align="center">
-   <img src="https://github.com/antoxa2584x/gameboy-camera-adapter/blob/main/preview_1.jpg?raw=true"/>
+   <img src="https://rgaming.com.ua/camera_adapter/assets/logo.webp"/>
 </p>
 <p align="center">
    <img src="https://github.com/antoxa2584x/gameboy-camera-adapter/blob/main/preview_2.jpg?raw=true"/>
