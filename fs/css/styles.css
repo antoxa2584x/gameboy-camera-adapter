@@ -329,6 +329,24 @@ footer .links {
         height: 30px !important;
     }
 
+    .color-selector-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+    }
+
+    .mode-block {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+    }
+
+    .mode-block.hidden {
+        display: none !important;
+    }
+
     #color-selector {
         gap: 10px !important;
     }
@@ -534,8 +552,13 @@ footer .links {
     background-color: #4caf50;
 }
 
-#color-selector {
-    display: none;
+/* Color selector container and Save All hidden by default in scanner mode */
+.color-selector-container.hidden, #save_all_btn.hidden {
+    display: none !important;
+}
+
+.color-selector-container, #save_all_btn {
+    display: flex;
     justify-content: center;
     margin: 10px auto;
     gap: 20px;
@@ -727,14 +750,16 @@ input:checked + .slider:before {
     margin-top: 1rem;
     font-size: 0.8rem;
     line-height: 1.4;
+    color: white !important;
 }
 
 .instructions-content p {
     margin: 10px 0;
+    color: white !important;
 }
 
 .instructions-content b {
-    color: #e2da1a;
+    color: wheat !important;
 }
 
 .download-link {
@@ -761,7 +786,25 @@ input:checked + .slider:before {
 }
 
 .popup-overlay.hidden {
-    display: none;
+    display: none !important;
+}
+
+.jingle {
+    animation: jingle 0.5s ease-in-out infinite;
+}
+
+@keyframes jingle {
+    0% { transform: rotate(0deg); }
+    25% { transform: rotate(-3deg); }
+    50% { transform: rotate(3deg); }
+    75% { transform: rotate(-3deg); }
+    100% { transform: rotate(0deg); }
+}
+
+.flex-row {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
 }
 
 .flex-col-center {
@@ -876,7 +919,6 @@ input:checked + .slider:before {
 }
 
 #update-alert {
-    display: none;
     color: yellow;
     font-size: 12px;
     text-align: center;
@@ -962,7 +1004,7 @@ input:checked + .slider:before {
 }
 
 #printer-controls {
-    display: none; /* shown via JS once a file is chosen */
+    display: flex;
     flex-direction: column;
     gap: 0.2rem;
     width: 100%;
@@ -996,7 +1038,6 @@ input:checked + .slider:before {
 }
 
 #print-button {
-    display: none; /* shown via JS once a file is chosen */
     margin-top: 1rem;
 }
 

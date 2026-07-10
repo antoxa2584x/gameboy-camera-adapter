@@ -26,7 +26,7 @@
         <div class="flex-col-center">
             <!-- Close Button -->
             <button class="close-btn" onclick="closeFirmwarePopup()">X</button>
-            <p id="firmware-version-text">Current firmware is v2.0.5</p>
+            <p id="firmware-version-text">Current firmware is v2.0.7</p>
             <!-- Color Picker + Button -->
             <div class="settings-container">
                 <div class="led-color-row">
@@ -42,7 +42,7 @@
                         <input type="checkbox" id="colorMode" checked>
                         <span class="slider round"></span>
                     </label>
-                    <label for="colorMode" class="switch-label">If color not as expected, switch this</label>
+                    <label for="colorMode" class="switch-label">If colors are not as expected, switch this</label>
                 </div>
 
                 <!-- Mobile Compatibility Selector -->
@@ -58,8 +58,6 @@
                 <button onclick="setLedColor()">Save Settings</button>
             </div>
             <!-- Firmware Controls -->
-            <button id="update-btn" class="red hidden" onclick="showUpdateInstructions()">Update Available!</button>
-            <button class="darkgreen" onclick="checkForUpdate()">Check for Update</button>
             <button class="red" onclick="startUpdate()">Force Update Mode</button>
             <label class="fw-update-hint">Click here only to update Adapter Firmware</label>
         </div>
@@ -73,20 +71,23 @@
             <button class="close-btn" onclick="closeUpdateInstructions()">X</button>
             <h2>Update Instructions</h2>
             <div class="instructions-content">
-                <p>1. Download the latest firmware:</p>
-                <a href="https://github.com/antoxa2584x/gameboy-camera-adapter/releases/" target="_blank" class="download-link">.uf2 file from assets</a>
+                <p>1. Download the latest firmware from the button below:</p>
+                <div class="flex-col-center">
+                    <a href="https://github.com/antoxa2584x/gameboy-camera-adapter/releases/" target="_blank" class="download-link">.uf2 file from assets</a>
+                </div>
                 
-                <p>2. Connect the Adapter to your computer.</p>
+                <p>2. Click the <b>"Force Update Mode"</b> button. The Adapter will appear as a new USB drive named <b>"RPI-RP2"</b>.</p>
                 
-                <p>3. Click the <b>"Force Update Mode"</b> button in Settings. The Adapter will disappear from the browser and appear as a new USB drive named <b>"RPI-RP2"</b>.</p>
+                <p>3. Drag and drop the downloaded <b>.uf2</b> file into the <b>RPI-RP2</b> drive.</p>
                 
-                <p>4. Drag and drop the downloaded <b>.uf2</b> file into the <b>RPI-RP2</b> drive.</p>
-                
-                <p>5. The Adapter will reboot automatically and be ready to use!</p>
+                <p>4. The Adapter will reboot automatically and be ready to use!</p>
                 
                 <p class="note">Note: If you are on iPhone/iPad, you need a Mac or Windows PC to perform the update.</p>
             </div>
-            <button class="darkgreen" onclick="closeUpdateInstructions()">Got it</button>
+            <div class="flex-row-center" style="gap: 10px; width: 100%;">
+                <button class="darkgreen" onclick="closeUpdateInstructions()" style="margin-top: 2rem;">Cancel</button>
+                <button class="red" onclick="startUpdate()" style="margin-top: 2rem;">Force Update Mode</button>
+            </div>
         </div>
     </div>
 </div>
@@ -99,25 +100,20 @@
 
 <div id="content" class="container">
     <div id="header">
-        <div id="update-alert">
+        <div id="update-alert" class="hidden" onclick="showUpdateInstructions()" style="cursor: pointer;">
             🔔 Update available: <span id="latest-version"></span>
         </div>
         <img src="https://rgaming.com.ua/camera_adapter/assets/logo.webp" alt="logo" id="logo-img">
         <div id="mode-indicator">
             <div id="mode-name">Gallery</div>
-            <div id="mode-switch-hint">(Click logo to switch mode)</div>
+            <div id="mode-switch-hint">(Click the logo to switch mode)</div>
         </div>
     </div>
 
     <!-- Mode Containers -->
     <div id="scanner-mode" class="mode-block">
-        <div>
-            <button class="hidden" id="get_image_btn">Get Images</button>
-            <button class="hidden" id="tear_btn">Tear</button>
-            <button class="hidden" id="select_all_btn" disabled>Select All</button>
-            <button class="hidden" id="delete_selected_btn" disabled>Delete</button>
-            <button class="hidden" id="average_selected_btn" disabled>Average</button>
-            <div id="color-selector">
+        <div class="color-selector-container hidden">
+            <div id="color-selector" class="flex-row">
                 <div class="color-circle active"
                      style="background:linear-gradient(to right, #ffffff 25%, #bfbfbf 25% 50%, #7f7f7f 50% 75%, #3f3f3f 75%)"
                      data-scheme="grayscale"></div>
@@ -137,14 +133,13 @@
                      style="background:linear-gradient(to right, #f0f0f0 25%, #86c864 25% 50%, #3a6084 50% 75%, #1e1e1e 75%)"
                      data-scheme="game-boy-color-usa-eur"></div>
             </div>
-            <br>
         </div>
         <div class="save-all-row">
             <button id="save_all_btn" class="hidden" onclick="saveAllPictures()">Save All</button>
         </div>
         <div id="gallery"></div>
 
-        <p id="description">Start printing on your Game Boy<br>Photos will appear on this page</p>
+        <p id="description">Start printing on your Game Boy.<br>Photos will appear on this page.</p>
     </div>
 
     <div id="printer-mode" class="mode-block hidden">
@@ -156,13 +151,15 @@
 
                 <canvas id="preview-canvas" width="160" height="144"></canvas>
 
+                <div id="file-name" class="upload-label">No file selected</div>
+
                 <input type="file" id="file-input" accept="image/*" onchange="handleFileInput(event)">
 
                 <div class="flex-col-center">
                     <label for="file-input" class="file-btn">Choose File</label>
                 </div>
 
-                <div id="printer-controls">
+                <div id="printer-controls" class="hidden">
                     <div class="crop-row">
                         <label for="image-mode" class="small-label">Crop mode:</label>
                         <select id="image-mode" class="gb-select" onchange="refreshPreview()">
@@ -176,7 +173,7 @@
                     </div>
                 </div>
 
-                <button id="print-button" class="darkgreen" onclick="printSelectedImage()">Print to Game Boy</button>
+                <button id="print-button" class="darkgreen hidden" onclick="printSelectedImage()">Print to the Game Boy</button>
             </div>
         </div>
         <p class="description beta-note">

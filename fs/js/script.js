@@ -22,7 +22,11 @@ const deleteSelectedBtn = document.getElementById("delete_selected_btn");
 const selectAllBtn = document.getElementById("select_all_btn");
 const averageSelectedBtn = document.getElementById("average_selected_btn");
 
-const CURRENT_VERSION = "2.0.1"; // Fallback version
+function safeAddEventListener(el, event, handler) {
+    if (el) el.addEventListener(event, handler);
+}
+
+const CURRENT_VERSION = "2.0.7"; // Fallback version
 let dynamicVersion = CURRENT_VERSION;
 
 Date.prototype.today = function(delim) {
@@ -277,13 +281,7 @@ function addCanvasToGallery(canvas) {
 
         gallery.appendChild(div);
 
-        // Ensure UI elements like "Save All" and colors are visible
-        const colors = document.getElementById('color-selector');
-        const saveAll = document.getElementById('save_all_btn');
-        const description = document.getElementById('description');
-        if (description) description.style.display = 'none';
-        if (colors) colors.style.display = 'flex';
-        if (saveAll) saveAll.style.display = 'flex';
+        updateButtonStates();
 
         selectAllBtn.disabled = false;
     }
@@ -389,9 +387,31 @@ function updateButtonStates() {
             break;
         }
     }
-    deleteSelectedBtn.disabled = !anyChecked;
-    averageSelectedBtn.disabled = !anyChecked;
-    selectAllBtn.disabled = items.length === 0;
+    if (deleteSelectedBtn) deleteSelectedBtn.disabled = !anyChecked;
+    if (averageSelectedBtn) averageSelectedBtn.disabled = !anyChecked;
+    if (selectAllBtn) selectAllBtn.disabled = items.length === 0;
+
+    // Show "Save All" and color selector only if there are images
+    const colors = document.querySelector('.color-selector-container');
+    const saveAll = document.getElementById('save_all_btn');
+    const description = document.getElementById('description');
+
+    if (items.length > 0) {
+        if (description) description.classList.add('hidden');
+        if (colors) colors.classList.remove('hidden');
+    } else {
+        if (description) description.classList.remove('hidden');
+        if (colors) colors.classList.add('hidden');
+    }
+
+    // "Save All" button should be visible only if there are two or more images
+    if (saveAll) {
+        if (items.length >= 2) {
+            saveAll.classList.remove('hidden');
+        } else {
+            saveAll.classList.add('hidden');
+        }
+    }
 }
 
 async function downloadImage(image) {
@@ -451,11 +471,11 @@ async function downloadImage(image) {
 }
 
 
-getImageBtn.addEventListener("click", async function() {
+safeAddEventListener(getImageBtn, "click", async function() {
     await get_camera_image(canvas, imageBinPath);
 });
 
-selectAllBtn.addEventListener("click", function() {
+safeAddEventListener(selectAllBtn, "click", function() {
     var items = gallery.children;
     if (items.length != 0) {
         Array.from(items).forEach(item => {
@@ -465,15 +485,15 @@ selectAllBtn.addEventListener("click", function() {
                 item.markedForAction = true;
             }
         });
-        deleteSelectedBtn.disabled = false;
-        averageSelectedBtn.disabled = false;
+        if (deleteSelectedBtn) deleteSelectedBtn.disabled = false;
+        if (averageSelectedBtn) averageSelectedBtn.disabled = false;
     } else {
-        deleteSelectedBtn.disabled = true;
-        averageSelectedBtn.disabled = false;
+        if (deleteSelectedBtn) deleteSelectedBtn.disabled = true;
+        if (averageSelectedBtn) averageSelectedBtn.disabled = false;
     }
 });
 
-deleteSelectedBtn.addEventListener("click", function() {
+safeAddEventListener(deleteSelectedBtn, "click", function() {
     var items = gallery.children;
     for (var i = items.length - 1; i >= 0; i--) {
         if (items[i].markedForAction) items[i].remove();
@@ -481,7 +501,7 @@ deleteSelectedBtn.addEventListener("click", function() {
     updateButtonStates();
 });
 
-tearBtn.addEventListener("click", async function() {
+safeAddEventListener(tearBtn, "click", async function() {
     fetch(resetPath)
         .then((response) => {
             return response.json();
@@ -493,13 +513,14 @@ tearBtn.addEventListener("click", async function() {
                 for (var i = items.length - 1; i >= 0; i--) {
                     items[i].remove();
                 }
+                updateButtonStates();
             };
-            getImageBtn.click();
+            if (getImageBtn) getImageBtn.click();
         });
 
 });
 
-averageSelectedBtn.addEventListener("click", function() {
+safeAddEventListener(averageSelectedBtn, "click", function() {
     const items = gallery.children;
 
     const avgCanvas = document.createElement('canvas');
@@ -563,7 +584,15 @@ function setReceiveOverlay(visible) {
     if (visible === receiveOverlayVisible) return;
     receiveOverlayVisible = visible;
     const overlay = document.getElementById("receive-overlay");
-    if (overlay) overlay.style.display = visible ? "flex" : "none";
+    if (overlay) {
+        if (visible) {
+            overlay.classList.remove("hidden");
+            overlay.style.display = "flex";
+        } else {
+            overlay.classList.add("hidden");
+            overlay.style.display = "none";
+        }
+    }
 }
 
 async function is_receiving() {
@@ -717,19 +746,19 @@ function parseScheme() {
 function renderExtraViews() {
     const description = document.getElementById("description");
     if (description) {
-        description.style.display = "none";
+        description.classList.add("hidden");
         console.log("Description hidden as gallery is not empty.");
     }
 
     const colors = document.getElementById("color-selector");
     if (colors) {
-        colors.style.display = "flex";
+        colors.classList.remove("hidden");
         console.log("Colors visible as gallery is not empty.");
     }
 
     const saveAll = document.getElementById("save_all_btn");
     if (saveAll) {
-        saveAll.style.display = "flex";
+        saveAll.classList.remove("hidden");
     }
 }
 
@@ -812,16 +841,13 @@ async function checkGitHubRelease() {
         if (isNewerVersion(latestVersion, dynamicVersion)) {
             const alertBox = document.getElementById("update-alert");
             const versionSpan = document.getElementById("latest-version");
-            const updateBtn = document.getElementById("update-btn");
 
             if (versionSpan) {
                 versionSpan.innerHTML = `<a href="${releaseUrl}" target="_blank" style="color:yellow;">v${latestVersion}</a>`;
             }
             if (alertBox) {
-                alertBox.style.display = "block";
-            }
-            if (updateBtn) {
-                updateBtn.classList.remove("hidden");
+                alertBox.classList.remove("hidden");
+                alertBox.classList.add("jingle");
             }
         }
     } catch (err) {
@@ -872,14 +898,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
 function showFirmwarePopup() {
     const popup = document.getElementById('fw-popup');
-    popup.style.display = 'flex';
+    if (popup) popup.classList.remove('hidden');
 
     loadLedStatus();
 }
 
 function closeFirmwarePopup() {
     const popup = document.getElementById('fw-popup');
-    popup.style.display = 'none';
+    if (popup) popup.classList.add('hidden');
 }
 
 function showUpdateInstructions() {
@@ -902,7 +928,12 @@ function startUpdate() {
         return;
     }
 
-    window.location.href = "http://192.168.7.1/update";
+    const currentOrigin = window.location.origin;
+    const updateUrl = currentOrigin.includes('192.168.7.1') ? "http://192.168.7.1/update" : "/update";
+
+    // Navigate directly to the update endpoint. 
+    // The server will respond with updating.html and then reboot.
+    window.location.href = updateUrl;
 }
 
 function setLedColor() {
@@ -964,12 +995,12 @@ function saveAllPictures() {
 
 function showGeneralPopup() {
     const popup = document.getElementById('general-popup');
-    popup.style.display = 'flex';
+    if (popup) popup.classList.remove('hidden');
 }
 
 function closeGeneralPopup() {
     const popup = document.getElementById('general-popup');
-    popup.style.display = 'none';
+    if (popup) popup.classList.add('hidden');
 }
 
 function updateGeneralPopup(html, showCloseButton) {
@@ -978,9 +1009,9 @@ function updateGeneralPopup(html, showCloseButton) {
 
     const closeButton = document.querySelector('.general-popup-button-close-button');
     if (showCloseButton) {
-        if (closeButton) closeButton.style.display = 'flex';
+        if (closeButton) closeButton.classList.remove('hidden');
     } else {
-        if (closeButton) closeButton.style.display = 'none';
+        if (closeButton) closeButton.classList.add('hidden');
     }
 }
 
@@ -1044,14 +1075,14 @@ function pollPrinterStatus() {
                     const statusText = document.getElementById("print-status-text");
                     if (overlay && statusText) {
                         if (data.printer === 0xFF) {
-                            overlay.style.display = "none";
+                            overlay.classList.add("hidden");
                         } else if (data.printer & 0x02) { // Printer Busy (Printing image)
-                            overlay.style.display = "flex";
+                            overlay.classList.remove("hidden");
                             statusText.textContent = "Printing image...";
                         } else if (data.printer === 0x00) {
-                            overlay.style.display = "none";
+                            overlay.classList.add("hidden");
                         } else if (data.printer & 0x04) { // Image Data Full
-                            overlay.style.display = "flex";
+                            overlay.classList.remove("hidden");
                             statusText.textContent = "Image Data Full";
                         } else if (data.printer !== 0x00) {
                             // Any other error (except Unprocessed which we cleared)
@@ -1066,7 +1097,7 @@ function pollPrinterStatus() {
         .catch(err => {
             console.error("Status error:", err);
             const overlay = document.getElementById("print-overlay");
-            if (overlay) overlay.style.display = "none";
+            if (overlay) overlay.classList.add("hidden");
         });
 }
 
@@ -1096,11 +1127,11 @@ if (logoImg) {
         const switchMode = () => {
             if (currentMode === "scanner") {
                 if (scanner) {
-                    scanner.style.display = "none";
+                    scanner.classList.add("hidden");
                     scanner.classList.remove("fade-out");
                 }
                 if (printer) {
-                    printer.style.display = "block";
+                    printer.classList.remove("hidden");
                     printer.classList.add("fade-in");
                 }
                 if (modeName) modeName.textContent = "Printer";
@@ -1110,11 +1141,11 @@ if (logoImg) {
                 startPrinterPolling();
             } else {
                 if (printer) {
-                    printer.style.display = "none";
+                    printer.classList.add("hidden");
                     printer.classList.remove("fade-out");
                 }
                 if (scanner) {
-                    scanner.style.display = "block";
+                    scanner.classList.remove("hidden");
                     scanner.classList.add("fade-in");
                 }
                 if (modeName) modeName.textContent = "Gallery";
@@ -1274,14 +1305,20 @@ function sendChunkedData(binaryData, chunkSize = 256) {
     fetch("/status.json")
         .then(res => res.json())
         .then(data => {
-            if (data.printer !== 0xFF && data.printer !== undefined) {
-                if (overlay) overlay.style.display = "flex";
-                if (statusText) statusText.textContent = "Sending to printer...";
-            }
+            if (overlay) {
+        if (data.printer !== 0xFF && data.printer !== undefined) {
+            overlay.classList.remove("hidden");
+            overlay.style.display = "flex";
+            if (statusText) statusText.textContent = "Sending to printer...";
+        }
+    }
         })
         .catch(() => {
              // If we can't even get status, don't show overlay
-             if (overlay) overlay.style.display = "none";
+             if (overlay) {
+                 overlay.classList.add("hidden");
+                 overlay.style.display = "none";
+             }
         });
 
     // Buffer all packets to firmware, then trigger burst send
@@ -1302,7 +1339,10 @@ function sendChunkedData(binaryData, chunkSize = 256) {
                     const statusDesc = getPrinterStatusDisplay(printerStatus);
 
                     if (printerStatus === 0x00 || printerStatus === 0xFF) {
-                        if (overlay) overlay.style.display = "none";
+                        if (overlay) {
+                            overlay.classList.add("hidden");
+                            overlay.style.display = "none";
+                        }
                     } else if (statusDesc !== "OK") {
                         if (statusText) statusText.textContent = statusDesc;
                         // If it's a real error (not just busy), maybe keep it visible?
@@ -1313,7 +1353,10 @@ function sendChunkedData(binaryData, chunkSize = 256) {
                     isPrintingActive = false;
                     console.error("Print failed", err);
                     if (printBtn) printBtn.style.display = "block";
-                    if (overlay) overlay.style.display = "none";
+                    if (overlay) {
+                        overlay.classList.add("hidden");
+                        overlay.style.display = "none";
+                    }
                 });
             return;
         }
@@ -1342,6 +1385,7 @@ function handleFileInput(e) {
     const file = e.target.files[0];
     const nameDisplay = document.getElementById("file-name");
     const printButton = document.getElementById("print-button");
+    const printerControls = document.getElementById("printer-controls");
 
     if (file) {
         if (nameDisplay) {
@@ -1351,12 +1395,12 @@ function handleFileInput(e) {
             const ext = dotIndex > 0 ? name.substring(dotIndex) : "";
             nameDisplay.textContent = base.length > 47 ? base.substring(0, 30) + "..." + base.substring(base.length - 3, base.length) + ext : name;
         }
-        printButton.style.display = "block";
-        document.getElementById("printer-controls").style.display = "flex";
+        if (printButton) printButton.classList.remove("hidden");
+        if (printerControls) printerControls.classList.remove("hidden");
     } else {
         if (nameDisplay) nameDisplay.textContent = "No file selected";
-        printButton.style.display = "none";
-        document.getElementById("printer-controls").style.display = "none";
+        if (printButton) printButton.classList.add("hidden");
+        if (printerControls) printerControls.classList.add("hidden");
         return;
     }
 
@@ -1365,11 +1409,14 @@ function handleFileInput(e) {
         const img = new Image();
         img.onload = function () {
             currentImage = img;
-            const targetRatio = 160 / 144;
-            const imgRatio = img.width / img.height;
-
+            // Default to fit
             const modeSelect = document.getElementById("image-mode");
-            modeSelect.value = "fit"; // Default to fit
+            if (modeSelect) modeSelect.value = "fit";
+            
+            // Force display of elements that might be hidden by CSS !important
+            if (printButton) printButton.classList.remove("hidden");
+            if (printerControls) printerControls.classList.remove("hidden");
+            
             refreshPreview();
         };
         img.src = evt.target.result;
