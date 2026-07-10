@@ -719,7 +719,45 @@ input:checked + .slider:before {
 /* --- Component classes (extracted from former inline styles in index.html) --- */
 
 .hidden {
-    display: none;
+    display: none !important;
+}
+
+.instructions-content {
+    text-align: left;
+    margin-top: 1rem;
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+.instructions-content p {
+    margin: 10px 0;
+}
+
+.instructions-content b {
+    color: #e2da1a;
+}
+
+.download-link {
+    display: inline-block;
+    background-color: #004d25;
+    color: white;
+    padding: 10px;
+    text-decoration: none;
+    border-radius: 5px;
+    margin: 5px 0;
+    font-size: 0.7rem;
+}
+
+.note {
+    font-size: 0.6rem;
+    color: #ffcccc;
+    margin-top: 20px !important;
+}
+
+.popup-container h2 {
+    font-size: 1.2rem;
+    margin-bottom: 0.5rem;
+    color: white;
 }
 
 .popup-overlay.hidden {

@@ -58,9 +58,35 @@
                 <button onclick="setLedColor()">Save Settings</button>
             </div>
             <!-- Firmware Controls -->
+            <button id="update-btn" class="red hidden" onclick="showUpdateInstructions()">Update Available!</button>
             <button class="darkgreen" onclick="checkForUpdate()">Check for Update</button>
-            <button class="red" onclick="startUpdate()">Update</button>
+            <button class="red" onclick="startUpdate()">Force Update Mode</button>
             <label class="fw-update-hint">Click here only to update Adapter Firmware</label>
+        </div>
+    </div>
+</div>
+
+<!-- Update Instructions Popup -->
+<div id="update-instructions-popup" class="popup-overlay hidden">
+    <div class="popup-container popup-box">
+        <div class="flex-col-center">
+            <button class="close-btn" onclick="closeUpdateInstructions()">X</button>
+            <h2>Update Instructions</h2>
+            <div class="instructions-content">
+                <p>1. Download the latest firmware:</p>
+                <a href="https://github.com/antoxa2584x/gameboy-camera-adapter/releases/" target="_blank" class="download-link">.uf2 file from assets</a>
+                
+                <p>2. Connect the Adapter to your computer.</p>
+                
+                <p>3. Click the <b>"Force Update Mode"</b> button in Settings. The Adapter will disappear from the browser and appear as a new USB drive named <b>"RPI-RP2"</b>.</p>
+                
+                <p>4. Drag and drop the downloaded <b>.uf2</b> file into the <b>RPI-RP2</b> drive.</p>
+                
+                <p>5. The Adapter will reboot automatically and be ready to use!</p>
+                
+                <p class="note">Note: If you are on iPhone/iPad, you need a Mac or Windows PC to perform the update.</p>
+            </div>
+            <button class="darkgreen" onclick="closeUpdateInstructions()">Got it</button>
         </div>
     </div>
 </div>

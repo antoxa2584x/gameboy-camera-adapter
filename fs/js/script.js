@@ -812,9 +812,17 @@ async function checkGitHubRelease() {
         if (isNewerVersion(latestVersion, dynamicVersion)) {
             const alertBox = document.getElementById("update-alert");
             const versionSpan = document.getElementById("latest-version");
+            const updateBtn = document.getElementById("update-btn");
 
-            versionSpan.innerHTML = `<a href="${releaseUrl}" target="_blank" style="color:yellow;">v${latestVersion}</a>`;
-            alertBox.style.display = "block";
+            if (versionSpan) {
+                versionSpan.innerHTML = `<a href="${releaseUrl}" target="_blank" style="color:yellow;">v${latestVersion}</a>`;
+            }
+            if (alertBox) {
+                alertBox.style.display = "block";
+            }
+            if (updateBtn) {
+                updateBtn.classList.remove("hidden");
+            }
         }
     } catch (err) {
         console.error("Failed to check for updates:", err);
@@ -872,6 +880,16 @@ function showFirmwarePopup() {
 function closeFirmwarePopup() {
     const popup = document.getElementById('fw-popup');
     popup.style.display = 'none';
+}
+
+function showUpdateInstructions() {
+    const popup = document.getElementById('update-instructions-popup');
+    if (popup) popup.classList.remove('hidden');
+}
+
+function closeUpdateInstructions() {
+    const popup = document.getElementById('update-instructions-popup');
+    if (popup) popup.classList.add('hidden');
 }
 
 function checkForUpdate() {
