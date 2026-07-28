@@ -26,7 +26,7 @@ function safeAddEventListener(el, event, handler) {
     if (el) el.addEventListener(event, handler);
 }
 
-const CURRENT_VERSION = "2.0.7"; // Fallback version
+const CURRENT_VERSION = "2.0.8"; // Fallback version
 let dynamicVersion = CURRENT_VERSION;
 
 Date.prototype.today = function(delim) {
@@ -310,29 +310,43 @@ function showPopupWithUpscaledImage(image) {
     popup.style.maxHeight = "90vh";
     popup.style.justifyContent = "center";
 
-    // Create canvas for upscaled image
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
+    // Show the upscaled photo as a real <img>, not a <canvas>: iOS only offers its
+    // native long-press "Add to Photos" menu on images, and long-pressing a canvas
+    // just selects the surrounding text instead. Same JPEG (with EXIF) the SAVE
+    // button produces, so both routes give an identical file.
+    const upscaled = document.createElement("img");
+    upscaled.classList.add("popup-image");
+    upscaled.alt = "Game Boy Camera photo";
 
-    // Load the image
-    const img = new Image();
-    img.crossOrigin = "Anonymous"; // This enables CORS
-    img.src = image.src;
-    img.onload = function() {
-        const width = img.naturalWidth || img.width;
-        const height = img.naturalHeight || img.height;
-        // Set canvas dimensions to 10 times the image dimensions
-        canvas.width = width * 10;
-        canvas.height = height * 10;
-
-        // Disable image smoothing for Nearest Neighbor scaling
-        ctx.imageSmoothingEnabled = false;
-
-        // Draw the image scaled up by 10 times
-        ctx.drawImage(img, 0, 0, width, height, 0, 0, canvas.width, canvas.height);
+    const setUpscaledSrc = (loaded) => {
+        try {
+            upscaled.src = renderJpegDataUrl(loaded);
+        } catch (e) {
+            console.error("Upscale failed:", e);
+            upscaled.src = loaded.src;
+        }
     };
 
-    popup.appendChild(canvas);
+    if (image.complete && image.naturalWidth !== 0) {
+        setUpscaledSrc(image);
+    } else {
+        const img = new Image();
+        img.crossOrigin = "Anonymous"; // This enables CORS
+        img.onload = function() {
+            setUpscaledSrc(img);
+        };
+        img.src = image.src;
+    }
+
+    popup.appendChild(upscaled);
+
+    // Point iOS users at the long-press route, which lands straight in Photos
+    if (isAppleMobile()) {
+        const hint = document.createElement("p");
+        hint.classList.add("popup-save-hint");
+        hint.textContent = "Touch and hold the photo to add it to Photos";
+        popup.appendChild(hint);
+    }
 
     // Create save button as text at the bottom
     const saveButton = document.createElement("button");
@@ -404,9 +418,10 @@ function updateButtonStates() {
         if (colors) colors.classList.add('hidden');
     }
 
-    // "Save All" button should be visible only if there are two or more images
+    // "Save All" button should be visible only if there are two or more images.
+    // Never on iOS: see saveAllSupported().
     if (saveAll) {
-        if (items.length >= 2) {
+        if (items.length >= 2 && saveAllSupported()) {
             saveAll.classList.remove('hidden');
         } else {
             saveAll.classList.add('hidden');
@@ -414,60 +429,129 @@ function updateButtonStates() {
     }
 }
 
-async function downloadImage(image) {
-    downloadIndex += 1;
-    var datetime = new Date();
-    var file_name = `image_${datetime.toISOString().split('T')[0]}_${datetime.toTimeString().split(' ')[0].replace(/:/g, '-')}.jpg`;
+function makeFileName(suffix) {
+    const datetime = new Date();
+    const date = datetime.toISOString().split('T')[0];
+    const time = datetime.toTimeString().split(' ')[0].replace(/:/g, '-');
+    return `image_${date}_${time}${suffix ? "_" + suffix : ""}.jpg`;
+}
+
+// Render an <img> from the gallery to a 10x upscaled JPEG data URL, with EXIF tags.
+// Synchronous on purpose: it must not consume the user gesture, or iOS refuses to
+// open the share sheet / start a download.
+function renderJpegDataUrl(img) {
+    const width = img.naturalWidth || img.width;
+    const height = img.naturalHeight || img.height;
 
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
+    canvas.width = width * 10;
+    canvas.height = height * 10;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, 0, 0, width, height, 0, 0, canvas.width, canvas.height);
 
-    const processImage = (img) => {
-        const width = img.naturalWidth || img.width;
-        const height = img.naturalHeight || img.height;
-        canvas.width = width * 10;
-        canvas.height = height * 10;
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(img, 0, 0, width, height, 0, 0, canvas.width, canvas.height);
+    let jpegDataUrl = canvas.toDataURL("image/jpeg", 1.0);
 
-        // Convert to JPEG base64
-        let jpegDataUrl = canvas.toDataURL("image/jpeg", 1.0);
-
-        try {
-            // Add EXIF metadata if piexif is available
-            if (typeof piexif !== "undefined") {
-                const zeroth = {};
-                zeroth[piexif.ImageIFD.Make] = "Nintendo";
-                zeroth[piexif.ImageIFD.Model] = "Game Boy Camera";
-                zeroth[piexif.ImageIFD.Software] = "GameBoy Camera Adapter";
-                const exifObj = {"0th": zeroth};
-                const exifBytes = piexif.dump(exifObj);
-                jpegDataUrl = piexif.insert(exifBytes, jpegDataUrl);
-            }
-        } catch (e) {
-            console.error("EXIF error:", e);
+    try {
+        // Add EXIF metadata if piexif is available
+        if (typeof piexif !== "undefined") {
+            const zeroth = {};
+            zeroth[piexif.ImageIFD.Make] = "Nintendo";
+            zeroth[piexif.ImageIFD.Model] = "Game Boy Camera";
+            zeroth[piexif.ImageIFD.Software] = "GameBoy Camera Adapter";
+            const exifObj = {"0th": zeroth};
+            const exifBytes = piexif.dump(exifObj);
+            jpegDataUrl = piexif.insert(exifBytes, jpegDataUrl);
         }
+    } catch (e) {
+        console.error("EXIF error:", e);
+    }
 
-        // Trigger download
-        const a = document.createElement("a");
-        a.href = jpegDataUrl;
-        a.download = file_name;
-        a.style.display = "none";
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => a.remove(), 100);
-    };
+    return jpegDataUrl;
+}
+
+function dataUrlToBlob(dataUrl) {
+    const comma = dataUrl.indexOf(',');
+    const header = dataUrl.slice(0, comma);
+    const mime = (header.match(/:(.*?);/) || [null, "image/jpeg"])[1];
+    const binary = atob(dataUrl.slice(comma + 1));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+}
+
+function renderJpegFile(img, suffix) {
+    const name = makeFileName(suffix);
+    return new File([dataUrlToBlob(renderJpegDataUrl(img))], name, { type: "image/jpeg" });
+}
+
+// NOTE: the Web Share API is secure-context only, and the adapter serves the UI
+// over plain http://192.168.7.1, so this is false on iOS in practice — there is no
+// share sheet to reach and every save goes through downloadViaLink() below. It
+// stays here in case the UI is ever served over HTTPS.
+function canShareFiles(files) {
+    return typeof navigator.canShare === "function" &&
+           typeof navigator.share === "function" &&
+           navigator.canShare({ files: files });
+}
+
+// Saving many files at once is only sane when they can go out as one share batch.
+// On iOS each file instead becomes a separate download, so Safari/Chrome throw up
+// their own save-destination prompt per photo — hide the button rather than walk
+// the user through N dialogs. Single SAVE and long-press still work.
+function saveAllSupported() {
+    return !isAppleMobile();
+}
+
+// iOS/iPadOS ignores the `download` attribute and blocks navigation to data: URLs,
+// so an <a download> never worked there. The share sheet is the only route into
+// Photos, and blob: URLs are the fallback for everything else.
+function downloadViaLink(file) {
+    const url = URL.createObjectURL(file);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = file.name;
+    a.rel = "noopener";
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+        a.remove();
+        URL.revokeObjectURL(url);
+    }, 30000);
+}
+
+function saveFiles(files) {
+    if (canShareFiles(files)) {
+        return navigator.share({ files: files }).catch((err) => {
+            if (err && (err.name === "AbortError" || err.name === "NotAllowedError")) return;
+            console.error("Share failed, falling back to download:", err);
+            files.forEach(downloadViaLink);
+        });
+    }
+    files.forEach(downloadViaLink);
+    return Promise.resolve();
+}
+
+function downloadImage(image) {
+    downloadIndex += 1;
 
     if (image.complete && image.naturalWidth !== 0) {
-        processImage(image);
-    } else {
+        return saveFiles([renderJpegFile(image)]);
+    }
+
+    // Not decoded yet — the gesture is lost by the time it loads, so the share
+    // sheet is unavailable and we go straight to a blob download.
+    return new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = "Anonymous";
-        img.src = image.src;
         img.onload = function () {
-            processImage(img);
+            downloadViaLink(renderJpegFile(img));
+            resolve();
         };
-    }
+        img.onerror = resolve;
+        img.src = image.src;
+    });
 }
 
 
@@ -757,7 +841,7 @@ function renderExtraViews() {
     }
 
     const saveAll = document.getElementById("save_all_btn");
-    if (saveAll) {
+    if (saveAll && saveAllSupported()) {
         saveAll.classList.remove("hidden");
     }
 }
@@ -936,6 +1020,11 @@ function startUpdate() {
     window.location.href = updateUrl;
 }
 
+function isAppleMobile() {
+    return /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+           (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
 function setLedColor() {
     const hex = document.getElementById("ledColorPicker").value;
     const useRGB = document.getElementById("colorMode").checked;
@@ -943,10 +1032,26 @@ function setLedColor() {
     const r = parseInt(hex.substr(1, 2), 16);
     const g = parseInt(hex.substr(3, 2), 16);
     const b = parseInt(hex.substr(5, 2), 16);
-    fetch(`/set_color?r=${r}&g=${g}&b=${b}&use_rgb=${useRGB}&mode=${mobileMode}`)
+
+    if (mobileMode == "1" && isAppleMobile()) {
+        const proceed = confirm(
+            "Android mode is meant for use with the Android app.\n\n" +
+            "Continue?"
+        );
+        if (!proceed) return;
+    }
+
+    fetch(`/set_color?r=${r}&g=${g}&b=${b}&use_rgb=${useRGB}&mode=${mobileMode}`, { cache: "no-store" })
         .then(() => {
             alert("Settings saved. The device will now reboot.");
             window.location.reload();
+        })
+        .catch((err) => {
+            console.error("Failed to save settings:", err);
+            alert(
+                "Could not reach the adapter, settings were NOT saved.\n\n" +
+                "Reconnect the adapter and reload this page, then try again."
+            );
         });
 }
 
@@ -958,7 +1063,7 @@ function updatePreview() {
 document.getElementById("ledColorPicker").addEventListener("input", updatePreview);
 
 function loadLedStatus() {
-    fetch('/led_status')
+    fetch('/led_status', { cache: "no-store" })
         .then(response => response.json())
         .then(data => {
             const { r, g, b, use_rgb, mode } = data;
@@ -967,28 +1072,46 @@ function loadLedStatus() {
             document.getElementById('colorPreview').style.backgroundColor = hex;
             document.getElementById('colorMode').checked = use_rgb === true;
             if (mode !== undefined) {
-                document.getElementById('mobileMode').value = mode;
+                document.getElementById('mobileMode').value = String(mode);
             }
         })
         .catch(err => console.error("Failed to load LED status:", err));
 }
 
 function saveAllPictures() {
-    const images = document.querySelectorAll('.gallery-image img');
+    const images = Array.from(document.querySelectorAll('.gallery-image img'));
     const total = images.length;
 
     if (total == 0) {
         return;
     }
 
+    // Render everything up front, still inside the click handler: iOS allows only
+    // one share/download per user gesture, so all photos go out in a single batch.
+    const files = images
+        .filter(img => img.complete && img.naturalWidth !== 0)
+        .map((img, index) => renderJpegFile(img, String(index + 1).padStart(2, '0')));
+
+    if (files.length == 0) {
+        return;
+    }
+
+    // The share sheet is its own full-screen UI and confirms the save itself, so
+    // don't stack our progress modal on top of it — that only leaves an extra
+    // dialog to dismiss. The popup is for the sequential fallback below, where
+    // per-file progress is the only feedback there is.
+    if (canShareFiles(files)) {
+        saveFiles(files);
+        return;
+    }
+
     showGeneralPopup();
     updateGeneralPopup('SAVING PHOTOS', false);
-
-    images.forEach((img, index) => {
+    files.forEach((file, index) => {
         setTimeout(() => {
-            let showButton = (index == total - 1);
-            updateGeneralPopup(`SAVING PHOTO ${index + 1}/${total}`, showButton);
-            downloadImage(img);
+            let showButton = (index == files.length - 1);
+            updateGeneralPopup(`SAVING PHOTO ${index + 1}/${files.length}`, showButton);
+            downloadViaLink(file);
         }, 500 * index);
     });
 }

@@ -438,9 +438,19 @@ const char* cgi_update(int iIndex, int iNumParams, char *pcParam[], char *pcValu
     return "/updating.html";
 }
 
-#define FLASH_TARGET_OFFSET (256 * 1024) // adjust as needed (sector-aligned)
+// Settings live in the very last flash sector. It used to be a fixed 256 KiB
+// offset, which is *inside* the firmware image (the binary is >300 KiB), so every
+// save erased 4 KiB of .rodata — the embedded web assets served to the browser.
+#define FLASH_TARGET_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
+
+// End of the program image in flash, provided by the SDK linker script
+extern char __flash_binary_end;
 
 void save_color_to_flash(uint8_t r, uint8_t g, uint8_t b, bool rgb_mode, uint8_t mode) {
+    // Never write over our own code/rodata, whatever the offset ends up being
+    uint32_t binary_end = (uint32_t)&__flash_binary_end - XIP_BASE;
+    if (FLASH_TARGET_OFFSET < binary_end) return;
+
     uint8_t buffer[FLASH_PAGE_SIZE] = {0};
     buffer[0] = r;
     buffer[1] = g;
@@ -467,7 +477,9 @@ void load_color_from_flash() {
         base_b = flash_data[2];
         use_rgb_mode = (flash_data[4] == 0x01);
         mobile_compatibility = flash_data[5];
-        if (mobile_compatibility == 0) { // Legacy MODE_AUTO
+        // Legacy MODE_AUTO (0) and anything unrecognised fall back to iOS, which
+        // is the mode that works on every host
+        if (mobile_compatibility != MODE_ANDROID && mobile_compatibility != MODE_IOS) {
             mobile_compatibility = MODE_IOS;
         }
     } else {

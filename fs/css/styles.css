@@ -514,6 +514,32 @@ footer .links {
     /* Maintain aspect ratio */
 }
 
+/* Opened photo. Nothing here may set -webkit-touch-callout: none, or iOS loses
+   the long-press "Add to Photos" menu. */
+.image-container img.popup-image {
+    max-width: 90vw;
+    max-height: 80vh;
+    width: auto;
+    height: auto;
+    display: block;
+    image-rendering: pixelated;
+    -webkit-touch-callout: default;
+}
+
+/* Keep the long-press from turning into a text selection of the popup chrome */
+.image-container {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.popup-save-hint {
+    color: white;
+    font-size: 0.7rem;
+    text-align: center;
+    opacity: 0.8;
+    margin: 0.6rem 0 0;
+}
+
 /* Close Button Styles */
 .popup-close-button, .popup-save-button {
     position: absolute;

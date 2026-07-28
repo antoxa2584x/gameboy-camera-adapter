@@ -105,7 +105,11 @@ uint8_t const * tud_descriptor_device_cb(void) {
         .bNumConfigurations = 0
     };
     desc.idProduct = get_usb_pid();
-    desc.bNumConfigurations = (mobile_compatibility == MODE_ANDROID) ? 1 : 2;
+    // Always advertise both configurations. Config 1 is RNDIS (+ CDC in Android
+    // mode) for Windows/Android; config 2 is CDC-ECM, the only one iOS and macOS
+    // will accept. Offering only config 1 in Android mode left iPhones and Macs
+    // with no network at all, so the web UI could not be used to switch back.
+    desc.bNumConfigurations = 2;
     return (uint8_t const *) &desc;
 }
 
@@ -135,13 +139,12 @@ static uint8_t const android_configuration[] = {
 // Invoked when received GET CONFIGURATION DESCRIPTOR
 // Application return pointer to descriptor
 uint8_t const * tud_descriptor_configuration_cb(uint8_t index) {
-    if (mobile_compatibility == MODE_ANDROID) return android_configuration;
-    
-    // For IOS mode, we provide two configurations: RNDIS and ECM
-    // Windows/iOS might pick one
-    if (index == 0) return ios_configuration;
+    // Config 1: RNDIS, plus a CDC-ACM interface in Android mode (Windows/Android)
+    if (index == 0) return (mobile_compatibility == MODE_ANDROID) ? android_configuration
+                                                                 : ios_configuration;
+    // Config 2: CDC-ECM — what iOS and macOS pick, in both modes
     if (index == 1) return ecm_configuration;
-    
+
     return NULL;
 }
 
