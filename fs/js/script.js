@@ -3,6 +3,12 @@ const COMMAND_PRINT = 0x02;
 const COMMAND_DATA = 0x04;
 const COMMAND_TRANSFER = 0x10;
 
+// Printer exposure byte = thermal head burn time, 0x00 lightest to 0x7F darkest.
+// The bottom of that range prints washed out with no true black, so the light end
+// of the slider is floored at 0x20. Keep in sync with the "print-exposure" input.
+const PRINT_EXPOSURE_MIN = 0x20;
+const PRINT_EXPOSURE_MAX = 0x7F;
+
 const PRINTER_WIDTH = 20;
 const CAMERA_WIDTH = 16;
 const TILE_SIZE = 0x10;
@@ -1401,10 +1407,9 @@ function sendChunkedData(binaryData, chunkSize = 256) {
     const exposureVal = parseInt(document.getElementById("print-exposure").value);
     const exposure = Number.isFinite(exposureVal) ? exposureVal : 0x40;
     // The slider follows the Game Boy Camera's exposure bar: right is darker,
-    // left is lighter. That is already the direction of the printer's exposure
-    // byte - it is the thermal head burn time, where 0x00 is the lightest print
-    // and 0x7F the darkest - so the value goes through as is, only clamped.
-    const expValue = Math.min(0x7F, Math.max(0, exposure));
+    // left is lighter, which is already the direction of the printer's exposure
+    // byte, so the value goes through as is and is only clamped to the range.
+    const expValue = Math.min(PRINT_EXPOSURE_MAX, Math.max(PRINT_EXPOSURE_MIN, exposure));
     const printData = new Uint8Array([0x01, 0x03, 0xE4, expValue]);
     const printHeader = "883302000400";
     let printHexData = "0103e4" + expValue.toString(16).padStart(2, '0');
@@ -1604,12 +1609,15 @@ function processImage(img, mode) {
     ctx.drawImage(img, sourceX, sourceY, sourceWidth, sourceHeight, destX, destY, destWidth, destHeight);
 
     const exposureVal = parseInt(document.getElementById("print-exposure").value);
-    const exposure = Number.isFinite(exposureVal) ? exposureVal : 64;
-    // 64 is the middle of the slider. Dragging right raises the exposure, which
+    const rawExposure = Number.isFinite(exposureVal) ? exposureVal : 0x40;
+    // Clamp to the same range sendChunkedData() sends, so the preview cannot
+    // show a lighter image than the printer is able to produce.
+    const exposure = Math.min(PRINT_EXPOSURE_MAX, Math.max(PRINT_EXPOSURE_MIN, rawExposure));
+    // 0x40 is the printer's default. Dragging right raises the exposure, which
     // means a longer burn time and a darker print, so raise the quantisation
     // thresholds by the same amount to push more pixels onto the darker levels.
     // The preview then moves in step with what the printer will produce.
-    const offset = (exposure - 64) * 0.8;
+    const offset = (exposure - 0x40) * 0.8;
 
     const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
     const data = imageData.data;
