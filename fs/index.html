@@ -169,10 +169,12 @@
                     </div>
                     <div class="exposure-row">
                         <label for="print-exposure" class="small-label">Exposure:</label>
-                        <!-- min is 21, not 0: the printer's lightest exposures come out washed
-                             out with no true black, so the light end of the slider is floored
-                             just under stock. Keep in sync with PRINT_EXPOSURE_MIN in script.js. -->
-                        <input type="range" id="print-exposure" min="21" max="127" value="96" oninput="refreshExposure()">
+                        <!-- The printer's full exposure range, 0x00 to 0x7F, defaulting to the
+                             Game Boy's own 0x40. The lightest settings genuinely do print washed
+                             out with no true black; the preview shows that rather than hiding it.
+                             script.js reads these bounds off this element, so changing them here
+                             is enough - there is no constant to keep in step. -->
+                        <input type="range" id="print-exposure" min="0" max="127" value="64" oninput="refreshExposure()">
                     </div>
                 </div>
 
