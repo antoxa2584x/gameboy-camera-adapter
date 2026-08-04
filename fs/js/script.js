@@ -1400,13 +1400,11 @@ function sendChunkedData(binaryData, chunkSize = 256) {
     // PRINT packet
     const exposureVal = parseInt(document.getElementById("print-exposure").value);
     const exposure = Number.isFinite(exposureVal) ? exposureVal : 0x40;
-    // The slider is photographic exposure: dragging it right means "more light",
-    // i.e. a brighter picture, which is what the preview renders. The printer's
-    // exposure byte is the opposite - it is the thermal head burn time, where
-    // 0x00 is the lightest print and 0x7F the darkest - so invert it here.
-    // Without this the printout came out washed out exactly when the slider
-    // (and the preview) asked for the darkest image. See issue #9.
-    const expValue = 0x7F - Math.min(0x7F, Math.max(0, exposure));
+    // The slider follows the Game Boy Camera's exposure bar: right is darker,
+    // left is lighter. That is already the direction of the printer's exposure
+    // byte - it is the thermal head burn time, where 0x00 is the lightest print
+    // and 0x7F the darkest - so the value goes through as is, only clamped.
+    const expValue = Math.min(0x7F, Math.max(0, exposure));
     const printData = new Uint8Array([0x01, 0x03, 0xE4, expValue]);
     const printHeader = "883302000400";
     let printHexData = "0103e4" + expValue.toString(16).padStart(2, '0');
@@ -1607,17 +1605,17 @@ function processImage(img, mode) {
 
     const exposureVal = parseInt(document.getElementById("print-exposure").value);
     const exposure = Number.isFinite(exposureVal) ? exposureVal : 64;
-    // 64 is the middle of the slider. Higher exposure = more light = brighter
-    // image, so the quantisation thresholds drop and more pixels land on the
-    // lighter levels. sendChunkedData() inverts this into the printer's burn
-    // time byte so that the printout matches what is previewed here.
+    // 64 is the middle of the slider. Dragging right raises the exposure, which
+    // means a longer burn time and a darker print, so raise the quantisation
+    // thresholds by the same amount to push more pixels onto the darker levels.
+    // The preview then moves in step with what the printer will produce.
     const offset = (exposure - 64) * 0.8;
 
     const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
     const data = imageData.data;
     for (let i = 0; i < data.length; i += 4) {
         const gray = (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-        let level = gray > (192 - offset) ? 255 : gray > (128 - offset) ? 170 : gray > (64 - offset) ? 85 : 0;
+        let level = gray > (192 + offset) ? 255 : gray > (128 + offset) ? 170 : gray > (64 + offset) ? 85 : 0;
         data[i] = data[i + 1] = data[i + 2] = level;
     }
     ctx.putImageData(imageData, 0, 0);
