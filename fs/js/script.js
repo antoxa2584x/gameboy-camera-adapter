@@ -1398,9 +1398,15 @@ function sendChunkedData(binaryData, chunkSize = 256) {
     packets.push({ data: "88330400000004000000", name: "DATA_END" });
 
     // PRINT packet
-    const exposureVal = document.getElementById("print-exposure").value;
-    const exposure = (exposureVal !== "" && exposureVal !== null) ? parseInt(exposureVal) : 0x40;
-    const expValue = Math.min(0x7F, exposure);
+    const exposureVal = parseInt(document.getElementById("print-exposure").value);
+    const exposure = Number.isFinite(exposureVal) ? exposureVal : 0x40;
+    // The slider is photographic exposure: dragging it right means "more light",
+    // i.e. a brighter picture, which is what the preview renders. The printer's
+    // exposure byte is the opposite - it is the thermal head burn time, where
+    // 0x00 is the lightest print and 0x7F the darkest - so invert it here.
+    // Without this the printout came out washed out exactly when the slider
+    // (and the preview) asked for the darkest image. See issue #9.
+    const expValue = 0x7F - Math.min(0x7F, Math.max(0, exposure));
     const printData = new Uint8Array([0x01, 0x03, 0xE4, expValue]);
     const printHeader = "883302000400";
     let printHexData = "0103e4" + expValue.toString(16).padStart(2, '0');
@@ -1599,14 +1605,13 @@ function processImage(img, mode) {
 
     ctx.drawImage(img, sourceX, sourceY, sourceWidth, sourceHeight, destX, destY, destWidth, destHeight);
 
-    const exposureVal = document.getElementById("print-exposure").value;
-    const exposure = (exposureVal !== "" && exposureVal !== null) ? parseInt(exposureVal) : 64;
-    // Exposure in GB printer increases the intensity (darkness).
-    // Standard thresholds are 64, 128, 192 (inverted).
-    // Let's shift thresholds based on exposure value.
-    // 64 is middle (0x40). 
-    // Higher exposure = darker image = lower thresholds.
-    const offset = (exposure - 64) * 0.8; 
+    const exposureVal = parseInt(document.getElementById("print-exposure").value);
+    const exposure = Number.isFinite(exposureVal) ? exposureVal : 64;
+    // 64 is the middle of the slider. Higher exposure = more light = brighter
+    // image, so the quantisation thresholds drop and more pixels land on the
+    // lighter levels. sendChunkedData() inverts this into the printer's burn
+    // time byte so that the printout matches what is previewed here.
+    const offset = (exposure - 64) * 0.8;
 
     const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
     const data = imageData.data;
