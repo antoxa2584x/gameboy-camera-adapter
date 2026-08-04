@@ -4,11 +4,24 @@ const COMMAND_DATA = 0x04;
 const COMMAND_TRANSFER = 0x10;
 
 // Printer exposure byte = thermal head burn time, 0x00 lightest to 0x7F darkest.
-// Anything below the Game Boy's own default of 0x40 prints washed out with no
-// true black, so the light end of the slider is floored there and the range only
-// ever goes darker. Keep in sync with the "print-exposure" input.
-const PRINT_EXPOSURE_MIN = 0x40;
+// 0x7F is the hardware limit. The usable range is taken from the "print-exposure"
+// slider itself rather than repeated here, so tuning the input's min and max is
+// enough - a constant tighter than the input would clamp part of the slider's
+// travel to one value and make that end look dead. These are only the fallback
+// for when the input is missing. The light end sits above 0x00 because the bottom
+// of the range prints washed out with no true black.
+const PRINT_EXPOSURE_MIN = 0x10;
 const PRINT_EXPOSURE_MAX = 0x7F;
+
+function printExposureRange() {
+    const el = typeof document !== "undefined" ? document.getElementById("print-exposure") : null;
+    const min = parseInt(el && el.min);
+    const max = parseInt(el && el.max);
+    return {
+        min: Number.isFinite(min) ? Math.max(0, min) : PRINT_EXPOSURE_MIN,
+        max: Math.min(PRINT_EXPOSURE_MAX, Number.isFinite(max) ? max : PRINT_EXPOSURE_MAX)
+    };
+}
 
 const PRINTER_WIDTH = 20;
 const CAMERA_WIDTH = 16;
@@ -1344,8 +1357,9 @@ function canvasToTileData(canvas) {
 }
 
 function printSelectedImage() {
-    const canvas = document.getElementById("preview-canvas");
-    const binaryData = canvasToTileData(canvas);
+    // The print canvas, not the visible preview: the preview additionally
+    // simulates the burn, which must not end up in the tile data.
+    const binaryData = canvasToTileData(printCanvas);
     // Pad to complete strips (640 bytes each = 2 tile rows = 16px)
     const STRIP_SIZE = 640;
     const totalStrips = Math.ceil(binaryData.length / STRIP_SIZE);
@@ -1404,13 +1418,10 @@ function sendChunkedData(binaryData, chunkSize = 256) {
     // Empty DATA packet signals end of image data to the printer
     packets.push({ data: "88330400000004000000", name: "DATA_END" });
 
-    // PRINT packet
-    const exposureVal = parseInt(document.getElementById("print-exposure").value);
-    const exposure = Number.isFinite(exposureVal) ? exposureVal : 0x40;
-    // The slider follows the Game Boy Camera's exposure bar: right is darker,
-    // left is lighter, which is already the direction of the printer's exposure
-    // byte, so the value goes through as is and is only clamped to the range.
-    const expValue = Math.min(PRINT_EXPOSURE_MAX, Math.max(PRINT_EXPOSURE_MIN, exposure));
+    // PRINT packet. The slider follows the Game Boy Camera's exposure bar: right
+    // is darker, left is lighter, which is already the direction of the printer's
+    // exposure byte, so the value goes through as is.
+    const expValue = currentPrintExposure();
     const printData = new Uint8Array([0x01, 0x03, 0xE4, expValue]);
     const printHeader = "883302000400";
     let printHexData = "0103e4" + expValue.toString(16).padStart(2, '0');
@@ -1567,6 +1578,12 @@ function refreshPreview() {
 // turns them into Game Boy shades 0..3.
 const PRINT_LEVELS = [255, 170, 85, 0];
 
+// Holds exactly what the printer will receive. Kept apart from the visible
+// preview canvas because the two are not the same picture: the tile data is
+// always the faithful four shade quantisation, while the preview additionally
+// simulates how dark the exposure will burn those shades onto paper.
+const printCanvas = document.createElement("canvas");
+
 // 4x4 ordered dither matrix.
 const BAYER_4X4 = [
     [0, 8, 2, 10],
@@ -1612,8 +1629,94 @@ function detectGameBoyLevels(data, tolerance = 12, coverage = 0.97) {
     return centres.sort((a, b) => b - a);
 }
 
+// The exposure the slider is currently asking for, clamped to what the printer
+// accepts. Single source of truth for both the PRINT packet and the preview.
+function currentPrintExposure() {
+    const { min, max } = printExposureRange();
+    const el = document.getElementById("print-exposure");
+    const value = el ? parseInt(el.value) : NaN;
+    const exposure = Number.isFinite(value) ? value : min;
+    return Math.min(max, Math.max(min, exposure));
+}
+
+// Exposure never changes the tile data, so moving the slider only needs the
+// preview repainted rather than the whole image re-quantised.
+function refreshExposure() {
+    renderPrintPreview(currentPrintExposure());
+}
+
+// How far the burn simulation goes at the darkest end of the slider. INK is how
+// much further each shade is pushed towards black, GAIN is how far a burnt dot
+// bleeds into the white next to it - real thermal dots grow with burn time, and
+// it is that thickening, more than the shades themselves, that makes a longer
+// exposure read as darker on paper.
+// How completely the paper takes the ink at each end of the slider. Below 1.0 the
+// head does not burn long enough to lay a shade down in full, so even a black pixel
+// comes out a washed grey with no true black - which is the whole of issue #9. 1.0
+// at the dark end means black arrives at solid exactly at the top of the travel;
+// going past 1.0 would only clip it to 0 early and flatten the last stretch of the
+// slider. Over-burn past nominal shows through the dot gain below instead.
+const BURN_DENSITY_MIN = 0.55;
+const BURN_DENSITY_MAX = 1.0;
+// How far a burnt dot bleeds into the white beside it at the dark end of the
+// slider. Real thermal dots grow with burn time, and that thickening is a large
+// part of why a longer exposure reads as darker on paper.
+const BURN_GAIN = 0.4;
+
+// Paint the visible preview from the print data, showing what the exposure will do
+// on paper. Exposure is burn time: it does not change which of the four shades a
+// pixel is, only how heavily each one is laid down. This is what keeps the slider
+// responsive even for a source whose pixels go to the printer untouched.
+function renderPrintPreview(exposure) {
+    const preview = document.getElementById("preview-canvas");
+    if (!preview || !printCanvas.width) return;
+
+    const w = printCanvas.width;
+    const h = printCanvas.height;
+    preview.width = w;
+    preview.height = h;
+    const ctx = preview.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(printCanvas, 0, 0);
+
+    const { min, max } = printExposureRange();
+    const span = max - min;
+    const burn = span > 0 ? Math.min(1, Math.max(0, (exposure - min) / span)) : 0;
+
+    const imageData = ctx.getImageData(0, 0, w, h);
+    const data = imageData.data;
+    const source = new Uint8ClampedArray(w * h);
+    for (let p = 0; p < w * h; p++) source[p] = data[p * 4];
+
+    const density = BURN_DENSITY_MIN + (BURN_DENSITY_MAX - BURN_DENSITY_MIN) * burn;
+    const gain = BURN_GAIN * burn;
+    // A shade asks for a certain amount of ink; the burn decides how much of it the
+    // paper actually gets. White asks for none, so it stays bare paper at any
+    // exposure and can only be reached by a neighbouring dot growing into it. Black
+    // asks for all of it, so it is the shade the exposure changes most.
+    const inked = v => Math.max(0, 255 - (255 - v) * density);
+
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const p = y * w + x;
+            let darkest = source[p];
+            if (x > 0) darkest = Math.min(darkest, source[p - 1]);
+            if (x < w - 1) darkest = Math.min(darkest, source[p + 1]);
+            if (y > 0) darkest = Math.min(darkest, source[p - w]);
+            if (y < h - 1) darkest = Math.min(darkest, source[p + w]);
+
+            const self = inked(source[p]);
+            const v = self - gain * (self - inked(darkest));
+
+            const i = p * 4;
+            data[i] = data[i + 1] = data[i + 2] = Math.round(v);
+        }
+    }
+    ctx.putImageData(imageData, 0, 0);
+}
+
 function processImage(img, mode) {
-    const canvas = document.getElementById("preview-canvas");
+    const canvas = printCanvas;
     const ctx = canvas.getContext("2d");
 
     let targetWidth = 160;
@@ -1669,17 +1772,11 @@ function processImage(img, mode) {
 
     ctx.drawImage(img, sourceX, sourceY, sourceWidth, sourceHeight, destX, destY, destWidth, destHeight);
 
-    const exposureVal = parseInt(document.getElementById("print-exposure").value);
-    const rawExposure = Number.isFinite(exposureVal) ? exposureVal : 0x40;
-    // Clamp to the same range sendChunkedData() sends, so the preview cannot
-    // show a lighter image than the printer is able to produce.
-    const exposure = Math.min(PRINT_EXPOSURE_MAX, Math.max(PRINT_EXPOSURE_MIN, rawExposure));
-    // 0x40 is the printer's default. Dragging right raises the exposure, which
-    // means a longer burn time and a darker print, so raise the quantisation
-    // thresholds by the same amount to push more pixels onto the darker levels.
-    // The preview then moves in step with what the printer will produce.
-    const offset = (exposure - 0x40) * 0.8;
-
+    // The tile data below is deliberately independent of the exposure. Exposure is
+    // the printer's burn time, not part of the picture, so folding it into the
+    // quantisation would mean the slider silently altered the image for ordinary
+    // photos while doing nothing at all for a source that is already four shades.
+    // renderPrintPreview() shows its effect instead.
     const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
     const data = imageData.data;
 
@@ -1703,17 +1800,19 @@ function processImage(img, mode) {
                 // Ordered dither, the way the camera itself does it. A flat
                 // threshold collapses gradients into big even blobs, which is
                 // what made an adapter print look coarser than a Game Boy one.
-                const dither = ((BAYER_4X4[y & 3][x & 3] + 0.5) / 16 - 0.5) * 64;
-                const shade = gray - offset + dither;
+                const shade = gray + ((BAYER_4X4[y & 3][x & 3] + 0.5) / 16 - 0.5) * 64;
                 level = shade > 192 ? 255 : shade > 128 ? 170 : shade > 64 ? 85 : 0;
             }
             data[i] = data[i + 1] = data[i + 2] = level;
         }
     }
     ctx.putImageData(imageData, 0, 0);
+
+    renderPrintPreview(currentPrintExposure());
 }
 
 window.handleFileInput = handleFileInput;
 window.refreshPreview = refreshPreview;
+window.refreshExposure = refreshExposure;
 window.printSelectedImage = printSelectedImage;
 window.showPopupWithUpscaledImage = showPopupWithUpscaledImage;
