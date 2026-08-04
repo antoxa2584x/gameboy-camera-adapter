@@ -4,9 +4,10 @@ const COMMAND_DATA = 0x04;
 const COMMAND_TRANSFER = 0x10;
 
 // Printer exposure byte = thermal head burn time, 0x00 lightest to 0x7F darkest.
-// The bottom of that range prints washed out with no true black, so the light end
-// of the slider is floored at 0x20. Keep in sync with the "print-exposure" input.
-const PRINT_EXPOSURE_MIN = 0x20;
+// Anything below the Game Boy's own default of 0x40 prints washed out with no
+// true black, so the light end of the slider is floored there and the range only
+// ever goes darker. Keep in sync with the "print-exposure" input.
+const PRINT_EXPOSURE_MIN = 0x40;
 const PRINT_EXPOSURE_MAX = 0x7F;
 
 const PRINTER_WIDTH = 20;
@@ -1562,6 +1563,55 @@ function refreshPreview() {
     processImage(currentImage, mode);
 }
 
+// The four greys the print quantiser emits, brightest first. canvasToTileData()
+// turns them into Game Boy shades 0..3.
+const PRINT_LEVELS = [255, 170, 85, 0];
+
+// 4x4 ordered dither matrix.
+const BAYER_4X4 = [
+    [0, 8, 2, 10],
+    [12, 4, 14, 6],
+    [3, 11, 1, 9],
+    [15, 7, 13, 5]
+];
+
+// Decide whether the canvas already holds a Game Boy picture, i.e. one built from
+// exactly four shades. Photos saved from the gallery are normalised to 255/191/
+// 127/63 and then written out as a 10x upscaled JPEG, so the shades come back
+// slightly smeared and cannot simply be compared for equality - they are clustered
+// with a tolerance instead. Returns the four shades brightest first, or null when
+// the source is an ordinary photo that still needs quantising.
+function detectGameBoyLevels(data, tolerance = 12, coverage = 0.97) {
+    const histogram = new Uint32Array(256);
+    const pixels = data.length / 4;
+    for (let i = 0; i < data.length; i += 4) {
+        const gray = (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+        histogram[Math.round(gray)]++;
+    }
+
+    // Greedily take the densest remaining shade as a cluster centre and absorb
+    // everything within tolerance of it. Four clusters that between them account
+    // for nearly every pixel means four shades; a continuous tone photo spreads
+    // far too widely to be covered by four narrow windows.
+    const centres = [];
+    let counted = 0;
+    for (let n = 0; n < 4; n++) {
+        let peak = -1;
+        for (let v = 0; v < 256; v++) {
+            if (histogram[v] > 0 && (peak === -1 || histogram[v] > histogram[peak])) peak = v;
+        }
+        if (peak === -1) break;
+        centres.push(peak);
+        for (let v = Math.max(0, peak - tolerance); v <= Math.min(255, peak + tolerance); v++) {
+            counted += histogram[v];
+            histogram[v] = 0;
+        }
+    }
+
+    if (centres.length !== 4 || counted < pixels * coverage) return null;
+    return centres.sort((a, b) => b - a);
+}
+
 function processImage(img, mode) {
     const canvas = document.getElementById("preview-canvas");
     const ctx = canvas.getContext("2d");
@@ -1577,12 +1627,12 @@ function processImage(img, mode) {
 
         if (imgRatio > targetRatio) {
             // Wider than target: crop sides
-            sourceWidth = img.height * targetRatio;
-            sourceX = (img.width - sourceWidth) / 2;
+            sourceWidth = Math.round(img.height * targetRatio);
+            sourceX = Math.round((img.width - sourceWidth) / 2);
         } else {
             // Taller than target: crop top/bottom
-            sourceHeight = img.width / targetRatio;
-            sourceY = (img.height - sourceHeight) / 2;
+            sourceHeight = Math.round(img.width / targetRatio);
+            sourceY = Math.round((img.height - sourceHeight) / 2);
         }
     } else if (mode === 'fit') {
         const targetRatio = 160 / 144;
@@ -1590,12 +1640,12 @@ function processImage(img, mode) {
 
         if (imgRatio > targetRatio) {
             // Wider than target: scale to 160 width, add vertical borders
-            destHeight = 160 / imgRatio;
-            destY = (144 - destHeight) / 2;
+            destHeight = Math.round(160 / imgRatio);
+            destY = Math.round((144 - destHeight) / 2);
         } else {
             // Taller than target: scale to 144 height, add horizontal borders
-            destWidth = 144 * imgRatio;
-            destX = (160 - destWidth) / 2;
+            destWidth = Math.round(144 * imgRatio);
+            destX = Math.round((160 - destWidth) / 2);
         }
     }
 
@@ -1605,6 +1655,17 @@ function processImage(img, mode) {
     // Fill with white
     ctx.fillStyle = "white";
     ctx.fillRect(0, 0, targetWidth, targetHeight);
+
+    // Nearest neighbour, not the default bilinear. Photos saved from the gallery
+    // are 10x nearest-neighbour upscaled JPEGs, so scaling one back down to 160x144
+    // with smoothing on blurs every hard pixel edge into its neighbours, and the
+    // four level threshold below then turns that blur into blotches - which is why
+    // a re-print looked lower resolution than the same photo printed by the Game
+    // Boy. Point sampling puts the original pixel grid back.
+    ctx.imageSmoothingEnabled = false;
+    ctx.mozImageSmoothingEnabled = false;
+    ctx.webkitImageSmoothingEnabled = false;
+    ctx.msImageSmoothingEnabled = false;
 
     ctx.drawImage(img, sourceX, sourceY, sourceWidth, sourceHeight, destX, destY, destWidth, destHeight);
 
@@ -1621,10 +1682,33 @@ function processImage(img, mode) {
 
     const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
     const data = imageData.data;
-    for (let i = 0; i < data.length; i += 4) {
-        const gray = (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-        let level = gray > (192 + offset) ? 255 : gray > (128 + offset) ? 170 : gray > (64 + offset) ? 85 : 0;
-        data[i] = data[i + 1] = data[i + 2] = level;
+
+    const gbLevels = detectGameBoyLevels(data);
+
+    for (let y = 0; y < targetHeight; y++) {
+        for (let x = 0; x < targetWidth; x++) {
+            const i = (y * targetWidth + x) * 4;
+            const gray = (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+            let level;
+            if (gbLevels) {
+                // Already a Game Boy picture: hand the four shades straight over
+                // instead of re-quantising them, so a photo taken by the camera
+                // re-prints exactly as the camera itself would have printed it.
+                let nearest = 0;
+                for (let n = 1; n < gbLevels.length; n++) {
+                    if (Math.abs(gray - gbLevels[n]) < Math.abs(gray - gbLevels[nearest])) nearest = n;
+                }
+                level = PRINT_LEVELS[nearest];
+            } else {
+                // Ordered dither, the way the camera itself does it. A flat
+                // threshold collapses gradients into big even blobs, which is
+                // what made an adapter print look coarser than a Game Boy one.
+                const dither = ((BAYER_4X4[y & 3][x & 3] + 0.5) / 16 - 0.5) * 64;
+                const shade = gray - offset + dither;
+                level = shade > 192 ? 255 : shade > 128 ? 170 : shade > 64 ? 85 : 0;
+            }
+            data[i] = data[i + 1] = data[i + 2] = level;
+        }
     }
     ctx.putImageData(imageData, 0, 0);
 }
