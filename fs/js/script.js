@@ -46,7 +46,7 @@ function safeAddEventListener(el, event, handler) {
     if (el) el.addEventListener(event, handler);
 }
 
-const CURRENT_VERSION = "2.0.8"; // Fallback version
+const CURRENT_VERSION = "2.1.0"; // Fallback version
 let dynamicVersion = CURRENT_VERSION;
 
 Date.prototype.today = function(delim) {
@@ -456,17 +456,60 @@ function makeFileName(suffix) {
     return `image_${date}_${time}${suffix ? "_" + suffix : ""}.jpg`;
 }
 
-// Render an <img> from the gallery to a 10x upscaled JPEG data URL, with EXIF tags.
+// Nearest-neighbour upscale applied when a photo is saved (and to the popup
+// preview, so what you see is what you get). 10x keeps the long-standing default.
+const PHOTO_SCALES = [1, 2, 5, 10];
+const DEFAULT_PHOTO_SCALE = 10;
+const PHOTO_SCALE_KEY = "photoScale";
+
+function getPhotoScale() {
+    let raw = null;
+    // A select that has not been rendered yet, or storage blocked in private
+    // mode, must not break saving -- fall back to the default.
+    const select = document.getElementById("photoScale");
+    if (select) {
+        raw = select.value;
+    } else {
+        try {
+            raw = localStorage.getItem(PHOTO_SCALE_KEY);
+        } catch (e) { /* storage unavailable */ }
+    }
+
+    const scale = parseInt(raw, 10);
+    return PHOTO_SCALES.includes(scale) ? scale : DEFAULT_PHOTO_SCALE;
+}
+
+function setupPhotoScaleSelector() {
+    const select = document.getElementById("photoScale");
+    if (!select) return;
+
+    let stored = null;
+    try {
+        stored = localStorage.getItem(PHOTO_SCALE_KEY);
+    } catch (e) { /* storage unavailable */ }
+
+    const scale = parseInt(stored, 10);
+    select.value = String(PHOTO_SCALES.includes(scale) ? scale : DEFAULT_PHOTO_SCALE);
+
+    safeAddEventListener(select, "change", () => {
+        try {
+            localStorage.setItem(PHOTO_SCALE_KEY, select.value);
+        } catch (e) { /* storage unavailable */ }
+    });
+}
+
+// Render an <img> from the gallery to an upscaled JPEG data URL, with EXIF tags.
 // Synchronous on purpose: it must not consume the user gesture, or iOS refuses to
 // open the share sheet / start a download.
 function renderJpegDataUrl(img) {
     const width = img.naturalWidth || img.width;
     const height = img.naturalHeight || img.height;
+    const scale = getPhotoScale();
 
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
-    canvas.width = width * 10;
-    canvas.height = height * 10;
+    canvas.width = width * scale;
+    canvas.height = height * scale;
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(img, 0, 0, width, height, 0, 0, canvas.width, canvas.height);
 
@@ -989,6 +1032,7 @@ document.addEventListener("DOMContentLoaded", () => {
     parseScheme();
     observeGalleryChanges();
     setupColorSchemeSelector();
+    setupPhotoScaleSelector();
 
     // Background tasks
     fetchFirmwareVersion().then(() => {

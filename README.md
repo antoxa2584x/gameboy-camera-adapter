@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Firmware-v2.0.5-266d3f?style=for-the-badge&logo=raspberrypi" alt="Firmware Version">
+  <img src="https://img.shields.io/badge/Firmware-v2.1.0-266d3f?style=for-the-badge&logo=raspberrypi" alt="Firmware Version">
   <img src="https://img.shields.io/badge/Hardware-RP2040-004d25?style=for-the-badge" alt="Hardware">
   <img src="https://img.shields.io/badge/Compatibility-iOS_%7C_Android_%7C_Web-4caf50?style=for-the-badge" alt="Compatibility">
 </p>
@@ -96,4 +96,4 @@ git submodule update --init
 ### 🤝 Credits & Links
 *   Based on [pico-gb-printer](https://github.com/untoxa/pico-gb-printer).
 *   Protocol insights from [Raphael-Boichot](https://github.com/Raphael-Boichot/The-Arduino-SD-Game-Boy-Printer).
-*   [Instagram @retrogaming_ua](https://www.instagram.com/retrogaming_ua/)
+*   [RetroGaming UA](https://rgaming.com.ua/)

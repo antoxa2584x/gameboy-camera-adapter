@@ -26,7 +26,7 @@
         <div class="flex-col-center">
             <!-- Close Button -->
             <button class="close-btn" onclick="closeFirmwarePopup()">X</button>
-            <p id="firmware-version-text">Current firmware is v2.0.8</p>
+            <p id="firmware-version-text">Current firmware is v2.1.0</p>
             <!-- Color Picker + Button -->
             <div class="settings-container">
                 <div class="led-color-row">
@@ -56,6 +56,19 @@
                 </div>
 
                 <button onclick="setLedColor()">Save Settings</button>
+            </div>
+
+            <!-- Saved photo scale. Browser-side only: applies to the next save,
+                 nothing is sent to the adapter and nothing reboots. -->
+            <div class="scale-block">
+                <label class="switch-label">Saved Photo Scale</label>
+                <select id="photoScale" class="gb-select">
+                    <option value="1">None &mdash; 160 &times; 144</option>
+                    <option value="2">2x &mdash; 320 &times; 288</option>
+                    <option value="5">5x &mdash; 800 &times; 720</option>
+                    <option value="10" selected>10x &mdash; 1600 &times; 1440</option>
+                </select>
+                <label class="scale-note">Applies immediately. No reboot needed.</label>
             </div>
             <!-- Firmware Controls -->
             <button class="red" onclick="startUpdate()">Force Update Mode</button>
@@ -207,8 +220,8 @@
 <footer>
     <div class="links">
         <a href="https://github.com/antoxa2584x/gameboy-camera-adapter" class="footer-link" target="_blank">GITHUB</a>
-        <a href="https://github.com/antoxa2584x/gameboy-camera-adapter-companion" class="footer-link" target="_blank">ANDROID APP</a>
-        <a href="https://www.instagram.com/retrogaming_ua/" class="footer-link" target="_blank">INSTAGRAM</a>
+        <a href="https://play.google.com/store/apps/details?id=ua.retrogaming.gcac" class="footer-link" target="_blank">ANDROID APP</a>
+        <a href="https://rgaming.com.ua/" class="footer-link" target="_blank">WEBSITE</a>
     </div>
 </footer>
 </body>

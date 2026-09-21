@@ -5,6 +5,7 @@
 #include "hardware/sync.h" // optional; for tight_loop_contents()
 #include "cdc_sender.h"
 #include "datablocks.h"
+#include "tusb_lwip_glue.h" // service_traffic()
 
 #ifndef CDC_DEFAULT_TIMEOUT_MS
 #define CDC_DEFAULT_TIMEOUT_MS 2000
@@ -16,13 +17,23 @@ static inline bool is_cdc_ready(void) {
   return tud_ready() && tud_cdc_connected();
 }
 
+// Pump both stacks while blocked here. These sends run on the main loop, which is
+// also the only place lwIP gets serviced -- pumping tud_task() alone would leave
+// service_traffic() unrun for the whole transfer, so the received frame is never
+// consumed (tud_network_recv_cb() starts NAKing) and the TCP timers stall. That
+// is what made the web UI die while a photo was streaming over serial.
+static inline void usb_net_pump(void) {
+  tud_task();                    // keep USB stack alive
+  service_traffic();             // keep lwIP (and so the HTTP server) alive
+  tight_loop_contents();         // give core a hint (optional)
+}
+
 // pump TinyUSB while waiting for a condition
 static bool wait_until_true_or_timeout(bool (*cond)(void), uint32_t timeout_ms) {
   absolute_time_t deadline = make_timeout_time_ms(timeout_ms);
   while (absolute_time_diff_us(get_absolute_time(), deadline) > 0) {
     if (cond()) return true;
-    tud_task();                  // keep USB stack alive
-    tight_loop_contents();       // give core a hint (optional)
+    usb_net_pump();
   }
   return cond();
 }
@@ -36,8 +47,7 @@ bool cdc_send_bytes(const uint8_t* data, uint32_t len, uint32_t timeout_ms) {
     absolute_time_t deadline = make_timeout_time_ms(timeout_ms);
     while (!(tud_ready() && tud_cdc_connected())) {
         if (absolute_time_diff_us(get_absolute_time(), deadline) <= 0) return false;
-        tud_task();
-        tight_loop_contents();
+        usb_net_pump();
     }
 
     uint32_t sent = 0;
@@ -45,14 +55,13 @@ bool cdc_send_bytes(const uint8_t* data, uint32_t len, uint32_t timeout_ms) {
     absolute_time_t progress_deadline = make_timeout_time_ms(timeout_ms);
 
     while (sent < len) {
-        tud_task();
+        usb_net_pump();
 
         uint32_t avail = tud_cdc_write_available();
         if (avail == 0) {
             if (absolute_time_diff_us(get_absolute_time(), progress_deadline) <= 0) {
                 return false; // no progress for too long
             }
-            tight_loop_contents();
             continue;
         }
 
@@ -67,7 +76,6 @@ bool cdc_send_bytes(const uint8_t* data, uint32_t len, uint32_t timeout_ms) {
             if (absolute_time_diff_us(get_absolute_time(), progress_deadline) <= 0) {
                 return false;
             }
-            tight_loop_contents();
             continue;
         }
 

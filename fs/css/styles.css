@@ -146,22 +146,6 @@ p {
     /* Added line-height for more vertical spacing */
 }
 
-#language_select {
-    margin: 10px;
-    padding: 5px;
-    font-size: 0.8rem;
-    /* Adjusted size to fit the retro style */
-    background-color: #a1d99b;
-    /* Lighter green for the dropdown */
-    border: 1px solid #00a550;
-    /* Green border */
-    border-radius: 5px;
-    color: #004d25;
-    /* Darker green for the text */
-    font-family: 'Press Start 2P', cursive;
-    /* Default font */
-}
-
 .mode-block {
     width: 100%;
     display: flex;
@@ -280,22 +264,6 @@ footer .links {
     gap: 20px;
     padding: 10px 0;
     flex-wrap: wrap;
-}
-
-/* Add hover effect on child images is already handled by .footer-link img:hover */
-
-.language-select {
-    margin-top: 5px;
-}
-
-.language-select label {
-    margin-right: 10px;
-    font-size: 0.8rem;
-    /* Adjusted size to fit the retro style */
-    color: white;
-    /* White color for the label text */
-    font-family: 'Press Start 2P', cursive;
-    /* Default font */
 }
 
 .container {
@@ -448,33 +416,6 @@ footer .links {
     text-decoration: underline;
 }
 
-@keyframes shake {
-    0% {
-        transform: translateY(1px);
-    }
-
-    25% {
-        transform: translateX(-1px);
-    }
-
-    50% {
-        transform: translateX(1px);
-    }
-
-    75% {
-        transform: translateY(-1px);
-    }
-
-    100% {
-        transform: translateX(0);
-    }
-}
-
-.shake {
-    animation: shake 0.1s infinite;
-    /* 0.5 seconds duration, infinite loop */
-}
-
 /* Overlay Styles */
 .popup-overlay {
     position: fixed;
@@ -487,8 +428,15 @@ footer .links {
     justify-content: center;
     align-items: center;
     z-index: 1000;
-    overflow: hidden;
-    /* Prevent scrolling */
+    /* Scroll the overlay when a dialog is taller than the window, rather than
+       clipping it. The vertical padding also leaves room for the close button,
+       which overhangs the box corner by 20px. */
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: 2rem 0;
+    box-sizing: border-box;
 }
 
 /* Popup Container Styles */
@@ -500,6 +448,19 @@ footer .links {
     max-height: 90vh;
     /* Ensures the container doesn't overflow the viewport height */
     overflow: visible;
+    /* Centre via auto margins, not the overlay's align-items: a flex item
+       centred with align-items has its overflowing top clipped and cannot be
+       scrolled back to. Auto margins collapse to 0 instead, keeping the whole
+       box reachable. */
+    margin: auto;
+}
+
+/* Dialogs (settings, update instructions, generic) size to their content and
+   let the overlay scroll. Capping them at 90vh only cut the panel background
+   short while the content kept going, so it spilled past the rounded corners
+   with no way to reach it. The photo viewer keeps the 90vh cap above. */
+.popup-container {
+    max-height: none;
 }
 
 /* Canvas Styles */
@@ -541,7 +502,7 @@ footer .links {
 }
 
 /* Close Button Styles */
-.popup-close-button, .popup-save-button {
+.popup-close-button {
     position: absolute;
     width: 40px;
     height: 40px;
@@ -558,9 +519,6 @@ footer .links {
     margin: 0;
     transition: background-color 0.2s ease;
     z-index: 1001;
-}
-
-.popup-close-button {
     right: -20px;
     top: -40px;
     background-color: #D32F2F;
@@ -571,11 +529,6 @@ footer .links {
         right: 5px;
         top: 5px;
     }
-}
-
-.popup-save-button {
-    right: 60px;
-    background-color: #4caf50;
 }
 
 /* Color selector container and Save All hidden by default in scanner mode */
@@ -642,6 +595,8 @@ footer .links {
 }
 
 #mode-indicator {
+    color: white;
+    margin-bottom: 2rem;
     transition: transform 0.2s ease-in-out;
 }
 
@@ -937,6 +892,21 @@ input:checked + .slider:before {
     text-align: left;
 }
 
+.scale-block {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    margin-top: 1.5rem;
+    gap: 0.5rem;
+}
+
+.scale-note {
+    color: white;
+    font-size: 0.7rem;
+    text-align: left;
+    opacity: 0.8;
+}
+
 .fw-update-hint {
     color: white;
     font-size: 0.7rem;
@@ -956,11 +926,6 @@ input:checked + .slider:before {
     flex: auto;
     padding: 15% 10% 5%;
     cursor: pointer;
-}
-
-#mode-indicator {
-    color: white;
-    margin-bottom: 2rem;
 }
 
 #mode-name {

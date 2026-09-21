@@ -167,6 +167,14 @@ uint16_t tud_network_xmit_cb(uint8_t *dst, void *ref, uint16_t arg) {
 }
 
 void service_traffic(void) {
+    /* Re-entry guard: the blocking CDC sends pump this from the main loop, and
+     * lwIP itself can reach tud_task() via linkoutput_fn(). lwIP is not
+     * re-entrant, so a nested call must be a no-op -- the outer one is already
+     * doing the work and will pick up anything that arrives meanwhile. */
+    static bool in_service = false;
+    if (in_service) return;
+    in_service = true;
+
     /* handle any packet received by tud_network_recv_cb() */
     if (received_frame) {
         ethernet_input(received_frame, &netif_data);
@@ -175,6 +183,8 @@ void service_traffic(void) {
         tud_network_recv_renew();
     }
     sys_check_timeouts();
+
+    in_service = false;
 }
 
 void tud_network_init_cb(void)

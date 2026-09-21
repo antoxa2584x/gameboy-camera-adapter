@@ -87,6 +87,13 @@ static inline void cdc_ring_push(uint8_t type, uint8_t val) {
 #endif
 }
 
+// How many blocking CDC writes to do per main-loop pass. Each one can stall until
+// the serial host drains its buffer (up to the send timeout), so cap the burst
+// instead of draining the whole ring at once -- that keeps the HTTP server
+// responsive while a photo streams out over serial. Records that only accumulate
+// into the chunk buffer are free and do not count against the budget.
+#define CDC_SENDS_PER_PASS 2
+
 // Drain the CDC photo stream ring. Main loop only: cdc_send_* may block.
 static void cdc_stream_service(void) {
 #if CFG_TUD_CDC
@@ -98,25 +105,29 @@ static void cdc_stream_service(void) {
         chunk_len = 0;
         return;
     }
-    while (cdc_ring_tail != cdc_ring_head) {
+    uint32_t sends = 0;
+    while (cdc_ring_tail != cdc_ring_head && sends < CDC_SENDS_PER_PASS) {
         cdc_rec_t rec = cdc_ring[cdc_ring_tail];
         cdc_ring_tail = (cdc_ring_tail + 1) % CDC_RING_LEN;
         switch (rec.type) {
             case CDC_REC_INIT:
                 chunk_len = 0;
                 cdc_send_string("GBCA_PHOTO_TRANSFER\n");
+                sends++;
                 break;
             case CDC_REC_DATA:
                 chunk[chunk_len++] = rec.val;
                 if (chunk_len == sizeof(chunk)) {
                     send_base64_chunk(chunk, chunk_len);
                     chunk_len = 0;
+                    sends++;
                 }
                 break;
             case CDC_REC_DONE:
                 if (chunk_len) send_base64_chunk(chunk, chunk_len);
                 chunk_len = 0;
                 cdc_send_string("DONE\n");
+                sends++;
                 break;
         }
     }
@@ -846,31 +857,41 @@ void fs_close_custom(struct fs_file *file) {
     (void)(file);
 }
 
+// Drain the CDC receive FIFO and run whole commands. Main loop only: this used to
+// be tud_cdc_rx_cb(), which TinyUSB calls from inside tud_task() -- and
+// cdc_handle_line() replies via cdc_send_bytes(), which pumps tud_task() itself.
+// TinyUSB is not re-entrant, so that nesting could corrupt the shared device
+// state and take the network side down with the serial side. Polling instead
+// leaves unread bytes in the 1 KB CDC RX FIFO, which is just backpressure on the
+// host, and lines longer than the FIFO simply span several passes.
+static void cdc_rx_service(void) {
 #if CFG_TUD_CDC
-void tud_cdc_rx_cb(uint8_t itf) {
-  (void) itf;
-  uint8_t buf[64];
-  uint32_t n = tud_cdc_read(buf, sizeof(buf));
+  // Pop one byte at a time so that returning early on a complete line cannot
+  // strand bytes we already took out of the FIFO -- whatever is left stays
+  // queued for the next pass.
+  while (tud_cdc_available()) {
+    int32_t c = tud_cdc_read_char();
+    if (c < 0) return;
 
-  for (uint32_t i = 0; i < n; i++) {
-    char ch = (char)buf[i];
-
-    if (ch == '\n') {
+    if (c == '\n') {
       // complete line
       cdc_finish_line();
       cdc_handle_line(cdc_line);
       cdc_reset_line();
+      // One command per pass: cdc_handle_line() can block on its reply, so let
+      // the main loop service the network before we start the next one.
+      return;
+    }
+
+    if (cdc_len + 1 < CDC_RX_MAX) {
+      cdc_line[cdc_len++] = (char)c;
     } else {
-      if (cdc_len + 1 < CDC_RX_MAX) {
-        cdc_line[cdc_len++] = ch;
-      } else {
-        // overflow: reset line to avoid garbage
-        cdc_reset_line();
-      }
+      // overflow: reset line to avoid garbage
+      cdc_reset_line();
     }
   }
-}
 #endif
+}
 
 
 // main loop
@@ -920,6 +941,8 @@ int main(void) {
         tud_task();
         // process WEB
         service_traffic();
+        // run one command from the CDC host (replies can block, so one per pass)
+        cdc_rx_service();
         // forward photo bytes queued by the link-cable ISR to the CDC host
         cdc_stream_service();
 
