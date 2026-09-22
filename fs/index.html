@@ -70,6 +70,16 @@
                 </select>
                 <label class="scale-note">Applies immediately. No reboot needed.</label>
             </div>
+
+            <!-- Saved photo format. Browser-side only, same as the scale above. -->
+            <div class="scale-block">
+                <label class="switch-label">Saved Photo Format</label>
+                <select id="photoFormat" class="gb-select">
+                    <option value="jpeg" selected>JPEG &mdash; smaller, with EXIF tags</option>
+                    <option value="png">PNG &mdash; lossless, with EXIF tags</option>
+                </select>
+                <label class="scale-note">Applies immediately. No reboot needed.</label>
+            </div>
             <!-- Firmware Controls -->
             <button class="red" onclick="startUpdate()">Force Update Mode</button>
             <label class="fw-update-hint">Click here only to update Adapter Firmware</label>

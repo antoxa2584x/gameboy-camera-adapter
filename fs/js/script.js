@@ -332,15 +332,15 @@ function showPopupWithUpscaledImage(image) {
 
     // Show the upscaled photo as a real <img>, not a <canvas>: iOS only offers its
     // native long-press "Add to Photos" menu on images, and long-pressing a canvas
-    // just selects the surrounding text instead. Same JPEG (with EXIF) the SAVE
-    // button produces, so both routes give an identical file.
+    // just selects the surrounding text instead. Same format, scale and metadata
+    // the SAVE button produces, so both routes give an identical file.
     const upscaled = document.createElement("img");
     upscaled.classList.add("popup-image");
     upscaled.alt = "Game Boy Camera photo";
 
     const setUpscaledSrc = (loaded) => {
         try {
-            upscaled.src = renderJpegDataUrl(loaded);
+            upscaled.src = renderPhotoDataUrl(loaded);
         } catch (e) {
             console.error("Upscale failed:", e);
             upscaled.src = loaded.src;
@@ -453,7 +453,8 @@ function makeFileName(suffix) {
     const datetime = new Date();
     const date = datetime.toISOString().split('T')[0];
     const time = datetime.toTimeString().split(' ')[0].replace(/:/g, '-');
-    return `image_${date}_${time}${suffix ? "_" + suffix : ""}.jpg`;
+    const ext = PHOTO_FORMATS[getPhotoFormat()].extension;
+    return `image_${date}_${time}${suffix ? "_" + suffix : ""}.${ext}`;
 }
 
 // Nearest-neighbour upscale applied when a photo is saved (and to the popup
@@ -498,13 +499,154 @@ function setupPhotoScaleSelector() {
     });
 }
 
-// Render an <img> from the gallery to an upscaled JPEG data URL, with EXIF tags.
-// Synchronous on purpose: it must not consume the user gesture, or iOS refuses to
-// open the share sheet / start a download.
-function renderJpegDataUrl(img) {
+// File format photos are saved in. Both carry the camera tags below; PNG is
+// lossless, which for a 4-shade grayscale photo is usually the smaller file too.
+const PHOTO_FORMATS = {
+    jpeg: { mime: "image/jpeg", extension: "jpg" },
+    png:  { mime: "image/png",  extension: "png" },
+};
+const DEFAULT_PHOTO_FORMAT = "jpeg";
+const PHOTO_FORMAT_KEY = "photoFormat";
+
+function getPhotoFormat() {
+    let raw = null;
+    // Same fallbacks as getPhotoScale(): an unrendered select or blocked storage
+    // must not break saving.
+    const select = document.getElementById("photoFormat");
+    if (select) {
+        raw = select.value;
+    } else {
+        try {
+            raw = localStorage.getItem(PHOTO_FORMAT_KEY);
+        } catch (e) { /* storage unavailable */ }
+    }
+
+    return Object.prototype.hasOwnProperty.call(PHOTO_FORMATS, raw) ? raw : DEFAULT_PHOTO_FORMAT;
+}
+
+function setupPhotoFormatSelector() {
+    const select = document.getElementById("photoFormat");
+    if (!select) return;
+
+    let stored = null;
+    try {
+        stored = localStorage.getItem(PHOTO_FORMAT_KEY);
+    } catch (e) { /* storage unavailable */ }
+
+    select.value = Object.prototype.hasOwnProperty.call(PHOTO_FORMATS, stored)
+        ? stored : DEFAULT_PHOTO_FORMAT;
+
+    safeAddEventListener(select, "change", () => {
+        try {
+            localStorage.setItem(PHOTO_FORMAT_KEY, select.value);
+        } catch (e) { /* storage unavailable */ }
+    });
+}
+
+// The camera tags stamped into every saved photo, whatever the format.
+const PHOTO_METADATA = {
+    make: "Nintendo",
+    model: "Game Boy Camera",
+    software: "GameBoy Camera Adapter",
+};
+
+// EXIF as piexif hands it over: the string "Exif\0\0" followed by a TIFF block.
+// JPEG wants it whole, PNG wants only the TIFF part. Returns null when piexif is
+// missing, which is not fatal -- the photo just goes out untagged.
+function buildExifPayload() {
+    if (typeof piexif === "undefined") return null;
+    const zeroth = {};
+    zeroth[piexif.ImageIFD.Make] = PHOTO_METADATA.make;
+    zeroth[piexif.ImageIFD.Model] = PHOTO_METADATA.model;
+    zeroth[piexif.ImageIFD.Software] = PHOTO_METADATA.software;
+    return piexif.dump({"0th": zeroth});
+}
+
+let crcTable = null;
+
+function crc32(bytes) {
+    if (!crcTable) {
+        crcTable = new Uint32Array(256);
+        for (let n = 0; n < 256; n++) {
+            let c = n;
+            for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+            crcTable[n] = c >>> 0;
+        }
+    }
+
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) crc = crcTable[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+// length + 4-char type + payload + CRC over type and payload.
+function makePngChunk(type, data) {
+    const chunk = new Uint8Array(12 + data.length);
+    const view = new DataView(chunk.buffer);
+    view.setUint32(0, data.length);
+    for (let i = 0; i < 4; i++) chunk[4 + i] = type.charCodeAt(i);
+    chunk.set(data, 8);
+    view.setUint32(8 + data.length, crc32(chunk.subarray(4, 8 + data.length)));
+    return chunk;
+}
+
+function latin1Bytes(str) {
+    const bytes = new Uint8Array(str.length);
+    for (let i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i) & 0xFF;
+    return bytes;
+}
+
+// tEXt is keyword, a NUL, then Latin-1 text.
+function makePngTextChunk(keyword, text) {
+    return makePngChunk("tEXt", latin1Bytes(keyword + "\0" + text));
+}
+
+// PNG has no EXIF segment of its own, so the camera tags go in twice: an eXIf
+// chunk (PNG 1.5, what exiftool, Explorer and photo managers read) and plain tEXt
+// for anything that only speaks PNG keywords. Both have to precede IDAT, so they
+// are spliced in directly after IHDR, which is always the first chunk. A file that
+// does not look like a PNG is handed back untouched rather than corrupted.
+function insertPngMetadata(bytes) {
+    const SIGNATURE = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    if (bytes.length < 8 + 12) return bytes;
+    for (let i = 0; i < SIGNATURE.length; i++) {
+        if (bytes[i] !== SIGNATURE[i]) return bytes;
+    }
+    if (String.fromCharCode(bytes[12], bytes[13], bytes[14], bytes[15]) !== "IHDR") return bytes;
+
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const insertAt = 8 + 12 + view.getUint32(8); // past IHDR's length, type, data and CRC
+    if (insertAt > bytes.length) return bytes;
+
+    const chunks = [];
+    const exif = buildExifPayload();
+    // Strip the "Exif\0\0" header: the eXIf chunk holds the bare TIFF block.
+    if (exif) chunks.push(makePngChunk("eXIf", latin1Bytes(exif.slice(6))));
+    chunks.push(makePngTextChunk("Make", PHOTO_METADATA.make));
+    chunks.push(makePngTextChunk("Model", PHOTO_METADATA.model));
+    chunks.push(makePngTextChunk("Software", PHOTO_METADATA.software));
+
+    const added = chunks.reduce((total, chunk) => total + chunk.length, 0);
+    const out = new Uint8Array(bytes.length + added);
+    out.set(bytes.subarray(0, insertAt), 0);
+    let offset = insertAt;
+    chunks.forEach((chunk) => {
+        out.set(chunk, offset);
+        offset += chunk.length;
+    });
+    out.set(bytes.subarray(insertAt), offset);
+    return out;
+}
+
+// Render an <img> from the gallery to an upscaled, tagged data URL in the chosen
+// format. Synchronous on purpose: it must not consume the user gesture, or iOS
+// refuses to open the share sheet / start a download.
+function renderPhotoDataUrl(img) {
     const width = img.naturalWidth || img.width;
     const height = img.naturalHeight || img.height;
     const scale = getPhotoScale();
+    const format = getPhotoFormat();
+    const mime = PHOTO_FORMATS[format].mime;
 
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
@@ -513,39 +655,49 @@ function renderJpegDataUrl(img) {
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(img, 0, 0, width, height, 0, 0, canvas.width, canvas.height);
 
-    let jpegDataUrl = canvas.toDataURL("image/jpeg", 1.0);
+    const dataUrl = canvas.toDataURL(mime, 1.0);
 
+    // Tagging is a nicety; a failure here must still leave a saveable photo.
     try {
-        // Add EXIF metadata if piexif is available
-        if (typeof piexif !== "undefined") {
-            const zeroth = {};
-            zeroth[piexif.ImageIFD.Make] = "Nintendo";
-            zeroth[piexif.ImageIFD.Model] = "Game Boy Camera";
-            zeroth[piexif.ImageIFD.Software] = "GameBoy Camera Adapter";
-            const exifObj = {"0th": zeroth};
-            const exifBytes = piexif.dump(exifObj);
-            jpegDataUrl = piexif.insert(exifBytes, jpegDataUrl);
+        if (format === "png") {
+            return bytesToDataUrl(insertPngMetadata(dataUrlToBytes(dataUrl)), mime);
         }
+        const exif = buildExifPayload();
+        if (exif) return piexif.insert(exif, dataUrl);
     } catch (e) {
-        console.error("EXIF error:", e);
+        console.error("Metadata error:", e);
     }
 
-    return jpegDataUrl;
+    return dataUrl;
+}
+
+function dataUrlToBytes(dataUrl) {
+    const binary = atob(dataUrl.slice(dataUrl.indexOf(',') + 1));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+}
+
+function bytesToDataUrl(bytes, mime) {
+    // btoa takes a string, and spreading a whole megapixel PNG into one
+    // fromCharCode call overflows the argument limit -- convert in slices.
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    }
+    return `data:${mime};base64,${btoa(binary)}`;
 }
 
 function dataUrlToBlob(dataUrl) {
-    const comma = dataUrl.indexOf(',');
-    const header = dataUrl.slice(0, comma);
+    const header = dataUrl.slice(0, dataUrl.indexOf(','));
     const mime = (header.match(/:(.*?);/) || [null, "image/jpeg"])[1];
-    const binary = atob(dataUrl.slice(comma + 1));
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return new Blob([bytes], { type: mime });
+    return new Blob([dataUrlToBytes(dataUrl)], { type: mime });
 }
 
-function renderJpegFile(img, suffix) {
+function renderPhotoFile(img, suffix) {
     const name = makeFileName(suffix);
-    return new File([dataUrlToBlob(renderJpegDataUrl(img))], name, { type: "image/jpeg" });
+    const blob = dataUrlToBlob(renderPhotoDataUrl(img));
+    return new File([blob], name, { type: blob.type });
 }
 
 // NOTE: the Web Share API is secure-context only, and the adapter serves the UI
@@ -600,7 +752,7 @@ function downloadImage(image) {
     downloadIndex += 1;
 
     if (image.complete && image.naturalWidth !== 0) {
-        return saveFiles([renderJpegFile(image)]);
+        return saveFiles([renderPhotoFile(image)]);
     }
 
     // Not decoded yet — the gesture is lost by the time it loads, so the share
@@ -609,7 +761,7 @@ function downloadImage(image) {
         const img = new Image();
         img.crossOrigin = "Anonymous";
         img.onload = function () {
-            downloadViaLink(renderJpegFile(img));
+            downloadViaLink(renderPhotoFile(img));
             resolve();
         };
         img.onerror = resolve;
@@ -1033,6 +1185,7 @@ document.addEventListener("DOMContentLoaded", () => {
     observeGalleryChanges();
     setupColorSchemeSelector();
     setupPhotoScaleSelector();
+    setupPhotoFormatSelector();
 
     // Background tasks
     fetchFirmwareVersion().then(() => {
@@ -1154,7 +1307,7 @@ function saveAllPictures() {
     // one share/download per user gesture, so all photos go out in a single batch.
     const files = images
         .filter(img => img.complete && img.naturalWidth !== 0)
-        .map((img, index) => renderJpegFile(img, String(index + 1).padStart(2, '0')));
+        .map((img, index) => renderPhotoFile(img, String(index + 1).padStart(2, '0')));
 
     if (files.length == 0) {
         return;
@@ -1638,9 +1791,9 @@ const BAYER_4X4 = [
 
 // Decide whether the canvas already holds a Game Boy picture, i.e. one built from
 // exactly four shades. Photos saved from the gallery are normalised to 255/191/
-// 127/63 and then written out as a 10x upscaled JPEG, so the shades come back
-// slightly smeared and cannot simply be compared for equality - they are clustered
-// with a tolerance instead. Returns the four shades brightest first, or null when
+// 127/63 and then written out as a 10x upscaled image; saved as JPEG the shades
+// come back slightly smeared and cannot simply be compared for equality - they are
+// clustered with a tolerance instead (a saved PNG lands dead on the levels). Returns the four shades brightest first, or null when
 // the source is an ordinary photo that still needs quantising.
 function detectGameBoyLevels(data, tolerance = 12, coverage = 0.97) {
     const histogram = new Uint32Array(256);
@@ -1804,7 +1957,7 @@ function processImage(img, mode) {
     ctx.fillRect(0, 0, targetWidth, targetHeight);
 
     // Nearest neighbour, not the default bilinear. Photos saved from the gallery
-    // are 10x nearest-neighbour upscaled JPEGs, so scaling one back down to 160x144
+    // are 10x nearest-neighbour upscaled, so scaling one back down to 160x144
     // with smoothing on blurs every hard pixel edge into its neighbours, and the
     // four level threshold below then turns that blur into blotches - which is why
     // a re-print looked lower resolution than the same photo printed by the Game
