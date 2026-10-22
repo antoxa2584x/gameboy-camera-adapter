@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Firmware-v2.2.0-266d3f?style=for-the-badge&logo=raspberrypi" alt="Firmware Version">
+  <img src="https://img.shields.io/badge/Firmware-v2.2.1-266d3f?style=for-the-badge&logo=raspberrypi" alt="Firmware Version">
   <img src="https://img.shields.io/badge/Hardware-RP2040-004d25?style=for-the-badge" alt="Hardware">
   <img src="https://img.shields.io/badge/Compatibility-iOS_%7C_Android_%7C_Web-4caf50?style=for-the-badge" alt="Compatibility">
 </p>

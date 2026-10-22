@@ -49,7 +49,7 @@ function safeAddEventListener(el, event, handler) {
     if (el) el.addEventListener(event, handler);
 }
 
-const CURRENT_VERSION = "2.2.0"; // Fallback version
+const CURRENT_VERSION = "2.2.1"; // Fallback version
 let dynamicVersion = CURRENT_VERSION;
 
 Date.prototype.today = function(delim) {
@@ -1776,13 +1776,18 @@ window.checkForUpdate = checkForUpdate;
 window.downloadImage = downloadImage;
 window.saveAllPictures = saveAllPictures;
 
+// Status bits that mean something went wrong: low battery, other error, paper
+// jam, packet error, checksum. Printing (0x02), image data full (0x04) and
+// unprocessed data (0x08) are what a healthy printer reports mid-job.
+const PRINTER_ERROR_MASK = 0xF1;
+
 function decodePrinterStatus(byte, ignoreBusyFull = false) {
     if (byte === 0xFF) return "Disconnected";
     const flags = [
         "Checksum Error",
         "Printing image",
         "Image Data Full",
-        "",
+        "", // unprocessed data: normal while a job is in the printer, not worth a label
         "Packet Error",
         "Paper Jam",
         "Other Error",
@@ -1793,20 +1798,24 @@ function decodePrinterStatus(byte, ignoreBusyFull = false) {
     for (let i = 0; i < 8; i++) {
         if (byte & (1 << i)) {
             if (ignoreBusyFull && (i === 1 || i === 2)) continue;
-            errors.push(flags[i]);
+            if (flags[i]) errors.push(flags[i]);
         }
     }
     return errors.length ? errors.join(", ") : "OK";
 }
 
 let isPrintingActive = false;
+// The status poll that is still on its way, if any. done=1 sends whatever the
+// adapter has queued, so a poll landing after a print started buffering would
+// fire the first few chunks off as their own job: printing waits for it first.
+let printerPollInFlight = null;
 
 function pollPrinterStatus() {
     if (typeof currentMode !== 'undefined' && currentMode !== "printer") return;
-    if (isPrintingActive) return;
+    if (isPrintingActive || printerPollInFlight) return;
 
     // Trigger status update on firmware if in printer mode
-    fetch('/print_chunk?done=1')
+    printerPollInFlight = fetch('/print_chunk?done=1')
         .then(() => fetch('/status.json', { cache: "no-store" }))
         .then(r => r.json())
         .then(data => {
@@ -1818,8 +1827,8 @@ function pollPrinterStatus() {
                         if (data.printer === 0xFF) {
                             el.style.color = "red";
                         } else {
-                            // Treat busy/full as "normal" orange, others as lightgreen if only busy/full
-                            const isError = (data.printer & ~0x06) !== 0 && data.printer !== 0x00;
+                            // Red only for real errors; a printer that is busy with a job is orange
+                            const isError = (data.printer & PRINTER_ERROR_MASK) !== 0;
                             el.style.color = isError ? "red" : (data.printer === 0 ? "lightgreen" : "orange");
                         }
                     }
@@ -1833,17 +1842,13 @@ function pollPrinterStatus() {
                         } else if (data.printer & 0x02) { // Printer Busy (Printing image)
                             overlay.classList.remove("hidden");
                             statusText.textContent = "Printing image...";
-                        } else if (data.printer === 0x00) {
-                            overlay.classList.add("hidden");
                         } else if (data.printer & 0x04) { // Image Data Full
                             overlay.classList.remove("hidden");
                             statusText.textContent = "Image Data Full";
-                        } else if (data.printer !== 0x00) {
-                            // Any other error (except Unprocessed which we cleared)
-                            // We don't want to show overlay for unknown status unless it's busy/full
-                            // Actually, if it's an error like Checksum, should we show it?
-                            // User said "do not show printing image popup when printer status become disconnected"
-                            // and "do not show unprocessed data error at all".
+                        } else {
+                            // Idle (0x00), unprocessed data only (0x08) or an error: no
+                            // overlay -- errors already show in red in the status line
+                            overlay.classList.add("hidden");
                         }
                     }
                 }
@@ -1852,6 +1857,9 @@ function pollPrinterStatus() {
             console.error("Status error:", err);
             const overlay = document.getElementById("print-overlay");
             if (overlay) overlay.classList.add("hidden");
+        })
+        .finally(() => {
+            printerPollInFlight = null;
         });
 }
 
@@ -2056,6 +2064,22 @@ function sendChunkedData(binaryData, chunkSize = 256) {
 
     isPrintingActive = true;
     if (printBtn) printBtn.style.display = "none";
+
+    // Put the page back if the job dies part way, instead of leaving the
+    // "Sending to printer..." overlay up and the print button hidden for good
+    function abortPrint(message) {
+        isPrintingActive = false;
+        if (printBtn) printBtn.style.display = "block";
+        if (overlay) {
+            overlay.classList.add("hidden");
+            overlay.style.display = "none";
+        }
+        const el = document.getElementById("printer-status");
+        if (el && message) {
+            el.textContent = "Printer Status: " + message;
+            el.style.color = "red";
+        }
+    }
     // Check current status before showing overlay
     fetch("/status.json")
         .then(res => res.json())
@@ -2123,15 +2147,21 @@ function sendChunkedData(binaryData, chunkSize = 256) {
         fetch(url)
             .then(res => {
                 if (!res.ok) throw new Error("Server error");
+                return res.json();
+            })
+            .then(reply => {
+                // The adapter answers "error" when it refuses a packet (queue full, malformed)
+                if (!reply || reply.result !== "ok") throw new Error("Packet refused");
                 setTimeout(() => bufferNextPacket(index + 1), 50);
             })
             .catch(err => {
-                isPrintingActive = false;
                 console.error("Buffer failed at packet " + index, err);
+                abortPrint("Could not send the image, try again");
             });
     }
 
-    bufferNextPacket(0);
+    // Let a status poll already on its way finish first (see printerPollInFlight)
+    (printerPollInFlight || Promise.resolve()).then(() => bufferNextPacket(0));
 }
 
 let currentImage = null;

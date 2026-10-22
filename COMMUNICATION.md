@@ -78,7 +78,7 @@ Returns the current system status.
   "result": "ok",
   "options": { "debug": "off/on" },
   "status": { "last_size": 1234, "total_files": 1, "receiving": 0 },
-  "system": { "fast": "true/false", "version": "2.2.0", "uptime": 3600 },
+  "system": { "fast": "true/false", "version": "2.2.1", "uptime": 3600 },
   "printer": 0,
   "dbg": ""
 }
@@ -117,8 +117,11 @@ Sends a Game Boy Printer packet to a physical printer connected to the adapter.
 - **Behavior**:
   1. If `done=0`, the packet is added to a temporary queue in the firmware.
   2. If `done=1`, the firmware sends all queued packets to the printer over the Link Cable.
-  3. If `done=1` is sent without `data`, a `STATUS` packet is sent to the printer.
-- **Queue Limits**: Up to 64 packets or 16KB total payload.
+  3. If `done=1` is sent with an empty queue, a single `STATUS` packet is sent to the printer (status polling).
+  4. An `INIT` packet arriving while packets are already queued starts a new job: the leftovers of an abandoned one are dropped first.
+- **Response**: the `/status.json` body (`"result":"ok"`), sent after the burst for `done=1`. A refused packet (malformed, or the queue is full) answers `{"result":"error","printer":N}` instead.
+- **Queue Limits**: Up to 64 packets or 8 KB total.
+- **Printer detection**: the printer answers `0x81` during the second-to-last byte of every packet and its status during the last one. Without that `0x81` the status reads `0xFF` (disconnected); `PIN_SIN` is pulled up so an empty port reads `0xFF` rather than floating.
 
 ---
 

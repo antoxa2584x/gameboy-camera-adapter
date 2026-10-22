@@ -520,6 +520,7 @@ static void key_callback(uint gpio, uint32_t events) {
 #define IMAGE_FILE  "/image.bin"
 #define STATUS_FILE "/status.json"
 #define LIST_FILE   "/list.json"
+#define PRINT_ERROR_FILE "/print_error.json"
 
 static const char *cgi_download(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
     return IMAGE_FILE;
@@ -709,45 +710,39 @@ void printer_send_packet(const uint8_t* packet, int length) {
 
         gpio_init(PIN_SIN);
         gpio_set_dir(PIN_SIN, GPIO_IN);
-        gpio_disable_pulls(PIN_SIN);
+        // An empty port must read 0xFF ("disconnected"), not float into random
+        // bytes; a connected printer drives the line over the pull-up
+        gpio_pull_up(PIN_SIN);
     }
 
-    uint8_t last_response = 0x00;
-    uint8_t status_byte = 0x00;
-    bool has_response = false;
-    bool sync_received = false;
+    uint8_t reply_prev = 0xFF, reply_last = 0xFF; // replies to the packet's last two bytes
+    bool sync_seen = false, synced = false;
+    uint8_t synced_status = 0;
     dbg_count = 0;
     for (int i = 0; i < length; i++) {
         uint8_t response = printer_send_byte(packet[i]);
         if (dbg_count < DBG_MAX) dbg_responses[dbg_count++] = response;
-        
-        if (sync_received) {
-            status_byte = response;
-            sync_received = false; // We got the status after sync
-            has_response = true;
-        } else if (response == 0x81) {
-            sync_received = true;
-            has_response = true;
-        } else if (response != 0x00 && response != 0xFF) {
-            // Backup in case we missed sync but got something else
-            last_response = response;
-            has_response = true;
+
+        // Fallback for a reply that lands a byte off: the first 0x81 anywhere, then status
+        if (sync_seen && !synced) {
+            synced_status = response;
+            synced = true;
         }
-        
+        sync_seen = (response == PRINTER_DEVICE_ID);
+        reply_prev = reply_last;
+        reply_last = response;
+
         sleep_us(10);
     }
 
-    if (has_response) {
-        if (status_byte != 0x00) {
-            current_printer_status = status_byte;
-        } else if (last_response != 0x81 && last_response != 0xFF && last_response != 0x00) {
-            current_printer_status = last_response;
-        } else {
-            // If we only got 0x81 or 0x00 as last response, it might be OK
-            // but usually status follows 0x81.
-            // If status_byte is 0x00, it means the printer is likely OK.
-            current_printer_status = status_byte; 
-        }
+    // The printer answers its device ID (0x81) during the second-to-last byte of
+    // every packet and its status during the last one. No 0x81 means no printer:
+    // any other reply is line noise, and reporting it as a status byte would
+    // show errors (paper jam, packet error...) the printer never raised.
+    if ((length >= 2) && (reply_prev == PRINTER_DEVICE_ID)) {
+        current_printer_status = reply_last;
+    } else if (synced) {
+        current_printer_status = synced_status;
     } else {
         current_printer_status = PRINTER_STATUS_DISCONNECTED;
     }
@@ -769,6 +764,18 @@ static inline uint8_t hex_nibble(char c) {
 static bool print_queue_add_hex(const char *payload, size_t hex_len) {
     if (!payload || hex_len == 0 || hex_len > 2048 || (hex_len & 1)) return false;
     size_t byte_len = hex_len / 2;
+
+    // Every print job starts with INIT, so one arriving with packets already
+    // queued means the previous job was abandoned half way (an upload error, an
+    // app closed mid-send). Drop its leftovers rather than printing them in
+    // front of this image or overflowing the queue.
+    #define HEX_BYTE_AT(i) ((uint8_t)((hex_nibble(payload[(i) * 2]) << 4) | hex_nibble(payload[(i) * 2 + 1])))
+    bool is_init = (byte_len >= 3) && (HEX_BYTE_AT(0) == 0x88) && (HEX_BYTE_AT(1) == 0x33) && (HEX_BYTE_AT(2) == PRN_COMMAND_INIT);
+    #undef HEX_BYTE_AT
+    if (is_init && pkt_queue_count) {
+        pkt_queue_count = 0;
+        pkt_queue_used = 0;
+    }
 
     if (pkt_queue_count >= PKT_MAX_PACKETS || pkt_queue_used + byte_len > PKT_QUEUE_SIZE) return false;
 
@@ -867,15 +874,16 @@ const char *cgi_print_chunk(int iIndex, int iNumParams, char *pcParam[], char *p
         }
     }
 
-    if (payload && !is_done) {
-        print_queue_add_hex(payload, strlen(payload));
-    }
-
     if (is_done) {
         print_queue_flush();
+        return STATUS_FILE;
     }
 
-    return "/index.html";
+    // The reply used to be the whole index.html for every chunk -- ~1 MB of
+    // page per print for nothing. The status JSON is a few hundred bytes, and a
+    // refused packet (malformed, queue full) now says so instead of passing as ok.
+    if (payload && !print_queue_add_hex(payload, strlen(payload))) return PRINT_ERROR_FILE;
+    return STATUS_FILE;
 }
 
 /* Add to CGI handler list */
@@ -947,6 +955,13 @@ int fs_open_custom(struct fs_file *file, const char *name) {
         file->len   = snprintf(file_buffer, sizeof(file_buffer),
                                "{\"dumps\": [%s]}",
                                ((picture_count) ? "\"/image.bin\"" : ""));
+        file->index = file->len;
+        return 1;
+    } else if (!strcmp(name, PRINT_ERROR_FILE)) {
+        memset(file, 0, sizeof(struct fs_file));
+        file->data  = file_buffer;
+        file->len   = snprintf(file_buffer, sizeof(file_buffer),
+                               "{\"result\":\"error\",\"printer\":%u}", (unsigned int)get_printer_status());
         file->index = file->len;
         return 1;
     } else if (!strcmp(name, "/led_status")) {

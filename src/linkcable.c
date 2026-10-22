@@ -31,6 +31,9 @@ void linkcable_reset(void) {
 void linkcable_init(irq_handler_t onDataReceive) {
     static bool program_added = false;
     if (!program_added) {
+        // Claimed so that "any free state machine" requests (the RGB LED's
+        // pio_claim_free_sm_and_add_program...) can never be handed this one
+        pio_sm_claim(LINKCABLE_PIO, LINKCABLE_SM);
 #ifdef STACKSMASHING
         linkcable_pio_initial_pc = pio_add_program(LINKCABLE_PIO, &linkcable_sm_program);
 #else
