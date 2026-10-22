@@ -10,7 +10,7 @@
 #define DATABLOCK_SIZE 512
 
 #define MAX_BLOCK_COUNT ((BUFFER_SIZE_KB * 1024) / DATABLOCK_SIZE)
-#define MAX_IMAGE_COUNT 30
+#define MAX_IMAGE_COUNT 64
 
 typedef struct datablock_t {
     struct datablock_t * next;
@@ -27,6 +27,7 @@ typedef struct datafile_t {
 
 extern datablock_t image_blocks[];
 extern datablock_t * free_image_blocks;
+extern volatile uint32_t free_block_count;
 
 extern datafile_t images[];
 extern datafile_t * free_image_files;
@@ -43,6 +44,7 @@ void free_file(datafile_t * file);
 bool push_file(datafile_t * file);
 datafile_t * pop_file(void);
 datafile_t * pop_last_file(void);
+uint32_t trim_files_with_tag(uint8_t tag, uint32_t keep);
 
 inline bool files_allocated(void) {
     return (image_files != NULL);

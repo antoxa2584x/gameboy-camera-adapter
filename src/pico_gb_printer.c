@@ -325,12 +325,49 @@ static void cdc_handle_line(const char* line) {
 }
 
 
+// gb-photo "Transfer REC" streams its live view as INIT+TRANSFER pairs, one per
+// captured frame. A single "Transfer" looks the same, and "Transfer all" sends
+// its frames with no INIT in between, so a frame counts as live when it has its
+// own INIT and starts within LIVE_FRAME_GAP of the previous transfer ending.
+#define LIVE_FRAME_GAP          MS(2000)
+// Queued live frames kept for the web UI; older ones are dropped so the view
+// stays real time instead of filling the buffer with a backlog
+#define LIVE_QUEUE_MAX          3
+// Room for one more print: a framed gb-photo print runs up to ~9 KB
+#define PRINT_RESERVE_BLOCKS    20
+// The web UI polls /download at least every 2 s while the gallery is open
+#define WEB_CLIENT_TIMEOUT      SEC(5)
+
+static volatile bool live_frame = false;
+static uint64_t last_transfer_end = 0;
+static volatile uint32_t last_download_request = 0; // 32-bit: read in IRQ context, so no torn reads
+static bool cdc_file_open = false;
+
+void receive_data_write(uint8_t b);
+
+// Live frames stay off the serial stream: they arrive faster than the CDC ring
+// drains, and the companion app would file every one of them as a photo
+static void cdc_file_write(uint8_t b) {
+    if (live_frame) return;
+    if (!cdc_file_open) {
+        // "GBCA_PHOTO_TRANSFER" marker, sent later from the main loop
+        cdc_ring_push(CDC_REC_INIT, 0);
+        cdc_file_open = true;
+    }
+    cdc_ring_push(CDC_REC_DATA, b);
+}
+
+static void cdc_file_close(void) {
+    // tail flush + "DONE" trailer, sent later from the main loop
+    if (cdc_file_open) cdc_ring_push(CDC_REC_DONE, 0);
+    cdc_file_open = false;
+}
+
 void receive_data_reset(void) {
+    cdc_file_close();
+    live_frame = false;
     if (!allocated_file) return;
     last_file_len = allocated_file->size;
-
-    // tail flush + "DONE" trailer, sent later from the main loop
-    cdc_ring_push(CDC_REC_DONE, 0);
 
     if (push_file(allocated_file)) picture_count++;
     allocated_file = NULL;
@@ -340,14 +377,28 @@ bool double_init = false;
 void receive_data_init(void) {
     if (double_init) receive_data_reset();
     double_init = true;
+}
 
-    // "GBCA_PHOTO_TRANSFER" marker, sent later from the main loop
-    cdc_ring_push(CDC_REC_INIT, 0);
+void receive_transfer_begin(void) {
+    live_frame = double_init && last_transfer_end && ((time_us_64() - last_transfer_end) < LIVE_FRAME_GAP);
+    if (live_frame) picture_count -= trim_files_with_tag(CAM_COMMAND_TRANSFER_LIVE, LIVE_QUEUE_MAX - 1);
+    receive_data_write(live_frame ? CAM_COMMAND_TRANSFER_LIVE : CAM_COMMAND_TRANSFER);
+}
+
+// Whether the next print fits. Holding the Game Boy only makes sense while the
+// web UI is there to drain the buffer -- with nobody polling, never wait.
+bool receive_buffer_ready(void) {
+    if ((time_us_32() - last_download_request) > WEB_CLIENT_TIMEOUT) return true;
+    return (free_block_count >= PRINT_RESERVE_BLOCKS) && (free_image_files != NULL);
 }
 
 void receive_data_write(uint8_t b) {
     double_init = false;
     datablock_t * block;
+
+    // mirror the byte into the CDC stream first, so the serial host still gets
+    // the photo when the web buffer is full; sent later from the main loop
+    cdc_file_write(b);
 
     if (!allocated_file) {
         allocated_file = allocate_file();
@@ -371,13 +422,13 @@ void receive_data_write(uint8_t b) {
 
     block->data[block->size++] = b;
     allocated_file->size++;
-
-    // mirror the byte into the CDC stream; sent later from the main loop
-    cdc_ring_push(CDC_REC_DATA, b);
 }
 
 void receive_data_commit(uint8_t cmd) {
-    if (cmd == CAM_COMMAND_TRANSFER) receive_data_reset();
+    if (cmd == CAM_COMMAND_TRANSFER) {
+        last_transfer_end = time_us_64();
+        receive_data_reset();
+    }
 }
 
 // link cable
@@ -783,6 +834,7 @@ int fs_open_custom(struct fs_file *file, const char *name) {
     static const char *on_off[]     = {"off", "on"};
     static const char *true_false[] = {"false", "true"};
     if (!strcmp(name, IMAGE_FILE)) {
+        last_download_request = time_us_32();
         datafile_t * datafile = pop_last_file();
         if (!datafile) return 0;
         picture_count--;

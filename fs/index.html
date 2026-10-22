@@ -26,7 +26,7 @@
         <div class="flex-col-center">
             <!-- Close Button -->
             <button class="close-btn" onclick="closeFirmwarePopup()">X</button>
-            <p id="firmware-version-text">Current firmware is v2.1.0</p>
+            <p id="firmware-version-text">Current firmware is v2.2.0</p>
             <!-- Color Picker + Button -->
             <div class="settings-container">
                 <div class="led-color-row">
@@ -159,6 +159,19 @@
         </div>
         <div class="save-all-row">
             <button id="save_all_btn" class="hidden" onclick="saveAllPictures()">Save All</button>
+        </div>
+        <!-- Live view: frames streamed by gb-photo's "Transfer REC" -->
+        <div id="live-view" class="live-view hidden">
+            <div class="live-status">
+                <span id="live-badge" class="live-badge">REC</span>
+                <span id="live-info" class="live-info"></span>
+            </div>
+            <canvas id="live-canvas" width="128" height="112"></canvas>
+            <div class="live-controls">
+                <button class="darkgreen" onclick="saveLiveVideo()">Save GIF</button>
+                <button class="darkgreen" onclick="saveLiveFrame()">Add Frame</button>
+                <button onclick="closeLiveView()">Close</button>
+            </div>
         </div>
         <div id="gallery"></div>
 

@@ -2,6 +2,9 @@ const COMMAND_INIT = 0x01;
 const COMMAND_PRINT = 0x02;
 const COMMAND_DATA = 0x04;
 const COMMAND_TRANSFER = 0x10;
+// Not a printer command: the adapter stores gb-photo "Transfer REC" frames under
+// this tag so they go to the live view instead of the gallery
+const COMMAND_TRANSFER_LIVE = 0x11;
 
 // Printer exposure byte = thermal head burn time, 0x00 lightest to 0x7F darkest.
 // 0x7F is the hardware limit. The usable range is taken from the "print-exposure"
@@ -46,7 +49,7 @@ function safeAddEventListener(el, event, handler) {
     if (el) el.addEventListener(event, handler);
 }
 
-const CURRENT_VERSION = "2.1.0"; // Fallback version
+const CURRENT_VERSION = "2.2.0"; // Fallback version
 let dynamicVersion = CURRENT_VERSION;
 
 Date.prototype.today = function(delim) {
@@ -213,9 +216,18 @@ async function get_camera_image(canvas, binPath) {
                 console.log("Rendering transfer image...");
                 render(canvas, processed_data, current_image_start, ptr, CAMERA_WIDTH, 1, 0x03, 0xE4, 0xFF);
                 normalizeToCanonicalGrayscale(canvas);
-                addCanvasToGallery(canvas);
+                const item = addCanvasToGallery(canvas);
                 reset_canvas(canvas);
                 buffer_start = ptr;
+                // "Transfer REC" starts with a frame that looks like a plain Transfer
+                rememberTransferPhoto(item, processed_data.slice(current_image_start, ptr));
+                break;
+            }
+
+            case COMMAND_TRANSFER_LIVE: {
+                len = resData[idx++] | (resData[idx++] << 8);
+                if (idx + len <= data_size) addLiveFrame(resData.slice(idx, idx + len));
+                idx += len;
                 break;
             }
 
@@ -301,10 +313,12 @@ function addCanvasToGallery(canvas) {
 
         gallery.appendChild(div);
 
+        // updateButtonStates() also enables "select all" when that button exists;
+        // touching it directly threw here, as index.html has no such button
         updateButtonStates();
-
-        selectAllBtn.disabled = false;
+        return div;
     }
+    return null;
 }
 
 function showPopupWithUpscaledImage(image) {
@@ -347,17 +361,48 @@ function showPopupWithUpscaledImage(image) {
         }
     };
 
-    if (image.complete && image.naturalWidth !== 0) {
-        setUpscaledSrc(image);
-    } else {
-        const img = new Image();
-        img.crossOrigin = "Anonymous"; // This enables CORS
-        img.onload = function() {
-            setUpscaledSrc(img);
-        };
-        img.src = image.src;
-    }
+    // The photo on screen; the arrows, arrow keys and swipes move it through the gallery
+    let current = image;
+    const galleryImages = () => Array.from(document.querySelectorAll(".gallery-image img"));
 
+    const prevButton = document.createElement("button");
+    prevButton.textContent = "<";
+    prevButton.classList.add("popup-nav-button", "popup-nav-button--prev");
+    prevButton.setAttribute("aria-label", "Previous photo");
+
+    const nextButton = document.createElement("button");
+    nextButton.textContent = ">";
+    nextButton.classList.add("popup-nav-button", "popup-nav-button--next");
+    nextButton.setAttribute("aria-label", "Next photo");
+
+    const showImage = (img) => {
+        current = img;
+        if (img.complete && img.naturalWidth !== 0) {
+            setUpscaledSrc(img);
+        } else {
+            const loader = new Image();
+            loader.crossOrigin = "Anonymous"; // This enables CORS
+            loader.onload = function() {
+                if (current === img) setUpscaledSrc(loader);
+            };
+            loader.src = img.src;
+        }
+        const images = galleryImages();
+        const index = images.indexOf(img);
+        prevButton.classList.toggle("hidden", index <= 0);
+        nextButton.classList.toggle("hidden", index < 0 || index >= images.length - 1);
+    };
+
+    const step = (delta) => {
+        const images = galleryImages();
+        const index = images.indexOf(current);
+        if (index >= 0 && images[index + delta]) showImage(images[index + delta]);
+    };
+
+    prevButton.onclick = (e) => { e.stopPropagation(); step(-1); };
+    nextButton.onclick = (e) => { e.stopPropagation(); step(1); };
+
+    showImage(image);
     popup.appendChild(upscaled);
 
     // Point iOS users at the long-press route, which lands straight in Photos
@@ -393,7 +438,7 @@ function showPopupWithUpscaledImage(image) {
     };
 
     saveButton.onclick = () => {
-        downloadImage(image);
+        downloadImage(current);
     };
     popup.appendChild(saveButton);
 
@@ -402,12 +447,37 @@ function showPopupWithUpscaledImage(image) {
     closeButton.textContent = "X";
     closeButton.classList.add("popup-close-button");
 
-    closeButton.onclick = () => {
-        document.body.removeChild(overlay);
+    const onKey = (e) => {
+        if (e.key === "ArrowLeft") step(-1);
+        else if (e.key === "ArrowRight") step(1);
+        else if (e.key === "Escape") closePopup();
     };
+
+    const closePopup = () => {
+        document.removeEventListener("keydown", onKey);
+        overlay.remove();
+    };
+
+    closeButton.onclick = closePopup;
     popup.appendChild(closeButton);
 
+    // Horizontal swipe on touch screens; mostly-vertical drags are left to scrolling
+    let touchStart = null;
+    overlay.addEventListener("touchstart", (e) => {
+        touchStart = (e.touches.length === 1) ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+    }, { passive: true });
+    overlay.addEventListener("touchend", (e) => {
+        if (!touchStart) return;
+        const dx = e.changedTouches[0].clientX - touchStart.x;
+        const dy = e.changedTouches[0].clientY - touchStart.y;
+        touchStart = null;
+        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) step(dx < 0 ? 1 : -1);
+    });
+
+    document.addEventListener("keydown", onKey);
     overlay.appendChild(popup);
+    overlay.appendChild(prevButton);
+    overlay.appendChild(nextButton);
     document.body.appendChild(overlay);
 }
 
@@ -430,7 +500,8 @@ function updateButtonStates() {
     const saveAll = document.getElementById('save_all_btn');
     const description = document.getElementById('description');
 
-    if (items.length > 0) {
+    // The live view needs the palette picker too, and stands in for the empty-gallery hint
+    if (items.length > 0 || liveViewOpen()) {
         if (description) description.classList.add('hidden');
         if (colors) colors.classList.remove('hidden');
     } else {
@@ -449,12 +520,11 @@ function updateButtonStates() {
     }
 }
 
-function makeFileName(suffix) {
+function makeFileName(suffix, ext = PHOTO_FORMATS[getPhotoFormat()].extension, prefix = "image") {
     const datetime = new Date();
     const date = datetime.toISOString().split('T')[0];
     const time = datetime.toTimeString().split(' ')[0].replace(/:/g, '-');
-    const ext = PHOTO_FORMATS[getPhotoFormat()].extension;
-    return `image_${date}_${time}${suffix ? "_" + suffix : ""}.${ext}`;
+    return `${prefix}_${date}_${time}${suffix ? "_" + suffix : ""}.${ext}`;
 }
 
 // Nearest-neighbour upscale applied when a photo is saved (and to the popup
@@ -914,16 +984,20 @@ async function periodic_fetch() {
     fetch_skip = true;
 
     try {
-        const receiving = await is_receiving();
+        // Live frames come back to back: skip the status round trip, and keep the
+        // loader off -- the live view itself shows what is arriving
+        const live = liveStreaming();
+        const receiving = live ? false : await is_receiving();
         if (receiving) setReceiveOverlay(true);
 
         const fetch_ok = await get_camera_image(canvas, imageBinPath);
 
         // Hide the loader only after the finished photo has been fetched/rendered
-        if (!receiving) setReceiveOverlay(false);
+        if (!receiving || liveStreaming()) setReceiveOverlay(false);
 
-        // Poll fast while a transfer is in progress so the photo shows up promptly
-        const next_interval = (fetch_ok || receiving) ? 500 : 2000;
+        // Drain queued photos back to back ("Print all", "Transfer all", live view),
+        // and poll fast while a transfer is in progress so it shows up promptly
+        const next_interval = fetch_ok ? 0 : (live ? 50 : (receiving ? 500 : 2000));
         setTimeout(periodic_fetch, next_interval);
     } catch (err) {
         console.error("Fetch error:", err);
@@ -934,6 +1008,344 @@ async function periodic_fetch() {
     }
 }
 setTimeout(periodic_fetch, 1000);
+
+// Live view for gb-photo's "Transfer REC". Frames are kept as the raw 2bpp tile
+// data the Game Boy sent (3.5 KB each) and only turned into pixels to draw the
+// latest one and to export the recording as a GIF.
+const LIVE_IDLE_MIN_MS = 1500;    // REC counts as stopped once a frame is this late at the least...
+const LIVE_IDLE_MAX_MS = 12000;   // ...and at the most; DMG frames are ~4 s apart
+const LIVE_IDLE_PACE = 2.5;       // ...judged as this many average frame intervals
+const LIVE_FIRST_FRAME_MS = 8000; // a Transfer this recent was the first frame of the stream
+const LIVE_MAX_FRAMES = 1200;     // rolling limit, ~4 MB of tile data
+const LIVE_GIF_MAX_SCALE = 4;     // GIF frames are re-encoded per frame, so cap the size
+const LIVE_DEFAULT_DELAY_MS = 100;
+
+let liveFrames = [];              // { tiles: Uint8Array, time: ms }
+let liveUnsaved = false;
+let liveIdleTimer = null;
+let lastTransferPhoto = null;     // { item, tiles, time } of the latest plain Transfer
+
+function liveViewOpen() {
+    const view = document.getElementById("live-view");
+    return !!view && !view.classList.contains("hidden");
+}
+
+// REC sends no "stop" over the link cable: it has stopped once the next frame is
+// clearly overdue. Overdue is judged from the recent pace, so a fast GBC stream
+// reads as stopped within a couple of seconds while a slow DMG one is not cut
+// off between frames.
+function liveIdleTimeout() {
+    const count = liveFrames.length;
+    const recent = Math.min(count - 1, 5);
+    if (recent < 1) return LIVE_IDLE_MAX_MS;
+    const average = (liveFrames[count - 1].time - liveFrames[count - 1 - recent].time) / recent;
+    return Math.min(LIVE_IDLE_MAX_MS, Math.max(LIVE_IDLE_MIN_MS, average * LIVE_IDLE_PACE));
+}
+
+function liveStreaming() {
+    return liveFrames.length > 0 && (Date.now() - liveFrames[liveFrames.length - 1].time) < liveIdleTimeout();
+}
+
+function rememberTransferPhoto(item, tiles) {
+    lastTransferPhoto = item ? { item: item, tiles: tiles, time: Date.now() } : null;
+}
+
+function addLiveFrame(tiles) {
+    const now = Date.now();
+    // A stream that starts after the last one stopped is a new recording
+    if (liveFrames.length > 0 && !liveStreaming()) liveFrames = [];
+    // The adapter can only tell a REC stream from a single Transfer once the second
+    // frame arrives, so the first one landed in the gallery: move it over here.
+    if (liveFrames.length === 0 && lastTransferPhoto && (now - lastTransferPhoto.time) < LIVE_FIRST_FRAME_MS) {
+        lastTransferPhoto.item.remove();
+        liveFrames.push({ tiles: lastTransferPhoto.tiles, time: lastTransferPhoto.time });
+    }
+    lastTransferPhoto = null;
+
+    liveFrames.push({ tiles: tiles, time: now });
+    if (liveFrames.length > LIVE_MAX_FRAMES) liveFrames.splice(0, liveFrames.length - LIVE_MAX_FRAMES);
+    liveUnsaved = true;
+
+    const view = document.getElementById("live-view");
+    if (view) view.classList.remove("hidden");
+    updateButtonStates();
+    redrawLiveView();
+    updateLiveStatus();
+
+    clearTimeout(liveIdleTimer);
+    liveIdleTimer = setTimeout(updateLiveStatus, liveIdleTimeout());
+}
+
+// 2bpp tiles, tileWidth tiles per row, to one palette index (0 white .. 3 black) per pixel
+function decodeTilePixels(tiles, tileWidth) {
+    const width = tileWidth * TILE_WIDTH;
+    const tileRows = Math.floor(tiles.length / (TILE_SIZE * tileWidth));
+    const height = tileRows * TILE_HEIGHT;
+    const pixels = new Uint8Array(width * height);
+    for (let tile = 0; tile < tileRows * tileWidth; tile++) {
+        const x0 = (tile % tileWidth) * TILE_WIDTH;
+        const y0 = Math.floor(tile / tileWidth) * TILE_HEIGHT;
+        for (let row = 0; row < TILE_HEIGHT; row++) {
+            const lo = tiles[tile * TILE_SIZE + row * 2];
+            const hi = tiles[tile * TILE_SIZE + row * 2 + 1];
+            const base = (y0 + row) * width + x0;
+            for (let bit = 0; bit < 8; bit++) {
+                pixels[base + bit] = ((lo >> (7 - bit)) & 1) | (((hi >> (7 - bit)) & 1) << 1);
+            }
+        }
+    }
+    return { width: width, height: height, pixels: pixels };
+}
+
+// The four colours of the selected palette, lightest first (palette index order)
+function activeSchemeColors() {
+    const scheme = document.querySelector(".color-circle.active")?.dataset.scheme;
+    return Object.values(pocketCameraPalettes[scheme] || pocketCameraPalettes["grayscale"]);
+}
+
+function paintPixels(canvas, image, colors) {
+    if (canvas.width !== image.width) canvas.width = image.width;
+    if (canvas.height !== image.height) canvas.height = image.height;
+    const ctx = canvas.getContext("2d");
+    const imageData = ctx.createImageData(image.width, image.height);
+    const data = imageData.data;
+    for (let i = 0; i < image.pixels.length; i++) {
+        const color = colors[image.pixels[i]];
+        data[i * 4] = color[0];
+        data[i * 4 + 1] = color[1];
+        data[i * 4 + 2] = color[2];
+        data[i * 4 + 3] = 0xFF;
+    }
+    ctx.putImageData(imageData, 0, 0);
+}
+
+function redrawLiveView() {
+    const liveCanvas = document.getElementById("live-canvas");
+    if (!liveCanvas || liveFrames.length === 0) return;
+    const latest = liveFrames[liveFrames.length - 1];
+    paintPixels(liveCanvas, decodeTilePixels(latest.tiles, CAMERA_WIDTH), activeSchemeColors());
+}
+
+function updateLiveStatus() {
+    const streaming = liveStreaming();
+    const badge = document.getElementById("live-badge");
+    if (badge) {
+        badge.textContent = streaming ? "REC" : "STOPPED";
+        badge.classList.toggle("live-badge--idle", !streaming);
+    }
+    const info = document.getElementById("live-info");
+    if (info) {
+        const count = liveFrames.length;
+        const seconds = (count > 1) ? (liveFrames[count - 1].time - liveFrames[0].time) / 1000 : 0;
+        const fps = (seconds > 0) ? ((count - 1) / seconds).toFixed(1) : "0.0";
+        info.textContent = `${count} FRAME${count === 1 ? "" : "S"} / ${fps} FPS`;
+    }
+}
+
+// Copy the frame on screen into the gallery as an ordinary photo
+function saveLiveFrame() {
+    if (liveFrames.length === 0) return;
+    const frameCanvas = document.createElement("canvas");
+    // Canonical greys, like every gallery photo: the gallery applies the palette itself
+    paintPixels(frameCanvas, decodeTilePixels(liveFrames[liveFrames.length - 1].tiles, CAMERA_WIDTH),
+                Object.values(pocketCameraPalettes["grayscale"]));
+    addCanvasToGallery(frameCanvas);
+}
+
+function saveLiveVideo() {
+    if (liveFrames.length === 0) return;
+    const frames = liveFrames.slice();
+    const colors = activeSchemeColors();
+    const scale = Math.min(getPhotoScale(), LIVE_GIF_MAX_SCALE);
+
+    showGeneralPopup();
+    updateGeneralPopup("ENCODING GIF", false);
+    // Let the popup paint before the encoder holds the main thread. The share sheet
+    // is out of reach over plain http anyway (see canShareFiles), so losing the
+    // click gesture here costs nothing.
+    setTimeout(() => {
+        try {
+            const first = decodeTilePixels(frames[0].tiles, CAMERA_WIDTH);
+            let lastDelay = LIVE_DEFAULT_DELAY_MS;
+            const gif = encodeGif(first.width * scale, first.height * scale, colors, frames.length, (i) => {
+                // Real timing; the last frame holds for as long as the one before it
+                const delay = (i + 1 < frames.length) ? frames[i + 1].time - frames[i].time : lastDelay;
+                lastDelay = delay;
+                return {
+                    pixels: scalePixels(decodeTilePixels(frames[i].tiles, CAMERA_WIDTH), scale),
+                    delay: Math.max(2, Math.round(delay / 10))
+                };
+            });
+            const name = makeFileName(null, "gif", "video");
+            saveFiles([new File([gif], name, { type: "image/gif" })]);
+            liveUnsaved = false;
+            closeGeneralPopup();
+        } catch (e) {
+            console.error("GIF export failed:", e);
+            updateGeneralPopup("COULD NOT SAVE THE GIF", true);
+        }
+    }, 50);
+}
+
+function closeLiveView() {
+    if (liveUnsaved && liveFrames.length > 1 && !confirm("Discard this recording?")) return;
+    clearTimeout(liveIdleTimer);
+    liveFrames = [];
+    liveUnsaved = false;
+    const view = document.getElementById("live-view");
+    if (view) view.classList.add("hidden");
+    updateButtonStates();
+}
+
+// Nearest-neighbour upscale of palette indices
+function scalePixels(image, scale) {
+    if (scale === 1) return image.pixels;
+    const width = image.width * scale;
+    const out = new Uint8Array(width * image.height * scale);
+    for (let y = 0; y < image.height; y++) {
+        const rowStart = y * scale * width;
+        for (let x = 0; x < image.width; x++) {
+            out.fill(image.pixels[y * image.width + x], rowStart + x * scale, rowStart + (x + 1) * scale);
+        }
+        for (let r = 1; r < scale; r++) out.copyWithin(rowStart + r * width, rowStart, rowStart + width);
+    }
+    return out;
+}
+
+class ByteWriter {
+    constructor() {
+        this.buf = new Uint8Array(1 << 16);
+        this.len = 0;
+    }
+    reserve(n) {
+        if (this.len + n <= this.buf.length) return;
+        let size = this.buf.length * 2;
+        while (size < this.len + n) size *= 2;
+        const grown = new Uint8Array(size);
+        grown.set(this.buf.subarray(0, this.len));
+        this.buf = grown;
+    }
+    byte(b) {
+        this.reserve(1);
+        this.buf[this.len++] = b & 0xFF;
+    }
+    word(w) {
+        this.byte(w);
+        this.byte(w >> 8);
+    }
+    text(s) {
+        for (let i = 0; i < s.length; i++) this.byte(s.charCodeAt(i));
+    }
+    bytes(data) {
+        this.reserve(data.length);
+        this.buf.set(data, this.len);
+        this.len += data.length;
+    }
+    result() {
+        return this.buf.slice(0, this.len);
+    }
+}
+
+// Minimal GIF89a writer. Every frame shares one 4-colour global palette, so all
+// it needs is the framing plus LZW over 2-bit palette indices. getFrame(i)
+// returns { pixels, delay } with the delay in 1/100 s; frames are encoded one at
+// a time so only one upscaled frame is ever held in memory.
+function encodeGif(width, height, colors, frameCount, getFrame) {
+    const out = new ByteWriter();
+    out.text("GIF89a");
+    out.word(width);
+    out.word(height);
+    out.byte(0x91); // global colour table, 4 entries, 2-bit colour resolution
+    out.byte(0);    // background colour index
+    out.byte(0);    // square pixels
+    colors.forEach((c) => { out.byte(c[0]); out.byte(c[1]); out.byte(c[2]); });
+
+    // NETSCAPE2.0 application extension: loop forever
+    out.byte(0x21); out.byte(0xFF); out.byte(11);
+    out.text("NETSCAPE2.0");
+    out.byte(3); out.byte(1); out.word(0); out.byte(0);
+
+    for (let i = 0; i < frameCount; i++) {
+        const frame = getFrame(i);
+        // Graphic control extension: leave the frame in place, then wait `delay`
+        out.byte(0x21); out.byte(0xF9); out.byte(4);
+        out.byte(0x04); out.word(frame.delay); out.byte(0); out.byte(0);
+        // Image descriptor: the whole canvas, no local colour table
+        out.byte(0x2C); out.word(0); out.word(0); out.word(width); out.word(height); out.byte(0);
+        writeGifLzw(out, frame.pixels);
+    }
+
+    out.byte(0x3B);
+    return out.result();
+}
+
+function writeGifLzw(out, pixels) {
+    const MIN_CODE_SIZE = 2;
+    const CLEAR_CODE = 1 << MIN_CODE_SIZE;
+    const EOI_CODE = CLEAR_CODE + 1;
+    // Dictionary keyed by (prefix code << 2 | next index): 4096 codes x 4 symbols
+    const table = new Int16Array(4096 << 2);
+    let codeSize = 0, nextCode = 0;
+    const resetTable = () => {
+        table.fill(-1);
+        codeSize = MIN_CODE_SIZE + 1;
+        nextCode = EOI_CODE + 1;
+    };
+
+    // Codes are packed LSB first into data sub-blocks of at most 255 bytes
+    const block = new Uint8Array(255);
+    let blockLen = 0, bitBuf = 0, bitCount = 0;
+    const flushBlock = () => {
+        if (blockLen === 0) return;
+        out.byte(blockLen);
+        out.bytes(block.subarray(0, blockLen));
+        blockLen = 0;
+    };
+    const emit = (code) => {
+        bitBuf |= code << bitCount;
+        bitCount += codeSize;
+        while (bitCount >= 8) {
+            block[blockLen++] = bitBuf & 0xFF;
+            if (blockLen === block.length) flushBlock();
+            bitBuf >>>= 8;
+            bitCount -= 8;
+        }
+    };
+
+    out.byte(MIN_CODE_SIZE);
+    resetTable();
+    emit(CLEAR_CODE);
+    let prefix = pixels[0];
+    for (let i = 1; i < pixels.length; i++) {
+        const key = (prefix << 2) | pixels[i];
+        const code = table[key];
+        if (code >= 0) {
+            prefix = code;
+            continue;
+        }
+        emit(prefix);
+        if (nextCode === 4096) {
+            emit(CLEAR_CODE);
+            resetTable();
+        } else {
+            if (nextCode >= (1 << codeSize)) codeSize++;
+            table[key] = nextCode++;
+        }
+        prefix = pixels[i];
+    }
+    emit(prefix);
+    emit(EOI_CODE);
+    if (bitCount > 0) {
+        block[blockLen++] = bitBuf & 0xFF;
+        if (blockLen === block.length) flushBlock();
+    }
+    flushBlock();
+    out.byte(0); // block terminator
+}
+
+window.saveLiveVideo = saveLiveVideo;
+window.saveLiveFrame = saveLiveFrame;
+window.closeLiveView = closeLiveView;
 
 const pocketCameraPalettes = {
     "grayscale": {
@@ -1015,6 +1427,8 @@ function applyColorScheme(scheme) {
         ctx.putImageData(imageData, 0, 0);
         img.src = canvas.toDataURL();
     });
+
+    redrawLiveView();
 }
 
 // Convert RGB values to HEX string

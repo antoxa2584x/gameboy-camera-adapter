@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Firmware-v2.1.0-266d3f?style=for-the-badge&logo=raspberrypi" alt="Firmware Version">
+  <img src="https://img.shields.io/badge/Firmware-v2.2.0-266d3f?style=for-the-badge&logo=raspberrypi" alt="Firmware Version">
   <img src="https://img.shields.io/badge/Hardware-RP2040-004d25?style=for-the-badge" alt="Hardware">
   <img src="https://img.shields.io/badge/Compatibility-iOS_%7C_Android_%7C_Web-4caf50?style=for-the-badge" alt="Compatibility">
 </p>
@@ -56,6 +56,8 @@ If the web UI is unreachable, use a serial terminal to send:
 
 #### 📥 Scanner Mode (Default)
 Acts as a virtual **Game Boy Printer**. Simply select "Print" on your Game Boy, and photos will appear instantly in the web gallery.
+
+With [gb-photo](https://github.com/untoxa/gb-photo) the adapter also takes **Transfer** / **Transfer all** (fast raw transfers of the camera roll) and **Print all**. **Transfer REC** opens a live view in the web UI that you can save as an animated GIF or grab single frames from.
 
 #### 📤 Printer Mode
 Click the **Logo** in the web interface to switch. Upload any image from your device to print it on a real Game Boy Printer connected to the adapter. Includes **Live Preview** and **Exposure Control**.

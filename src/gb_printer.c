@@ -13,6 +13,8 @@ extern void receive_data_init();
 extern void receive_data_reset();
 extern void receive_data_write(uint8_t b);
 extern void receive_data_commit(uint8_t cmd);
+extern void receive_transfer_begin(void);
+extern bool receive_buffer_ready(void);
 
 extern uint8_t base_r, base_g, base_b;
 extern void load_color_from_flash(void);
@@ -52,9 +54,11 @@ uint8_t protocol_data_process(uint8_t data_in) {
                 case PRN_COMMAND_PRINT:
                     last_print_moment = time_us_64();
                     if (printer_status & PRN_STATUS_FULL) next_printer_status |= PRN_STATUS_BUSY;
-                case CAM_COMMAND_TRANSFER:
                 case PRN_COMMAND_DATA:
                     receive_data_write(printer_command);
+                    break;
+                case CAM_COMMAND_TRANSFER:
+                    receive_transfer_begin();
                     break;
                 case PRN_COMMAND_BREAK:
                     receive_data_reset();
@@ -62,7 +66,10 @@ uint8_t protocol_data_process(uint8_t data_in) {
                     break;
                 case PRN_COMMAND_STATUS:
                     if (printer_status & PRN_STATUS_BUSY) {
-                        if ((time_us_64() - last_print_moment) > MS(100)) next_printer_status &= ~PRN_STATUS_BUSY;
+                        // Stay "busy" while the web UI drains earlier photos, so a
+                        // back-to-back "Print all" waits for room instead of overflowing
+                        uint64_t busy_time = time_us_64() - last_print_moment;
+                        if ((busy_time > MS(100)) && (receive_buffer_ready() || (busy_time > SEC(8)))) next_printer_status &= ~PRN_STATUS_BUSY;
                     }
                     break;
                 default:

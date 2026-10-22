@@ -26,8 +26,11 @@
 #define PRINTER_WIDTH           20
 #define PRINTER_BUFFER_SIZE     (PRINTER_WIDTH * TILE_SIZE * 2)
 
-// PXLR-Studio-next transfer
+// PXLR-Studio-next / gb-photo transfer
 #define CAM_COMMAND_TRANSFER    0x10
+// Stored in place of CAM_COMMAND_TRANSFER for gb-photo "Transfer REC" live view
+// frames. Never seen on the wire: it only tells the web UI which frames are live
+#define CAM_COMMAND_TRANSFER_LIVE 0x11
 
 // blink led
 #define PRINT_PROGRESS_LED

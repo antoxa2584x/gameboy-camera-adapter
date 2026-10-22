@@ -4,9 +4,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define FIRMWARE_VERSION        "2.1.0"
+#define FIRMWARE_VERSION        "2.2.0"
 #define ENABLE_DEBUG            false
-#define BUFFER_SIZE_KB          128
+#define BUFFER_SIZE_KB          160
 #define FILE_BUFFER_SIZE        16384
 
 // Mobile compatibility modes

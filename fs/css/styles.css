@@ -524,6 +524,36 @@ footer .links {
     background-color: #D32F2F;
 }
 
+/* Previous / next arrows of the photo viewer, pinned to the window edges */
+.popup-nav-button {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-radius: 50%;
+    background-color: rgb(0 0 0 / 55%);
+    color: white;
+    font-size: 1rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1001;
+}
+
+.popup-nav-button:hover {
+    background-color: #004d25;
+}
+
+.popup-nav-button--prev {
+    left: 12px;
+}
+
+.popup-nav-button--next {
+    right: 12px;
+}
+
 @media (max-width: 550px) {
     .popup-close-button, .popup-container .close-btn {
         right: 5px;
@@ -1056,4 +1086,79 @@ input:checked + .slider:before {
     margin-top: 1.5rem;
     font-size: 1rem;
     text-align: center;
+}
+
+/* Live view (gb-photo "Transfer REC") */
+.live-view {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    max-width: 420px;
+    margin: 10px auto 0;
+    padding: 16px;
+    box-sizing: border-box;
+    background-color: rgb(0 0 0 / 28%);
+    border: 1px solid #004d25;
+    border-radius: 5px;
+    color: white;
+}
+
+.live-status {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    font-size: 0.6rem;
+}
+
+.live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #ff5252;
+}
+
+.live-badge::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: currentColor;
+    animation: live-blink 1s steps(1) infinite;
+}
+
+.live-badge--idle {
+    color: #bdbdbd;
+}
+
+.live-badge--idle::before {
+    border-radius: 0;
+    animation: none;
+}
+
+@keyframes live-blink {
+    50% { opacity: 0; }
+}
+
+#live-canvas {
+    width: 100%;
+    max-width: 384px;
+    height: auto;
+    image-rendering: crisp-edges;
+    image-rendering: pixelated;
+    border: 1px solid white;
+}
+
+.live-controls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+}
+
+.live-controls button {
+    font-size: 0.7rem;
+    padding: 8px 12px;
 }

@@ -3,6 +3,7 @@
 
 datablock_t image_blocks[MAX_BLOCK_COUNT];
 datablock_t * free_image_blocks = NULL;
+volatile uint32_t free_block_count = 0;
 
 datafile_t images[MAX_IMAGE_COUNT];
 datafile_t * free_image_files = NULL;
@@ -21,6 +22,7 @@ void reset_data_blocks(void) {
     }
     block->next = NULL;
     free_image_blocks = image_blocks;
+    free_block_count = MAX_BLOCK_COUNT;
 
     // free image "files"
     datafile_t * image = images;
@@ -42,6 +44,7 @@ datablock_t * allocate_block(void) {
         free_image_blocks = block->next;
         block->next = NULL;
         block->size = 0;
+        free_block_count--;
     }
     restore_interrupts(status);
     return block;
@@ -53,6 +56,7 @@ datablock_t * free_block(datablock_t * block) {
     datablock_t * res = block->next;
     block->next = free_image_blocks;
     free_image_blocks = block;
+    free_block_count++;
     restore_interrupts(status);
     return res;
 }
@@ -115,4 +119,25 @@ datafile_t * pop_last_file(void) {
     if (previous) previous->next = NULL; else image_files = NULL;
     restore_interrupts(status);
     return file;
+}
+
+// Free all but the newest `keep` queued files whose first byte is `tag`; returns
+// how many were freed. The queue is newest first, so whatever is past the first
+// `keep` matches is the stale end.
+uint32_t trim_files_with_tag(uint8_t tag, uint32_t keep) {
+    uint32_t status = save_and_disable_interrupts();
+    uint32_t seen = 0, freed = 0;
+    datafile_t ** link = &image_files;
+    while (*link) {
+        datafile_t * file = *link;
+        if (file->first && file->first->size && (file->first->data[0] == tag) && (++seen > keep)) {
+            *link = file->next;
+            free_file(file);
+            freed++;
+            continue;
+        }
+        link = &file->next;
+    }
+    restore_interrupts(status);
+    return freed;
 }

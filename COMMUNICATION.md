@@ -41,7 +41,7 @@ Every packet follows a mandatory 10-byte header/footer structure plus a variable
 | `0x04` | `DATA` | Carries tile data (usually 640 bytes for 2.5 rows of tiles). |
 | `0x08` | `BREAK` | Cancels current operation. |
 | `0x0F` | `STATUS` | Requests printer status. |
-| `0x10` | `TRANSFER` | High-speed transfer (custom protocol for PXLR-Studio-next). |
+| `0x10` | `TRANSFER` | High-speed transfer used by PXLR-Studio-next and [gb-photo](https://github.com/untoxa/gb-photo): one raw 128x112 camera image (3584 bytes, 16x14 tiles), checksum ignored. |
 | `0x20` | `META` | Extended metadata (custom). |
 
 ##### Status Byte Decoding
@@ -78,7 +78,7 @@ Returns the current system status.
   "result": "ok",
   "options": { "debug": "off/on" },
   "status": { "last_size": 1234, "total_files": 1, "receiving": 0 },
-  "system": { "fast": "true/false", "version": "2.1.0", "uptime": 3600 },
+  "system": { "fast": "true/false", "version": "2.2.0", "uptime": 3600 },
   "printer": 0,
   "dbg": ""
 }
@@ -86,9 +86,11 @@ Returns the current system status.
 - `status.receiving`: `1` while a photo transfer from the Game Boy is in progress (used by the web UI to show a receive loader), `0` otherwise.
 
 ##### GET `/download` (or `/image.bin`)
-Retrieves the stored binary data of the last captured print job.
-- **Format**: A stream of raw Binary Packets (see section 2).
+Retrieves the oldest stored print job or transfer.
+- **Format**: One record per received packet: the command byte, then (`DATA` only) the compression byte, then the 16-bit little-endian length and the payload. Checksums and status bytes are not stored.
+- **Live frames**: gb-photo's *Transfer REC* streams the camera view as an `INIT` + `TRANSFER` pair per frame. A transfer that has its own `INIT` and starts within 2 s of the previous transfer ending is stored with command byte `0x11` instead of `0x10`, so the web UI shows it in the live view rather than the gallery. Only the 3 newest live frames are kept queued, so the view stays real time. *Transfer all* sends its frames without an `INIT` in between, so they stay `0x10` photos.
 - **Behavior**: Pops the file from the internal queue (one-time download).
+- **Back-pressure**: While the web UI is polling this endpoint and the buffer has no room for another print, the adapter keeps reporting *busy* after a `PRINT` (up to 8 s), so gb-photo's *Print all* waits for the UI to catch up instead of overflowing the buffer.
 
 ##### GET `/list.json`
 Lists available dumps: `{"dumps": ["/image.bin"]}`.
@@ -124,7 +126,7 @@ Sends a Game Boy Printer packet to a physical printer connected to the adapter.
 When enabled (`mode=1`), the firmware can send data over USB Serial.
 - **Handshake**: `GBCA_PHOTO_TRANSFER\n`
 - **Data**: Base64 encoded chunks of image data.
-- **Framing**: Starts with `GBCA_PHOTO_TRANSFER_BASE64\n`, followed by chunks and ending with `DONE\n`.
+- **Framing**: Starts with `GBCA_PHOTO_TRANSFER_BASE64\n`, followed by chunks and ending with `DONE\n`. Each stored file (one print job or one transfer) gets its own header/`DONE` pair. Live view frames (see `/download`) are not sent over serial.
 
 ##### CDC Commands (text lines, `\n` terminated)
 The mobile app sends HTTP-style GET lines over the serial port:
