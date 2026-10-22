@@ -126,7 +126,8 @@ Sends a Game Boy Printer packet to a physical printer connected to the adapter.
 When enabled (`mode=1`), the firmware can send data over USB Serial.
 - **Handshake**: `GBCA_PHOTO_TRANSFER\n`
 - **Data**: Base64 encoded chunks of image data.
-- **Framing**: Starts with `GBCA_PHOTO_TRANSFER_BASE64\n`, followed by chunks and ending with `DONE\n`. Each stored file (one print job or one transfer) gets its own header/`DONE` pair. Live view frames (see `/download`) are not sent over serial.
+- **Framing**: Starts with `GBCA_PHOTO_TRANSFER_BASE64\n`, followed by chunks and ending with `DONE\n`. Each stored file (one print job or one transfer) gets its own header/`DONE` pair.
+- **Live frames**: gb-photo *Transfer REC* frames (see `/download`) are sent whole as a separate message: `GBCA_LIVE_FRAME\n`, base64 lines of the same record (`0x11`, 16-bit length, 3584 bytes of tiles), then `DONE\n`. A live message never interleaves with a photo message. Frames that finish while the previous one is still being sent are dropped, so the stream stays real time. Hosts that do not know the header can ignore it.
 
 ##### CDC Commands (text lines, `\n` terminated)
 The mobile app sends HTTP-style GET lines over the serial port:

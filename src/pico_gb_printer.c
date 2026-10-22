@@ -70,7 +70,8 @@ static inline void cdc_reset_line(void) { cdc_len = 0; cdc_line[0] = 0; }
 #define CDC_REC_DATA 0
 #define CDC_REC_INIT 1
 #define CDC_REC_DONE 2
-#define CDC_RING_LEN 4096 // records; link data arrives at ~1 KB/s, so this is ~4s of slack
+#define CDC_RING_LEN 8192 // records; ~8 s of slack at the normal ~1 KB/s link rate, ~128 ms
+                          // at gb-photo's 64 KB/s fast transfer
 typedef struct { uint8_t type; uint8_t val; } cdc_rec_t;
 static cdc_rec_t cdc_ring[CDC_RING_LEN];
 static volatile uint32_t cdc_ring_head = 0; // written in IRQ context only
@@ -94,15 +95,28 @@ static inline void cdc_ring_push(uint8_t type, uint8_t val) {
 // into the chunk buffer are free and do not count against the budget.
 #define CDC_SENDS_PER_PASS 2
 
+// gb-photo "Transfer REC" frames skip the byte ring -- one frame nearly fills it
+// -- and go out whole as their own "GBCA_LIVE_FRAME" message instead. The ISR
+// copies a finished live frame in only while cdc_live_len is 0; the main loop
+// sends it and clears cdc_live_len. Frames finishing mid-send are dropped: it is
+// a live view, and the next one is never far behind.
+#define CDC_LIVE_FRAME_MAX 3600 // one stored transfer record: tag + length + 3584 bytes
+static uint8_t cdc_live_frame[CDC_LIVE_FRAME_MAX];
+static volatile uint32_t cdc_live_len = 0;
+static uint32_t cdc_live_sent = 0;   // main loop only; non-zero while a live message is half sent
+static bool cdc_stream_open = false; // main loop only; a photo message is half sent
+
 // Drain the CDC photo stream ring. Main loop only: cdc_send_* may block.
 static void cdc_stream_service(void) {
 #if CFG_TUD_CDC
     static uint8_t chunk[DATABLOCK_SIZE];
     static uint32_t chunk_len = 0;
+    if (cdc_live_sent) return; // never split a live frame message
     if (cdc_ring_tail == cdc_ring_head) return;
     if (!tud_cdc_connected()) { // host gone: drop the pending stream
         cdc_ring_tail = cdc_ring_head;
         chunk_len = 0;
+        cdc_stream_open = false;
         return;
     }
     uint32_t sends = 0;
@@ -113,6 +127,7 @@ static void cdc_stream_service(void) {
             case CDC_REC_INIT:
                 chunk_len = 0;
                 cdc_send_string("GBCA_PHOTO_TRANSFER\n");
+                cdc_stream_open = true;
                 sends++;
                 break;
             case CDC_REC_DATA:
@@ -127,10 +142,51 @@ static void cdc_stream_service(void) {
                 if (chunk_len) send_base64_chunk(chunk, chunk_len);
                 chunk_len = 0;
                 cdc_send_string("DONE\n");
+                cdc_stream_open = false;
                 sends++;
                 break;
         }
     }
+#endif
+}
+
+// Send the pending live frame, one base64 line per pass like the photo stream.
+// Main loop only: cdc_send_* may block.
+static void cdc_live_service(void) {
+#if CFG_TUD_CDC
+    uint32_t len = cdc_live_len;
+    if (!len) return;
+    if (!tud_cdc_connected()) {
+        cdc_live_sent = 0;
+        cdc_live_len = 0;
+        return;
+    }
+    if (!cdc_live_sent) {
+        // only start between photo messages, so the two never interleave
+        if (cdc_stream_open || (cdc_ring_tail != cdc_ring_head)) return;
+        cdc_send_string("GBCA_LIVE_FRAME\n");
+    }
+    uint32_t chunk = MIN(len - cdc_live_sent, DATABLOCK_SIZE);
+    send_base64_chunk(cdc_live_frame + cdc_live_sent, chunk);
+    cdc_live_sent += chunk;
+    if (cdc_live_sent == len) {
+        cdc_send_string("DONE\n");
+        cdc_live_sent = 0;
+        cdc_live_len = 0;
+    }
+#endif
+}
+
+// Hand a finished live frame to cdc_live_service(). IRQ context.
+static void cdc_live_capture(const datafile_t * file) {
+#if CFG_TUD_CDC
+    if (!file || cdc_live_len || !tud_cdc_connected()) return;
+    uint32_t len = 0;
+    for (const datablock_t * block = file->first; block && (len + block->size <= sizeof(cdc_live_frame)); block = block->next) {
+        memcpy(cdc_live_frame + len, block->data, block->size);
+        len += block->size;
+    }
+    cdc_live_len = len;
 #endif
 }
 
@@ -345,8 +401,8 @@ static bool cdc_file_open = false;
 
 void receive_data_write(uint8_t b);
 
-// Live frames stay off the serial stream: they arrive faster than the CDC ring
-// drains, and the companion app would file every one of them as a photo
+// Live frames stay out of the photo stream: they arrive faster than the CDC ring
+// drains, so they go out whole through cdc_live_capture() instead
 static void cdc_file_write(uint8_t b) {
     if (live_frame) return;
     if (!cdc_file_open) {
@@ -427,6 +483,7 @@ void receive_data_write(uint8_t b) {
 void receive_data_commit(uint8_t cmd) {
     if (cmd == CAM_COMMAND_TRANSFER) {
         last_transfer_end = time_us_64();
+        if (live_frame) cdc_live_capture(allocated_file);
         receive_data_reset();
     }
 }
@@ -997,6 +1054,8 @@ int main(void) {
         cdc_rx_service();
         // forward photo bytes queued by the link-cable ISR to the CDC host
         cdc_stream_service();
+        // and the latest gb-photo live view frame
+        cdc_live_service();
 
         // Deferred print burst requested over CDC (GET /print_chunk?done=1)
         if (print_flush_pending) {
