@@ -11,15 +11,19 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # A stuck step (e.g. a slow package mirror) fails here instead of hanging for 6 h
+    timeout-minutes: 20
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake gcc-arm-none-eabi
+    # ARM's own toolchain (newlib included) instead of apt: the Ubuntu mirror
+    # once kept the install step running for 20+ minutes. cmake comes with the runner.
+    - name: Install ARM toolchain
+      uses: carlosperate/arm-none-eabi-gcc-action@v1
+      with:
+        release: '13.2.Rel1'
 
     - name: Set up Pico SDK
       run: |
