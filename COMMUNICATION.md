@@ -78,7 +78,7 @@ Returns the current system status.
   "result": "ok",
   "options": { "debug": "off/on" },
   "status": { "last_size": 1234, "total_files": 1, "receiving": 0 },
-  "system": { "fast": "true/false", "version": "2.2.1", "uptime": 3600 },
+  "system": { "fast": "true/false", "version": "2.3.0", "uptime": 3600 },
   "printer": 0,
   "dbg": ""
 }
@@ -107,7 +107,18 @@ Sets the adapter's LED color and compatibility mode.
 Resets the internal data buffers and protocol state.
 
 ##### GET `/update`
-Reboots the Pico into USB Bootloader mode.
+Reboots the Pico into USB Bootloader mode (manual `.uf2` update).
+
+##### POST `/fw_upload?crc=HEX`
+One-click firmware update. The body is the release's `update.bin` (the raw flash image, boot2 included); `crc` is its CRC-32 (zlib/IEEE, 8 hex digits). `Content-Length` is required.
+- **Where to get it**: each release carries `update.bin` as an asset. Release assets cannot be fetched from a web page (no CORS), so it is also mirrored to the `firmware` branch: `https://raw.githubusercontent.com/antoxa2584x/gameboy-camera-adapter/firmware/<tag>/update.bin` (and the latest one at `.../firmware/update.bin`).
+- **Behavior**: the image is written to a staging area in the upper half of flash while it arrives, then checked: size, CRC, and the vector table (catches a `.uf2` or a foreign image). Nothing replaces the running firmware unless every check passes.
+- **Response**: `{"result":"ok"}`, after which the adapter copies the image over the running firmware (~1 s later, takes a few seconds) and restarts. Poll `/status.json` until it answers again. Otherwise `{"result":"error","error":"<reason>","received":N}` and the current firmware stays: `size` (empty, too big or truncated), `crc`, `image` (not a firmware image), `busy` (an install is already running), `request` (wrong URL or missing `crc`).
+- **Power loss**: the copy erases boot2 first and writes it last, so if power is cut mid-install the chip comes up as the **RPI-RP2** drive (ROM bootloader) and takes the `.uf2` as usual.
+- **Size limit**: half the flash minus the settings sector (1020 KB on 2 MB boards).
+
+##### GET `/fw_result.json`
+The reply of the last `/fw_upload` (same body as above).
 
 ##### GET `/print_chunk?data=HEX_PACKET&done=0/1`
 Sends a Game Boy Printer packet to a physical printer connected to the adapter.
@@ -143,7 +154,22 @@ The mobile app sends HTTP-style GET lines over the serial port:
 | `GET /print_chunk?done=1` | `{"printer":N}\n` | Send all buffered packets to the printer over the Link Cable, then report the printer status byte. With an empty queue, sends a single `STATUS` packet (used for polling). The response is sent only after the burst completes (can take several seconds). |
 | `GET /printer_status` | `{"printer":N}\n` | Return the last cached printer status without touching the Link Cable. |
 
+| `GET /fw_begin?size=N&crc=HEX` | `FW_OK\n` or `FW_ERR <reason>\n` | Start a firmware update of `N` bytes (see Firmware Update Flow below). |
+| `GET /fw_chunk?offset=N&data=HEX` | `FW_OK <received>\n` or `FW_ERR <reason> <received>\n` | Next part of the image, hex-encoded, up to 960 bytes so the line stays under 2 KB (512 recommended). |
+| `GET /version` | `{"version":"X.Y.Z"}\n` | Running firmware version, to compare against the latest release. |
+| `GET /fw_finish` | `FW_OK\n` or `FW_ERR <reason>\n` | Check the image and, on `FW_OK`, install it and restart. |
+
 `N` is the printer status byte (see Status Byte Decoding above); `255` (`0xFF`) means no printer detected.
+
+##### Firmware Update Flow (Mobile App)
+Same update as `POST /fw_upload`, over serial: the same staging, checks, error reasons and power-loss behavior apply.
+1. Download `update.bin` of the release (the release asset, or the `firmware` branch mirror) and compute its CRC-32 (zlib/IEEE).
+2. `GET /fw_begin?size=<bytes>&crc=<8 hex digits>` → `FW_OK`
+3. For each 512-byte piece: `GET /fw_chunk?offset=<offset>&data=<hex>` → `FW_OK <received>`. `<received>` is the next offset to send.
+   - Resending the chunk that was just accepted (its reply got lost) is answered `FW_OK <received>` again, nothing is written twice.
+   - `FW_ERR offset <received>`: the offset was not the expected one; nothing was written, continue from `<received>`.
+   - Any other `FW_ERR` aborts the upload: start again from `fw_begin`.
+4. `GET /fw_finish` → `FW_OK`. About a second later the adapter installs the image (a few seconds, the serial port disconnects) and restarts with the new firmware. Reconnect and confirm with `GET /version`.
 
 ##### Print Flow (Mobile App)
 1. `GET /print_chunk?data=88330100000001000000` (INIT) → `PRINT_QUEUED`

@@ -35,6 +35,7 @@ add_executable(
     src/tusb_lwip_glue.c
     src/usb_descriptors.c
     src/cdc_sender.c
+    src/fw_update.c
     ${TINYUSB_LIBNETWORKING_SOURCES}
 )
 

@@ -26,6 +26,8 @@
 #include "hardware/watchdog.h"
 
 #include "cdc_sender.h"
+#include "fw_update.h"
+#include "lwip/apps/httpd.h"
 
 // GameBoy Printer status
 #define PRINTER_STATUS_OK           0x00
@@ -233,6 +235,71 @@ static void print_queue_flush(void);
 // Set by the CDC handler on done=1; the burst send runs in the main loop so the
 // USB RX callback is not blocked for the multi-second bit-banged transfer.
 static volatile bool print_flush_pending = false;
+static inline uint8_t hex_nibble(char c);
+
+// Time for the last reply to reach the host before the new firmware is copied in
+#define FW_APPLY_DELAY_MS 1000
+
+// Value of `key=` in a query string, or NULL
+static const char *query_value(const char *qs, const char *key) {
+  const char *p = strstr(qs, key);
+  if (!p) return NULL;
+  p += strlen(key);
+  return (*p == '=') ? p + 1 : NULL;
+}
+
+// GET /fw_begin?size=N&crc=HEX   -> FW_OK | FW_ERR <reason>
+// GET /fw_chunk?offset=N&data=HEX -> FW_OK <received> | FW_ERR <reason> <received>
+// GET /fw_finish                  -> FW_OK (then copy + reboot) | FW_ERR <reason>
+static void cdc_handle_fw_update(const char *path) {
+#if CFG_TUD_CDC
+  static uint8_t chunk[CDC_RX_MAX / 2];
+  char resp[48];
+  const char *qs = strchr(path, '?');
+  qs = qs ? qs + 1 : "";
+
+  if (strncmp(path, "/fw_begin", 9) == 0) {
+    const char *size = query_value(qs, "size");
+    const char *crc = query_value(qs, "crc");
+    bool args = size && crc;
+    bool ok = args && fw_update_begin(strtoul(size, NULL, 10), strtoul(crc, NULL, 16));
+    snprintf(resp, sizeof(resp), ok ? "FW_OK\n" : "FW_ERR %s\n", args ? fw_update_error() : "args");
+  } else if (strncmp(path, "/fw_chunk", 9) == 0) {
+    const char *offset = query_value(qs, "offset");
+    const char *data = query_value(qs, "data");
+    size_t hex_len = 0;
+    if (data) while (data[hex_len] && data[hex_len] != '&' && data[hex_len] != ' ') hex_len++;
+    uint32_t len = hex_len / 2;
+    uint32_t received = fw_update_received();
+    uint32_t at = offset ? strtoul(offset, NULL, 10) : UINT32_MAX;
+
+    if (!data || !hex_len || (hex_len & 1) || len > sizeof(chunk)) {
+      snprintf(resp, sizeof(resp), "FW_ERR args %lu\n", (unsigned long)received);
+    } else if (at + len == received) {
+      // a resend of the chunk we already took (its reply got lost): just ack again
+      snprintf(resp, sizeof(resp), "FW_OK %lu\n", (unsigned long)received);
+    } else if (at != received) {
+      // out of order: nothing written, the host resumes from <received>
+      snprintf(resp, sizeof(resp), "FW_ERR offset %lu\n", (unsigned long)received);
+    } else {
+      for (uint32_t i = 0; i < len; i++) {
+        chunk[i] = (uint8_t)((hex_nibble(data[i * 2]) << 4) | hex_nibble(data[i * 2 + 1]));
+      }
+      if (fw_update_write(chunk, len)) {
+        snprintf(resp, sizeof(resp), "FW_OK %lu\n", (unsigned long)fw_update_received());
+      } else {
+        snprintf(resp, sizeof(resp), "FW_ERR %s %lu\n", fw_update_error(), (unsigned long)fw_update_received());
+      }
+    }
+  } else if (strncmp(path, "/fw_finish", 10) == 0) {
+    bool ok = fw_update_finish(FW_APPLY_DELAY_MS);
+    snprintf(resp, sizeof(resp), ok ? "FW_OK\n" : "FW_ERR %s\n", fw_update_error());
+  } else {
+    snprintf(resp, sizeof(resp), "FW_ERR command\n");
+  }
+  cdc_send_string(resp);
+#endif
+}
 
 // Handle one complete CDC line
 static void cdc_handle_line(const char* line) {
@@ -271,6 +338,17 @@ static void cdc_handle_line(const char* line) {
     if (strncmp(path, "/update", 7) == 0) {
       cdc_send_string("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK - Entering Bootloader...\r\n");
       add_alarm_in_ms(300, reboot_callback, NULL, false);
+      return;
+    }
+
+    // One-click firmware update over serial: fw_begin, then fw_chunk in order, then fw_finish
+    if (strncmp(path, "/fw_", 4) == 0) {
+      cdc_handle_fw_update(path);
+      return;
+    }
+
+    if (strncmp(path, "/version", 8) == 0) {
+      cdc_send_string("{\"version\":\"" FIRMWARE_VERSION "\"}\n");
       return;
     }
 
@@ -556,6 +634,39 @@ const char* cgi_update(int iIndex, int iNumParams, char *pcParam[], char *pcValu
     add_alarm_in_ms(300, reboot_callback, NULL, false);
 
     return "/updating.html";
+}
+
+// One-click firmware update from the web UI: POST /fw_upload?crc=HEX with the raw
+// update.bin as the body. The reply is /fw_result.json; on "ok" the adapter
+// installs the image and reboots about a second later.
+#define FW_RESULT_FILE "/fw_result.json"
+static void *fw_connection = NULL; // the POST being received, so a second one cannot interleave
+static bool fw_http_ok = false;
+
+err_t httpd_post_begin(void *connection, const char *uri, const char *http_request,
+                       u16_t http_request_len, int content_len, char *response_uri,
+                       u16_t response_uri_len, u8_t *post_auto_wnd) {
+    snprintf(response_uri, response_uri_len, FW_RESULT_FILE);
+    fw_http_ok = false;
+    fw_connection = NULL;
+    if (strncmp(uri, "/fw_upload", 10) != 0) return ERR_VAL;
+    const char *crc = strstr(uri, "crc=");
+    if (!crc || content_len <= 0 || !fw_update_begin((uint32_t)content_len, strtoul(crc + 4, NULL, 16))) return ERR_VAL;
+    fw_connection = connection;
+    return ERR_OK;
+}
+
+err_t httpd_post_receive_data(void *connection, struct pbuf *p) {
+    bool ok = (connection == fw_connection);
+    for (struct pbuf *q = p; ok && q; q = q->next) ok = fw_update_write(q->payload, q->len);
+    pbuf_free(p);
+    return ok ? ERR_OK : ERR_VAL;
+}
+
+void httpd_post_finished(void *connection, char *response_uri, u16_t response_uri_len) {
+    fw_http_ok = (connection == fw_connection) && fw_update_finish(FW_APPLY_DELAY_MS);
+    fw_connection = NULL;
+    snprintf(response_uri, response_uri_len, FW_RESULT_FILE);
 }
 
 // Settings live in the very last flash sector. It used to be a fixed 256 KiB
@@ -962,6 +1073,15 @@ int fs_open_custom(struct fs_file *file, const char *name) {
         file->data  = file_buffer;
         file->len   = snprintf(file_buffer, sizeof(file_buffer),
                                "{\"result\":\"error\",\"printer\":%u}", (unsigned int)get_printer_status());
+        file->index = file->len;
+        return 1;
+    } else if (!strcmp(name, FW_RESULT_FILE)) {
+        memset(file, 0, sizeof(struct fs_file));
+        file->data  = file_buffer;
+        file->len   = fw_http_ok
+            ? snprintf(file_buffer, sizeof(file_buffer), "{\"result\":\"ok\"}")
+            : snprintf(file_buffer, sizeof(file_buffer), "{\"result\":\"error\",\"error\":\"%s\",\"received\":%lu}",
+                       *fw_update_error() ? fw_update_error() : "request", (unsigned long)fw_update_received());
         file->index = file->len;
         return 1;
     } else if (!strcmp(name, "/led_status")) {

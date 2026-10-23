@@ -1,0 +1,86 @@
+name: Release Firmware
+
+# Builds the firmware for a published release and attaches it:
+#   pico_gb_printer.<version>.uf2  drag-and-drop onto the RPI-RP2 drive
+#   update.bin                     raw image for the one-click update (web UI, Android app)
+# update.bin is also mirrored to the "firmware" branch (<tag>/update.bin and the
+# latest one at update.bin): browsers cannot download release assets from a page,
+# GitHub sends no CORS headers for them, but raw.githubusercontent.com does.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Check the firmware version matches the tag
+      run: |
+        TAG="${{ github.event.release.tag_name }}"
+        VERSION=$(sed -n 's/^#define FIRMWARE_VERSION *"\(.*\)"/\1/p' include/globals.h)
+        if [ "${TAG#v}" != "$VERSION" ]; then
+          echo "::error::Tag $TAG does not match FIRMWARE_VERSION $VERSION in include/globals.h"
+          exit 1
+        fi
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake gcc-arm-none-eabi
+
+    - name: Set up Pico SDK
+      run: |
+        git clone -b master https://github.com/raspberrypi/pico-sdk.git
+        cd pico-sdk
+        git submodule update --init
+        echo "PICO_SDK_PATH=$PWD" >> $GITHUB_ENV
+
+    - name: Build project
+      env:
+        PICO_SDK_PATH: ${{ env.PICO_SDK_PATH }}
+      run: |
+        mkdir -p build
+        python3 inline_assets.py
+        gcc -o build/makefsdata -I$PICO_SDK_PATH/lib/lwip/src/include/ -Iinclude -I. makefsdata/makefsdata.c
+        ./build/makefsdata ./fs -f:include/pico_printer_fs.c
+        cd build
+        cmake ..
+        make -j$(nproc)
+
+    - name: Attach the firmware to the release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        mkdir -p out
+        cp build/pico_gb_printer.uf2 "out/pico_gb_printer.$VERSION.uf2"
+        cp build/pico_gb_printer.bin out/update.bin
+        gh release upload "${{ github.event.release.tag_name }}" out/* --clobber
+
+    - name: Mirror update.bin to the firmware branch
+      run: |
+        TAG="${{ github.event.release.tag_name }}"
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        if git ls-remote --exit-code --heads origin firmware > /dev/null; then
+          git clone --depth 1 --branch firmware "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" mirror
+        else
+          git init -b firmware mirror
+          git -C mirror remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+        fi
+        mkdir -p "mirror/$TAG"
+        cp out/update.bin "mirror/$TAG/update.bin"
+        cp out/update.bin mirror/update.bin
+        cd mirror
+        git add -A
+        if git diff --cached --quiet; then exit 0; fi  # re-run of the same release
+        git commit -m "update.bin for $TAG"
+        git push origin firmware

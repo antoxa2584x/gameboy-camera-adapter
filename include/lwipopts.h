@@ -62,6 +62,8 @@
 //#define LWIP_HTTPD_DYNAMIC_FILE_READ    1
 //#define LWIP_HTTPD_FILE_EXTENSION       1
 #define LWIP_HTTPD_DYNAMIC_HEADERS      1
+// POST /fw_upload: one-click firmware update from the web UI
+#define LWIP_HTTPD_SUPPORT_POST         1
 
 //#ifndef LWIP_HTTPD_SSI
 //#define LWIP_HTTPD_SSI                  1

@@ -26,7 +26,7 @@
         <div class="flex-col-center">
             <!-- Close Button -->
             <button class="close-btn" onclick="closeFirmwarePopup()">X</button>
-            <p id="firmware-version-text">Current firmware is v2.2.1</p>
+            <p id="firmware-version-text">Current firmware is v2.3.0</p>
             <!-- Color Picker + Button -->
             <div class="settings-container">
                 <div class="led-color-row">
@@ -81,36 +81,36 @@
                 <label class="scale-note">Applies immediately. No reboot needed.</label>
             </div>
             <!-- Firmware Controls -->
-            <button class="red" onclick="startUpdate()">Force Update Mode</button>
-            <label class="fw-update-hint">Click here only to update Adapter Firmware</label>
+            <button class="red" onclick="closeFirmwarePopup(); showUpdateInstructions()">Firmware Update</button>
+            <label class="fw-update-hint">Check for and install a new Adapter Firmware</label>
         </div>
     </div>
 </div>
 
-<!-- Update Instructions Popup -->
+<!-- Firmware Update Popup -->
 <div id="update-instructions-popup" class="popup-overlay hidden">
     <div class="popup-container popup-box">
         <div class="flex-col-center">
             <button class="close-btn" onclick="closeUpdateInstructions()">X</button>
-            <h2>Update Instructions</h2>
-            <div class="instructions-content">
-                <p>1. Download the latest firmware from the button below:</p>
+            <h2>Firmware Update</h2>
+            <p id="fw-update-versions" class="fw-update-versions">Checking for updates...</p>
+            <button id="fw-update-now-btn" class="red hidden" onclick="startAutoUpdate()">Update Now</button>
+            <label id="fw-update-now-hint" class="fw-update-hint hidden">Keep the Adapter plugged in. It restarts on its own when done.</label>
+
+            <input type="file" id="fw-file-input" accept=".bin" class="hidden" onchange="installFirmwareFile(this)">
+            <button class="darkgreen" onclick="document.getElementById('fw-file-input').click()" style="margin-top: 2rem;">Install From File</button>
+            <label class="fw-update-hint">Pick an <b>update.bin</b> from the <a href="https://github.com/antoxa2584x/gameboy-camera-adapter/releases/" target="_blank" class="fw-update-link">GitHub releases</a></label>
+
+            <details class="instructions-content">
+                <summary>Manual update (USB drive)</summary>
+                <p>1. Download the <b>.uf2</b> file from the <a href="https://github.com/antoxa2584x/gameboy-camera-adapter/releases/" target="_blank" class="fw-update-link">GitHub releases</a>.</p>
+                <p>2. Click <b>"Force Update Mode"</b>. The Adapter will appear as a new USB drive named <b>"RPI-RP2"</b>.</p>
+                <p>3. Drag and drop the <b>.uf2</b> file into the <b>RPI-RP2</b> drive. The Adapter reboots on its own.</p>
+                <p class="note">Needs a Mac or Windows PC. Also the way back if an update was ever interrupted: the Adapter then shows up as <b>RPI-RP2</b> by itself.</p>
                 <div class="flex-col-center">
-                    <a href="https://github.com/antoxa2584x/gameboy-camera-adapter/releases/" target="_blank" class="download-link">.uf2 file from assets</a>
+                    <button class="red" onclick="startUpdate()">Force Update Mode</button>
                 </div>
-                
-                <p>2. Click the <b>"Force Update Mode"</b> button. The Adapter will appear as a new USB drive named <b>"RPI-RP2"</b>.</p>
-                
-                <p>3. Drag and drop the downloaded <b>.uf2</b> file into the <b>RPI-RP2</b> drive.</p>
-                
-                <p>4. The Adapter will reboot automatically and be ready to use!</p>
-                
-                <p class="note">Note: If you are on iPhone/iPad, you need a Mac or Windows PC to perform the update.</p>
-            </div>
-            <div class="flex-row-center" style="gap: 10px; width: 100%;">
-                <button class="darkgreen" onclick="closeUpdateInstructions()" style="margin-top: 2rem;">Cancel</button>
-                <button class="red" onclick="startUpdate()" style="margin-top: 2rem;">Force Update Mode</button>
-            </div>
+            </details>
         </div>
     </div>
 </div>

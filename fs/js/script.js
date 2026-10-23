@@ -49,7 +49,7 @@ function safeAddEventListener(el, event, handler) {
     if (el) el.addEventListener(event, handler);
 }
 
-const CURRENT_VERSION = "2.2.1"; // Fallback version
+const CURRENT_VERSION = "2.3.0"; // Fallback version
 let dynamicVersion = CURRENT_VERSION;
 
 Date.prototype.today = function(delim) {
@@ -1533,9 +1533,23 @@ function isNewerVersion(latest, current) {
     return false;
 }
 
+// "X.Y.Z" of a release, from its tag or name: "v2.3.0", "v2.2.2_test" and
+// "v2.2.2 test" all work. A suffix used to turn into NaN, which reads as "not newer".
+function releaseVersion(release) {
+    for (const text of [release.tag_name, release.name]) {
+        const match = /\d+(?:\.\d+)+/.exec(text || "");
+        if (match) return match[0];
+    }
+    return null;
+}
+
 async function checkGitHubRelease() {
     // Only check if we have internet connection (best effort)
-    if (!navigator.onLine) return;
+    if (!navigator.onLine) {
+        latestRelease = false;
+        renderUpdateState();
+        return;
+    }
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
@@ -1548,8 +1562,12 @@ async function checkGitHubRelease() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const release = await response.json();
-        const latestVersion = release.name.replace(/^v/, '');
+        const latestVersion = releaseVersion(release);
+        if (!latestVersion) throw new Error(`No version in release "${release.name}"`);
         const releaseUrl = release.html_url;
+        const asset = (release.assets || []).find(a => a.name === "update.bin");
+        latestRelease = { version: latestVersion, tag: release.tag_name, assetUrl: asset ? asset.browser_download_url : releaseUrl };
+        renderUpdateState();
 
         if (isNewerVersion(latestVersion, dynamicVersion)) {
             const alertBox = document.getElementById("update-alert");
@@ -1565,7 +1583,148 @@ async function checkGitHubRelease() {
         }
     } catch (err) {
         console.error("Failed to check for updates:", err);
+        latestRelease = false;
+        renderUpdateState();
     }
+}
+
+// update.bin of a release, the raw flash image the adapter installs itself.
+// Release downloads cannot be fetched from a page (GitHub sends no CORS headers
+// for them), so the release workflow mirrors each one to the "firmware" branch,
+// which raw.githubusercontent.com serves with CORS.
+const FIRMWARE_MIRROR_URL = "https://raw.githubusercontent.com/antoxa2584x/gameboy-camera-adapter/firmware";
+// null while checking, false when GitHub could not be reached
+let latestRelease = null;
+
+function renderUpdateState() {
+    const versions = document.getElementById("fw-update-versions");
+    const updateNowBtn = document.getElementById("fw-update-now-btn");
+    const updateNowHint = document.getElementById("fw-update-now-hint");
+    const available = latestRelease && isNewerVersion(latestRelease.version, dynamicVersion);
+
+    if (versions) {
+        if (latestRelease === null) versions.textContent = "Checking for updates...";
+        else if (latestRelease === false) versions.textContent = `Firmware v${dynamicVersion}. Could not check for updates.`;
+        else if (available) versions.textContent = `v${dynamicVersion} → v${latestRelease.version}`;
+        else versions.textContent = `Firmware v${dynamicVersion} is up to date.`;
+    }
+    if (updateNowBtn) updateNowBtn.classList.toggle("hidden", !available);
+    if (updateNowHint) updateNowHint.classList.toggle("hidden", !available);
+}
+
+const CRC32_TABLE = (() => {
+    const table = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        table[n] = c >>> 0;
+    }
+    return table;
+})();
+
+// CRC-32 as zlib computes it; the adapter checks the staged image against it
+function crc32(bytes) {
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) crc = CRC32_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+async function startAutoUpdate() {
+    if (!latestRelease) return;
+    closeUpdateInstructions();
+    showGeneralPopup();
+    updateGeneralPopup("DOWNLOADING UPDATE", false);
+
+    let image;
+    try {
+        const response = await fetch(`${FIRMWARE_MIRROR_URL}/${latestRelease.tag}/update.bin`, { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        image = new Uint8Array(await response.arrayBuffer());
+    } catch (err) {
+        console.error("Failed to download the update:", err);
+        // The browser can still save the release file itself, it just can't read it
+        updateGeneralPopup(`COULD NOT DOWNLOAD THE UPDATE<br><br><small><a href="${latestRelease.assetUrl}" target="_blank" class="fw-update-link">Download update.bin</a>, then use Install From File</small>`, true);
+        return;
+    }
+    uploadFirmware(image);
+}
+
+function installFirmwareFile(input) {
+    const file = input.files && input.files[0];
+    input.value = "";
+    if (!file) return;
+    closeUpdateInstructions();
+    showGeneralPopup();
+    updateGeneralPopup("READING FILE", false);
+    file.arrayBuffer()
+        .then(buffer => uploadFirmware(new Uint8Array(buffer)))
+        .catch(() => updateGeneralPopup("COULD NOT READ THE FILE", true));
+}
+
+// Send the image to the adapter, which checks it and then installs it on its own
+function uploadFirmware(image) {
+    // "UF2\n": the drag-and-drop file, not the one the adapter installs
+    if (image.length >= 4 && image[0] === 0x55 && image[1] === 0x46 && image[2] === 0x32 && image[3] === 0x0A) {
+        updateGeneralPopup("THIS IS THE .UF2 FILE<br><br><small>Pick update.bin instead</small>", true);
+        return;
+    }
+
+    const crc = crc32(image).toString(16).padStart(8, "0");
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/fw_upload?crc=${crc}`);
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.upload.onprogress = (e) => {
+        if (!e.lengthComputable) return;
+        const percent = Math.floor(e.loaded * 100 / e.total);
+        updateGeneralPopup(`SENDING UPDATE ${percent}%<br><br><small>Do not unplug the Adapter</small>`, false);
+    };
+    xhr.onload = () => {
+        let result = {};
+        try { result = JSON.parse(xhr.responseText); } catch (e) {}
+        if (result.result === "ok") {
+            waitForUpdatedAdapter();
+        } else {
+            updateGeneralPopup(`UPDATE FAILED (${result.error || xhr.status})<br><br><small>The Adapter kept its current firmware</small>`, true);
+        }
+    };
+    xhr.onerror = () => {
+        updateGeneralPopup("UPDATE FAILED<br><br><small>Lost the connection to the Adapter. It kept its current firmware.</small>", true);
+    };
+    updateGeneralPopup("SENDING UPDATE<br><br><small>Do not unplug the Adapter</small>", false);
+    xhr.send(image);
+}
+
+// The adapter installs the image about a second after replying, then restarts;
+// wait for it to answer again and reload, so the new web UI comes up too
+function waitForUpdatedAdapter() {
+    updateGeneralPopup("INSTALLING UPDATE<br><br><small>Do not unplug the Adapter. It restarts on its own.</small>", false);
+    const startedAt = Date.now();
+
+    const poll = async () => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        try {
+            const response = await fetch("/status.json", { cache: "no-store", signal: controller.signal });
+            if (response.ok) {
+                const data = await response.json();
+                const version = (data.system && data.system.version) || "";
+                updateGeneralPopup(`UPDATED TO V${version}`, false);
+                setTimeout(() => window.location.reload(), 1500);
+                return;
+            }
+        } catch (e) {
+            // still installing or restarting
+        } finally {
+            clearTimeout(timeoutId);
+        }
+        if (Date.now() - startedAt > 90000) {
+            updateGeneralPopup("THE ADAPTER DID NOT COME BACK<br><br><small>Unplug it and plug it back in. If an RPI-RP2 drive shows up instead, drop the .uf2 from the GitHub release onto it.</small>", true);
+            return;
+        }
+        setTimeout(poll, 2000);
+    };
+    // the install itself takes several seconds; don't catch the old firmware before it starts
+    setTimeout(poll, 6000);
 }
 
 
@@ -1580,6 +1739,7 @@ async function fetchFirmwareVersion() {
             if (versionText) {
                 versionText.textContent = `Current firmware is v${dynamicVersion}`;
             }
+            renderUpdateState();
         }
     } catch (err) {
         console.error("Failed to fetch firmware version:", err);
@@ -1930,6 +2090,10 @@ if (logoImg) {
     });
 }
 window.startUpdate = startUpdate;
+window.startAutoUpdate = startAutoUpdate;
+window.installFirmwareFile = installFirmwareFile;
+window.showUpdateInstructions = showUpdateInstructions;
+window.closeUpdateInstructions = closeUpdateInstructions;
 window.closeGeneralPopup = closeGeneralPopup;
 
 function canvasToTileData(canvas) {

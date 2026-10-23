@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Firmware-v2.2.1-266d3f?style=for-the-badge&logo=raspberrypi" alt="Firmware Version">
+  <img src="https://img.shields.io/badge/Firmware-v2.3.0-266d3f?style=for-the-badge&logo=raspberrypi" alt="Firmware Version">
   <img src="https://img.shields.io/badge/Hardware-RP2040-004d25?style=for-the-badge" alt="Hardware">
   <img src="https://img.shields.io/badge/Compatibility-iOS_%7C_Android_%7C_Web-4caf50?style=for-the-badge" alt="Compatibility">
 </p>
@@ -35,6 +35,7 @@
 2.  **Flash**: Download the latest `.uf2` from [Releases](https://github.com/antoxa2584x/gameboy-camera-adapter/releases) or [build it yourself](#-docker-build).
 3.  **Connect**: Plug it into your PC/Phone. It will appear as a USB Ethernet device.
 4.  **Open**: Navigate to **[http://192.168.7.1/](http://192.168.7.1/)** in your browser.
+5.  **Update**: From v2.3.0 on, new firmware installs in one click: tap **Update available** (or **Settings → Firmware Update**) in the web UI, on any device including iPhone/iPad, or in the Android app. The browser or app downloads `update.bin` from the release, and the adapter checks it before installing. Updating *to* v2.3.0 is still the manual `.uf2` drag-and-drop.
 
 ---
 
