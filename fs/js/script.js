@@ -560,24 +560,84 @@ const BUILTIN_PALETTES = [
 ];
 const GRAYSCALE = BUILTIN_PALETTES[0].colors;
 const PALETTE_KEY = "selectedColorScheme";
+// Palettes made before they moved to the adapter; uploaded once there is room
 const CUSTOM_PALETTES_KEY = "customPalettes";
+const PALETTE_TIMEOUT_MS = 5000;
 
+// Custom palettes live on the adapter, one per slot: { id: "custom-<slot>", slot, colors }
 let customPalettes = [];
+let paletteSlots = 3;
 let activePaletteId = "grayscale";
 
-function loadCustomPalettes() {
+// Takes the adapter's reply ({"result","slots","palettes":[code|null,...]}); false if it was not one
+function applyAdapterPalettes(data) {
+    if (!data || !Array.isArray(data.palettes)) return false;
+    paletteSlots = data.slots || data.palettes.length;
+    customPalettes = [];
+    data.palettes.forEach((code, slot) => {
+        const colors = parsePaletteCode(code);
+        if (colors) customPalettes.push({ id: `custom-${slot}`, slot, colors });
+    });
+    return true;
+}
+
+async function paletteRequest(url) {
     try {
-        const parsed = JSON.parse(readStored(CUSTOM_PALETTES_KEY) || "[]");
-        customPalettes = Array.isArray(parsed)
-            ? parsed.filter(p => p && p.id && Array.isArray(p.colors) && p.colors.length === 4)
-            : [];
+        const response = await fetchWithTimeout(url, PALETTE_TIMEOUT_MS);
+        const data = response.ok ? await response.json() : null;
+        return applyAdapterPalettes(data) ? data : null;
     } catch (e) {
-        customPalettes = [];
+        console.error("Palette request failed:", e);
+        return null;
     }
 }
 
-function storeCustomPalettes() {
-    writeStored(CUSTOM_PALETTES_KEY, JSON.stringify(customPalettes));
+function freePaletteSlot() {
+    for (let slot = 0; slot < paletteSlots; slot++) {
+        if (!customPalettes.some(p => p.slot === slot)) return slot;
+    }
+    return -1;
+}
+
+// Move palettes still kept in this browser onto the adapter, as many as fit.
+// Ones that do not fit stay here and go up once a slot frees.
+async function migrateLocalPalettes() {
+    let legacy;
+    try {
+        legacy = JSON.parse(readStored(CUSTOM_PALETTES_KEY) || "[]");
+    } catch (e) {
+        legacy = [];
+    }
+    if (!Array.isArray(legacy) || !legacy.length) return;
+
+    const selectedId = readStored(PALETTE_KEY);
+    const left = [];
+    for (const palette of legacy) {
+        if (!palette || !Array.isArray(palette.colors) || palette.colors.length !== 4) continue;
+        const code = paletteCode(palette.colors);
+        let match = customPalettes.find(p => paletteCode(p.colors) === code);
+        const slot = freePaletteSlot();
+        if (!match && slot >= 0) {
+            const data = await paletteRequest(`/set_palette?slot=${slot}&colors=${code}`);
+            if (data && data.result === "ok") match = customPalettes.find(p => p.slot === slot);
+        }
+        if (!match) {
+            left.push(palette);
+        } else if (palette.id === selectedId) {
+            activePaletteId = match.id;
+            writeStored(PALETTE_KEY, match.id);
+        }
+    }
+    writeStored(CUSTOM_PALETTES_KEY, JSON.stringify(left));
+}
+
+async function loadCustomPalettes() {
+    if (!(await paletteRequest("/palettes.json"))) return; // adapter unreachable: built-in palettes only
+    await migrateLocalPalettes();
+    if (!findPalette(activePaletteId)) activePaletteId = "grayscale";
+    renderPaletteSelector();
+    renderAllTiles();
+    redrawLiveView();
 }
 
 function findPalette(id) {
@@ -632,11 +692,17 @@ function renderPaletteSelector() {
     add.className = "color-circle color-circle--add";
     add.textContent = "+";
     add.setAttribute("aria-label", "New palette");
-    add.addEventListener("click", () => openPaletteEditor(null));
+    add.addEventListener("click", () => {
+        if (freePaletteSlot() < 0) {
+            alert(`The adapter keeps up to ${paletteSlots} custom palettes. Edit or delete one to make room.`);
+            return;
+        }
+        openPaletteEditor(null);
+    });
     container.appendChild(add);
 
     const edit = document.getElementById("palette-edit-btn");
-    if (edit) edit.classList.toggle("hidden", !activePaletteId.startsWith("custom"));
+    if (edit) edit.classList.toggle("hidden", !activePaletteId.startsWith("custom") || !findPalette(activePaletteId));
 }
 
 function selectPalette(id) {
@@ -724,35 +790,40 @@ function copyPaletteCode() {
     }
 }
 
-function savePaletteFromEditor() {
-    const colors = paletteEditorColors();
-    let id = editingPaletteId;
-    const existing = id ? customPalettes.find(p => p.id === id) : null;
-    if (existing) {
-        existing.colors = colors;
-    } else {
-        id = "custom-" + Date.now();
-        customPalettes.push({ id, colors });
+async function savePaletteFromEditor() {
+    const existing = editingPaletteId ? customPalettes.find(p => p.id === editingPaletteId) : null;
+    const slot = existing ? existing.slot : freePaletteSlot();
+    if (slot < 0) {
+        alert(`The adapter keeps up to ${paletteSlots} custom palettes. Edit or delete one to make room.`);
+        return;
     }
-    storeCustomPalettes();
+    const data = await paletteRequest(`/set_palette?slot=${slot}&colors=${paletteCode(paletteEditorColors())}`);
+    if (!data || data.result !== "ok") {
+        alert("Could not save the palette on the adapter. Reconnect it and try again.");
+        return;
+    }
     closePaletteEditor();
-    selectPalette(id);
+    selectPalette(`custom-${slot}`);
 }
 
-function deletePaletteFromEditor() {
-    if (!editingPaletteId || !confirm("Delete this palette?")) return;
-    customPalettes = customPalettes.filter(p => p.id !== editingPaletteId);
-    storeCustomPalettes();
+async function deletePaletteFromEditor() {
+    const existing = editingPaletteId ? customPalettes.find(p => p.id === editingPaletteId) : null;
+    if (!existing || !confirm("Delete this palette?")) return;
+    const data = await paletteRequest(`/delete_palette?slot=${existing.slot}`);
+    if (!data || data.result !== "ok") {
+        alert("Could not delete the palette on the adapter. Reconnect it and try again.");
+        return;
+    }
     closePaletteEditor();
-    selectPalette(activePaletteId === editingPaletteId ? "grayscale" : activePaletteId);
+    selectPalette(activePaletteId === existing.id ? "grayscale" : activePaletteId);
 }
 
 function setupPalettes() {
-    loadCustomPalettes();
+    // A custom palette may be selected: keep it while the adapter's list loads
     activePaletteId = readStored(PALETTE_KEY) || "grayscale";
-    if (!findPalette(activePaletteId)) activePaletteId = "grayscale";
     renderPaletteSelector();
     paletteEditorInputs().forEach(input => input.addEventListener("input", updatePaletteEditor));
+    loadCustomPalettes();
 }
 
 // ---- Gallery tiles ----

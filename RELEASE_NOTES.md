@@ -4,7 +4,7 @@
   - Photos stay in the gallery after a page reload or a firmware update
   - **Select** several photos to save, print, join, animate, delete, or turn into a contact sheet
   - **Save All** downloads one ZIP file, on iPhone and iPad too
-  - Make your own **color palettes**, and share them as a short code
+  - Make up to 3 of your own **color palettes**, saved on the adapter so every browser and device sees them, and share them as a short code
   - **Frame** setting: keep the Game Boy Camera frame, remove it, or use your own
   - Long prints sent in parts (Pokémon Pinball, Zelda DX and others) arrive as one photo
   - Rotate, flip and favorite photos, and sort by date or favorites

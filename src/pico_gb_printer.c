@@ -53,6 +53,13 @@ bool use_rgb_mode = true; // default mode string
 
 uint8_t mobile_compatibility = MODE_IOS;
 
+// Custom photo palettes, kept in the settings sector so every browser and the
+// Android app see the same ones: four colors each, lightest first
+#define PALETTE_SLOTS   3
+#define PALETTE_COLORS  4
+static uint8_t palettes[PALETTE_SLOTS][PALETTE_COLORS * 3];
+static uint8_t palette_used = 0; // bitmask of filled slots
+
 extern void setRGB(uint8_t r, uint8_t g, uint8_t b);
 
 // --- CDC line parser state ---
@@ -235,6 +242,9 @@ static void print_queue_flush(void);
 // USB RX callback is not blocked for the multi-second bit-banged transfer.
 static volatile bool print_flush_pending = false;
 static inline uint8_t hex_nibble(char c);
+static bool palette_set(int slot, const char *colors);
+static bool palette_delete(int slot);
+static int palettes_json(char *out, size_t size, bool ok);
 
 // Time for the last reply to reach the host before the new firmware is copied in
 #define FW_APPLY_DELAY_MS 1000
@@ -415,6 +425,20 @@ static void cdc_handle_line(const char* line) {
       int n = snprintf(json, sizeof(json),
                        "{\"r\":%u,\"g\":%u,\"b\":%u,\"use_rgb\":%s}\n",
                        base_r, base_g, base_b, use_rgb_mode ? "true" : "false");
+      cdc_send_bytes((const uint8_t*)json, (uint32_t)n, 2000);
+      return;
+    }
+
+    // Custom palettes, same as the web routes; every reply is the palettes JSON line
+    if (strcmp(req, "/palettes") == 0 || strcmp(req, "/set_palette") == 0 || strcmp(req, "/delete_palette") == 0) {
+      bool ok = true;
+      int slot = -1;
+      if (qs) query_get_int(qs, "slot", &slot);
+      if (strcmp(req, "/set_palette") == 0) ok = palette_set(slot, qs ? query_value(qs, "colors") : NULL);
+      else if (strcmp(req, "/delete_palette") == 0) ok = palette_delete(slot);
+      char json[160];
+      int n = palettes_json(json, sizeof(json) - 1, ok);
+      json[n++] = '\n';
       cdc_send_bytes((const uint8_t*)json, (uint32_t)n, 2000);
       return;
     }
@@ -688,6 +712,11 @@ void httpd_post_finished(void *connection, char *response_uri, u16_t response_ur
 // End of the program image in flash, provided by the SDK linker script
 extern char __flash_binary_end;
 
+// Settings page layout past the LED/mode bytes 0..5
+#define SETTINGS_PALETTE_MARKER 6   // 0x5C once palettes have been saved
+#define SETTINGS_PALETTE_USED   7   // palette_used bitmask
+#define SETTINGS_PALETTES       8   // palettes[][], PALETTE_SLOTS * PALETTE_COLORS * 3 bytes
+
 void save_color_to_flash(uint8_t r, uint8_t g, uint8_t b, bool rgb_mode, uint8_t mode) {
     // Never write over our own code/rodata, whatever the offset ends up being
     uint32_t binary_end = (uint32_t)&__flash_binary_end - XIP_BASE;
@@ -700,6 +729,10 @@ void save_color_to_flash(uint8_t r, uint8_t g, uint8_t b, bool rgb_mode, uint8_t
     buffer[3] = 0xA5; // valid marker
     buffer[4] = rgb_mode ? 0x01 : 0x00; // actual mode
     buffer[5] = mode;
+    // Custom palettes ride along: the sector is erased as a whole on every save
+    buffer[SETTINGS_PALETTE_MARKER] = 0x5C;
+    buffer[SETTINGS_PALETTE_USED] = palette_used;
+    memcpy(buffer + SETTINGS_PALETTES, palettes, sizeof(palettes));
 
     uint32_t ints = save_and_disable_interrupts();
     flash_range_erase(FLASH_TARGET_OFFSET, FLASH_SECTOR_SIZE);
@@ -731,6 +764,65 @@ void load_color_from_flash() {
         use_rgb_mode = true;
         mobile_compatibility = MODE_IOS;
     }
+
+    // Settings saved by older firmware have no palettes
+    if (is_valid && flash_data[SETTINGS_PALETTE_MARKER] == 0x5C) {
+        palette_used = flash_data[SETTINGS_PALETTE_USED] & ((1 << PALETTE_SLOTS) - 1);
+        memcpy(palettes, flash_data + SETTINGS_PALETTES, sizeof(palettes));
+    } else {
+        palette_used = 0;
+    }
+}
+
+// Store four colors given as 24 hex digits, any separators ignored
+// ("e0f8d0-88c070-346856-081820"). slot < 0 takes the first free slot.
+static bool palette_set(int slot, const char *colors) {
+    if (!colors) return false;
+    if (slot < 0) {
+        for (slot = 0; slot < PALETTE_SLOTS && (palette_used & (1 << slot)); slot++);
+    }
+    if (slot >= PALETTE_SLOTS) return false;
+
+    uint8_t parsed[PALETTE_COLORS * 3];
+    int digits = 0;
+    for (const char *p = colors; *p && *p != '&' && *p != ' ' && digits < (int)sizeof(parsed) * 2; p++) {
+        bool hex = (*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F');
+        if (!hex) continue;
+        if (digits & 1) parsed[digits / 2] = (uint8_t)((parsed[digits / 2] << 4) | hex_nibble(*p));
+        else parsed[digits / 2] = hex_nibble(*p);
+        digits++;
+    }
+    if (digits != (int)sizeof(parsed) * 2) return false;
+
+    memcpy(palettes[slot], parsed, sizeof(parsed));
+    palette_used |= (1 << slot);
+    save_color_to_flash(base_r, base_g, base_b, use_rgb_mode, mobile_compatibility);
+    return true;
+}
+
+static bool palette_delete(int slot) {
+    if (slot < 0 || slot >= PALETTE_SLOTS) return false;
+    palette_used &= ~(1 << slot);
+    memset(palettes[slot], 0, sizeof(palettes[slot]));
+    save_color_to_flash(base_r, base_g, base_b, use_rgb_mode, mobile_compatibility);
+    return true;
+}
+
+// {"result":"ok","slots":3,"palettes":["e0f8d0-88c070-346856-081820",null,null]}
+static int palettes_json(char *out, size_t size, bool ok) {
+    int n = snprintf(out, size, "{\"result\":\"%s\",\"slots\":%d,\"palettes\":[", ok ? "ok" : "error", PALETTE_SLOTS);
+    for (int slot = 0; slot < PALETTE_SLOTS; slot++) {
+        if (slot) n += snprintf(out + n, size - n, ",");
+        if (!(palette_used & (1 << slot))) {
+            n += snprintf(out + n, size - n, "null");
+            continue;
+        }
+        const uint8_t *c = palettes[slot];
+        n += snprintf(out + n, size - n, "\"%02x%02x%02x-%02x%02x%02x-%02x%02x%02x-%02x%02x%02x\"",
+                      c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8], c[9], c[10], c[11]);
+    }
+    n += snprintf(out + n, size - n, "]}");
+    return n;
 }
 
 
@@ -755,6 +847,32 @@ static const char *cgi_set_color(int iIndex, int iNumParams, char *pcParam[], ch
     add_alarm_in_ms(300, soft_restart, NULL, false);
 
     return "/index.html";
+}
+
+// Custom palettes: /palettes.json lists them, /set_palette?slot=N&colors=CODE
+// stores one (no slot: the first free one), /delete_palette?slot=N clears one.
+// Both reply with the list, its "result" saying whether the change was made.
+#define PALETTES_FILE "/palettes.json"
+static bool palette_op_ok = true;
+
+static const char *cgi_set_palette(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
+    int slot = -1;
+    const char *colors = NULL;
+    for (int i = 0; i < iNumParams; i++) {
+        if (strcmp(pcParam[i], "slot") == 0) slot = atoi(pcValue[i]);
+        else if (strcmp(pcParam[i], "colors") == 0) colors = pcValue[i];
+    }
+    palette_op_ok = palette_set(slot, colors);
+    return PALETTES_FILE;
+}
+
+static const char *cgi_delete_palette(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
+    int slot = -1;
+    for (int i = 0; i < iNumParams; i++) {
+        if (strcmp(pcParam[i], "slot") == 0) slot = atoi(pcValue[i]);
+    }
+    palette_op_ok = palette_delete(slot);
+    return PALETTES_FILE;
 }
 
 #define PIN_SCK    2  // CLK: from Pico to printer
@@ -1008,6 +1126,8 @@ static const tCGI cgi_handlers[] = {
     { "/update", cgi_update },
     { "/set_color", cgi_set_color },
     { "/print_chunk", cgi_print_chunk },
+    { "/set_palette", cgi_set_palette },
+    { "/delete_palette", cgi_delete_palette },
 };
 
 int fs_open_custom(struct fs_file *file, const char *name) {
@@ -1087,6 +1207,13 @@ int fs_open_custom(struct fs_file *file, const char *name) {
             : snprintf(file_buffer, sizeof(file_buffer), "{\"result\":\"error\",\"error\":\"%s\",\"received\":%lu}",
                        *fw_update_error() ? fw_update_error() : "request", (unsigned long)fw_update_received());
         file->index = file->len;
+        return 1;
+    } else if (!strcmp(name, PALETTES_FILE)) {
+        memset(file, 0, sizeof(struct fs_file));
+        file->data  = file_buffer;
+        file->len   = palettes_json((char *)file_buffer, sizeof(file_buffer), palette_op_ok);
+        file->index = file->len;
+        palette_op_ok = true; // a plain read after a failed change is not an error
         return 1;
     } else if (!strcmp(name, "/led_status")) {
         memset(file, 0, sizeof(struct fs_file));

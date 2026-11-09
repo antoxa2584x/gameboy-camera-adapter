@@ -103,6 +103,15 @@ Sets the adapter's LED color and compatibility mode.
 - `mode`: `1` (Android/CDC+Network), `2` (iOS/Network only).
 - **Side Effect**: Saves to flash and reboots.
 
+##### GET `/palettes.json`
+Custom photo palettes stored on the adapter (3 slots, kept in the settings sector): `{"result":"ok","slots":3,"palettes":["e0f8d0-88c070-346856-081820",null,null]}`. Each palette is four colors, lightest first; `null` is an empty slot.
+
+##### GET `/set_palette?slot=N&colors=CODE`
+Stores a palette in slot `N` (0-2), or in the first free slot without `slot`. `CODE` is 24 hex digits, separators ignored. Saves to flash, no reboot. Replies with `/palettes.json`; `"result":"error"` if the code is malformed or no slot is free.
+
+##### GET `/delete_palette?slot=N`
+Empties slot `N`. Replies with `/palettes.json`.
+
 ##### GET `/reset`
 Resets the internal data buffers and protocol state.
 
@@ -150,6 +159,9 @@ The mobile app sends HTTP-style GET lines over the serial port:
 | :--- | :--- | :--- |
 | `GET /led_status` | `{"r":..,"g":..,"b":..,"use_rgb":..}\n` | Query LED state. |
 | `GET /set_color?r=..&g=..&b=..&use_rgb=..` | `OK\n` | Set LED color (no reboot). |
+| `GET /palettes` | `{"result":"ok","slots":3,"palettes":[...]}\n` | Custom palettes (see `/palettes.json`). |
+| `GET /set_palette?slot=N&colors=CODE` | palettes JSON line | Store a palette (no slot: first free one). |
+| `GET /delete_palette?slot=N` | palettes JSON line | Empty a palette slot. |
 | `GET /print_chunk?data=HEX` | `PRINT_QUEUED\n` or `PRINT_ERR\n` | Buffer one hex-encoded printer packet (same queue as the Web API). `PRINT_ERR` means the packet was malformed or the queue is full. |
 | `GET /print_chunk?done=1` | `{"printer":N}\n` | Send all buffered packets to the printer over the Link Cable, then report the printer status byte. With an empty queue, sends a single `STATUS` packet (used for polling). The response is sent only after the burst completes (can take several seconds). |
 | `GET /printer_status` | `{"printer":N}\n` | Return the last cached printer status without touching the Link Cable. |
