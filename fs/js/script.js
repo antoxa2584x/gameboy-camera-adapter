@@ -6,26 +6,6 @@ const COMMAND_TRANSFER = 0x10;
 // this tag so they go to the live view instead of the gallery
 const COMMAND_TRANSFER_LIVE = 0x11;
 
-// Printer exposure byte = thermal head burn time, 0x00 lightest to 0x7F darkest.
-// 0x7F is the hardware limit. The usable range is taken from the "print-exposure"
-// slider itself rather than repeated here, so tuning the input's min and max is
-// enough - a constant tighter than the input would clamp part of the slider's
-// travel to one value and make that end look dead. These are only the fallback
-// for when the input is missing. The light end sits above 0x00 because the bottom
-// of the range prints washed out with no true black.
-const PRINT_EXPOSURE_MIN = 0x10;
-const PRINT_EXPOSURE_MAX = 0x7F;
-
-function printExposureRange() {
-    const el = typeof document !== "undefined" ? document.getElementById("print-exposure") : null;
-    const min = parseInt(el && el.min);
-    const max = parseInt(el && el.max);
-    return {
-        min: Number.isFinite(min) ? Math.max(0, min) : PRINT_EXPOSURE_MIN,
-        max: Math.min(PRINT_EXPOSURE_MAX, Number.isFinite(max) ? max : PRINT_EXPOSURE_MAX)
-    };
-}
-
 const PRINTER_WIDTH = 20;
 const CAMERA_WIDTH = 16;
 const TILE_SIZE = 0x10;
@@ -33,90 +13,45 @@ const TILE_HEIGHT = 8;
 const TILE_WIDTH = 8;
 
 const imageBinPath = "/download";
-const resetPath = "/reset";
 
-let downloadIndex = 0;
-
-const canvas = document.createElement('canvas');
-const getImageBtn = document.getElementById("get_image_btn");
 const gallery = document.getElementById("gallery");
-const tearBtn = document.getElementById("tear_btn");
-const deleteSelectedBtn = document.getElementById("delete_selected_btn");
-const selectAllBtn = document.getElementById("select_all_btn");
-const averageSelectedBtn = document.getElementById("average_selected_btn");
 
 function safeAddEventListener(el, event, handler) {
     if (el) el.addEventListener(event, handler);
 }
 
-const CURRENT_VERSION = "2.3.0"; // Fallback version
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// A request caught by the lock screen on iOS can hang forever, and the gallery
+// polls one at a time: a deadline keeps polling alive once the phone is unlocked.
+async function fetchWithTimeout(url, timeoutMs) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { cache: "no-store", signal: controller.signal });
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+function readStored(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch (e) {
+        return null; // storage unavailable (private mode)
+    }
+}
+
+function writeStored(key, value) {
+    try {
+        localStorage.setItem(key, value);
+    } catch (e) { /* storage unavailable */ }
+}
+
+const CURRENT_VERSION = "2.4.0"; // Fallback version
 let dynamicVersion = CURRENT_VERSION;
-
-Date.prototype.today = function(delim) {
-    return ((this.getDate() < 10) ? "0" : "") + this.getDate() + delim + (((this.getMonth() + 1) < 10) ? "0" : "") + (this.getMonth() + 1) + delim + this.getFullYear();
-}
-Date.prototype.timeNow = function(delim) {
-    return ((this.getHours() < 10) ? "0" : "") + this.getHours() + delim + ((this.getMinutes() < 10) ? "0" : "") + this.getMinutes() + delim + ((this.getSeconds() < 10) ? "0" : "") + this.getSeconds();
-}
-String.prototype.format = function() {
-    var formatted = this;
-    for (var i = 0; i < arguments.length; i++) {
-        var regexp = new RegExp('\\{' + i + '\\}', 'gi');
-        formatted = formatted.replace(regexp, arguments[i]);
-    }
-    return formatted;
-};
-
-function reset_canvas(canvas) {
-    canvas.height = 1;
-    canvas.width = 1;
-}
-
-function resize_canvas(canvas, new_w, new_h) {
-    const ctx = canvas.getContext("2d");
-    let temp = ctx.getImageData(0, 0, canvas.width, canvas.height)
-    canvas.width = new_w;
-    canvas.height = new_h;
-    ctx.putImageData(temp, 0, 0);
-}
-
-function render(canvas, image_data, image_start, image_end, image_tile_width, sheets, margin, palette, exposure) {
-    pal = new Uint8Array(4);
-    pal[0] = ((exposure * ((palette >> 0) & 0x03)) / 3) >> 0;
-    pal[1] = ((exposure * ((palette >> 2) & 0x03)) / 3) >> 0;
-    pal[2] = ((exposure * ((palette >> 4) & 0x03)) / 3) >> 0;
-    pal[3] = ((exposure * ((palette >> 6) & 0x03)) / 3) >> 0;
-
-    let tile_y = ((canvas.height / TILE_HEIGHT) >> 0);
-    let tile_x = 0;
-
-    resize_canvas(canvas, (image_tile_width * 8), ((canvas.height >> 3) << 3) + ((Math.max(0, image_end - image_start) / (TILE_SIZE * image_tile_width)) >> 0) * 8)
-
-    const ctx = canvas.getContext("2d");
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const writeData = imageData.data;
-    for (let i = image_start; i < image_end;) {
-        for (let t = 0; t < 8; t++) {
-            let b1 = image_data[i++];
-            let b2 = image_data[i++];
-            for (let b = 0; b < 8; b++) {
-                let offset = (((tile_y << 3) + t) * canvas.width + (tile_x << 3) + b) << 2;
-                let color_index = ((b1 >> (7 - b)) & 1) | (((b2 >> (7 - b)) & 1) << 1);
-
-                writeData[offset + 0] = writeData[offset + 1] = writeData[offset + 2] = 0xFF - pal[color_index];
-                writeData[offset + 3] = 0xff;
-            }
-        }
-        tile_x += 1;
-        if (tile_x >= image_tile_width) {
-            tile_x = 0;
-            tile_y++;
-        }
-    }
-    ctx.putImageData(imageData, 0, 0);
-
-    return ((margin & 0x0f) != 0);
-}
 
 function decode(is_compressed, sour, sour_size, sour_data_len, sour_ptr, dest, dest_ptr) {
     if (sour_ptr + sour_data_len <= sour_size) {
@@ -148,13 +83,44 @@ function decode(is_compressed, sour, sour_size, sour_data_len, sour_ptr, dest, d
 
 let processed_data = new Uint8Array(1024 * 1024);
 
-async function get_camera_image(canvas, binPath) {
-    const res = await fetch(imageBinPath, { cache: "no-store" });
+// One printed part: the tile rows in the print buffer, mapped through the PRINT
+// command's palette byte to the shade each colour index actually prints as
+function printedShades(data, start, end, palette) {
+    const image = decodeTilePixels(data.subarray(start, end), PRINTER_WIDTH);
+    const map = [0, 1, 2, 3].map(i => (palette >> (i * 2)) & 3);
+    for (let p = 0; p < image.pixels.length; p++) image.pixels[p] = map[image.pixels[p]];
+    return image;
+}
+
+// A print with no paper feed after it continues in the next one: games print
+// long pictures (Pokemon Pinball, Zelda DX...) a page at a time. The parts are
+// collected here and only go into the gallery as one photo once a part ends with
+// a feed, a new sheet starts, or nothing more arrives for a while - the next
+// part can come in a later download than the one before it.
+const PENDING_PRINT_MS = 4000;
+let pendingPrint = null; // { width, height, parts, time }
+
+function appendPendingPrint(image) {
+    if (!image.height) return;
+    if (pendingPrint && pendingPrint.width !== image.width) flushPendingPrint();
+    if (!pendingPrint) pendingPrint = { width: image.width, height: 0, parts: [], time: 0 };
+    pendingPrint.parts.push(image);
+    pendingPrint.height += image.height;
+    pendingPrint.time = Date.now();
+}
+
+function flushPendingPrint() {
+    if (!pendingPrint) return null;
+    const image = stackImages(pendingPrint.parts);
+    pendingPrint = null;
+    return addPhoto(image);
+}
+
+async function get_camera_image() {
+    const res = await fetchWithTimeout(imageBinPath, 10000);
     if (!res.ok) return false;
-    const resBody = await res.blob();
-    const resBuf = await resBody.arrayBuffer();
-    const resData = new Uint8Array(resBuf);
-    const data_size = resBody.size;
+    const resData = new Uint8Array(await res.arrayBuffer());
+    const data_size = resData.length;
 
     if (data_size === 0) return true;
 
@@ -162,65 +128,51 @@ async function get_camera_image(canvas, binPath) {
         processed_data = new Uint8Array(data_size);
     }
 
-    reset_canvas(canvas);
-
     let buffer_start = 0;
     let ptr = 0;
     let idx = 0;
     let len = 0;
     while (idx < data_size) {
         const command = resData[idx++];
-        console.log(`Processing command: ${command.toString(16)}`); // Log the current command in hex format
 
         switch (command) {
             case COMMAND_INIT:
-                console.log("COMMAND_INIT: Initialization command received.");
                 break;
 
-            case COMMAND_PRINT:
-                console.log("COMMAND_PRINT: Processing print command...");
+            case COMMAND_PRINT: {
                 if ((len = resData[idx++] | (resData[idx++] << 8)) != 4) {
                     console.warn(`Unexpected length for COMMAND_PRINT: ${len}. Skipping to end.`);
                     idx = data_size;
                     break;
                 }
 
-    let sheets = resData[idx++];
-                let margins = resData[idx++];
-                let palette = resData[idx++] || 0xE4;
-                let exposure = Math.min(0xFF, 0x80 + resData[idx++]);
+                idx++; // sheets
+                const margins = resData[idx++];
+                const palette = resData[idx++] || 0xE4;
+                idx++; // exposure: only how dark the paper burns, not part of the picture
 
-                console.log(`COMMAND_PRINT details: sheets=${sheets}, margins=${margins}, palette=${palette.toString(16)}, exposure=${exposure}`);
-
-                if (render(canvas, processed_data, buffer_start, ptr, PRINTER_WIDTH, sheets, margins, palette, exposure)) {
-                    console.log("Rendering completed, adding canvas to gallery...");
-                    normalizeToCanonicalGrayscale(canvas);
-                    addCanvasToGallery(canvas);
-                    reset_canvas(canvas);
-
-                    renderExtraViews();
-                    parseScheme();
-                }
+                const part = printedShades(processed_data, buffer_start, ptr, palette);
+                // A feed before this part means it starts a sheet of its own
+                if ((margins >> 4) && pendingPrint) flushPendingPrint();
+                appendPendingPrint(part);
+                if (margins & 0x0f) flushPendingPrint();
 
                 buffer_start = ptr;
                 break;
+            }
 
             case COMMAND_TRANSFER: {
-                console.log("COMMAND_TRANSFER: Processing transfer command...");
+                flushPendingPrint();
                 len = resData[idx++] | (resData[idx++] << 8);
-                console.log(`Transfer length: ${len}`);
-                let current_image_start = ptr;
+                const current_image_start = ptr;
                 ptr = decode(false, resData, data_size, len, idx, processed_data, ptr);
                 idx += len;
 
-                console.log("Rendering transfer image...");
-                render(canvas, processed_data, current_image_start, ptr, CAMERA_WIDTH, 1, 0x03, 0xE4, 0xFF);
-                normalizeToCanonicalGrayscale(canvas);
-                const item = addCanvasToGallery(canvas);
-                reset_canvas(canvas);
+                const tiles = processed_data.slice(current_image_start, ptr);
+                const record = addPhoto(decodeTilePixels(tiles, CAMERA_WIDTH));
                 buffer_start = ptr;
                 // "Transfer REC" starts with a frame that looks like a plain Transfer
-                rememberTransferPhoto(item, processed_data.slice(current_image_start, ptr));
+                rememberTransferPhoto(record, tiles);
                 break;
             }
 
@@ -232,10 +184,8 @@ async function get_camera_image(canvas, binPath) {
             }
 
             case COMMAND_DATA: {
-                console.log("COMMAND_DATA: Processing data command...");
                 const compression = resData[idx++];
                 len = resData[idx++] | (resData[idx++] << 8);
-                console.log(`Data length: ${len}, Compression: ${compression}`);
                 ptr = decode(compression, resData, data_size, len, idx, processed_data, ptr);
                 idx += len;
                 break;
@@ -248,101 +198,778 @@ async function get_camera_image(canvas, binPath) {
         }
     }
 
-    if (canvas.height > 1) {
-        addCanvasToGallery(canvas);
-        reset_canvas(canvas);
-    }
-    return res.ok
+    return true;
 }
 
-// Remap the 4 grey levels produced by render() to the canonical values expected
-// by pocketCameraPalettes (reverseColorMapping keys). render() outputs variable
-// grey levels depending on the exposure byte; without this, reverseColorMapping
-// fails for non-white pixels and applyColorScheme leaves them in their original
-// grey shade while only the lightest pixels get the palette colour — producing
-// "random green pixels" (or whatever the palette's lightest colour is) on a grey
-// image (issue #4).
-function normalizeToCanonicalGrayscale(canvas) {
-    const ctx = canvas.getContext("2d");
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-    const graySet = new Set();
-    for (let i = 0; i < data.length; i += 4) {
-        if (data[i] === data[i + 1] && data[i + 1] === data[i + 2]) {
-            graySet.add(data[i]);
-        }
-    }
-    // sort brightest-first; map to the same 4 levels used in pocketCameraPalettes
-    const sorted = [...graySet].sort((a, b) => b - a);
-    const canonical = [255, 191, 127, 63];
-    const remap = {};
-    sorted.forEach((v, idx) => { if (idx < canonical.length) remap[v] = canonical[idx]; });
-    let changed = false;
-    for (let i = 0; i < data.length; i += 4) {
-        if (data[i] === data[i + 1] && data[i + 1] === data[i + 2]) {
-            const mapped = remap[data[i]];
-            if (mapped !== undefined && mapped !== data[i]) {
-                data[i] = data[i + 1] = data[i + 2] = mapped;
-                changed = true;
+// ---- Photos ----
+// Every photo is kept as one shade per pixel (0 lightest .. 3 darkest), exactly
+// what the Game Boy printed, and only painted in colour for the screen or a saved
+// file. That is what lets the palette, the frame and the rotation change after
+// the fact, and it is what IndexedDB stores so the gallery survives a reload.
+
+let photos = []; // { id, created, width, height, pixels, favorite, rotation, flip }
+let photoSeq = 0;
+
+function newPhotoId() {
+    return Date.now() * 100 + (photoSeq++ % 100);
+}
+
+function addPhoto(image) {
+    if (!image || !image.width || !image.height) return null;
+    const record = {
+        id: newPhotoId(),
+        created: Date.now(),
+        width: image.width,
+        height: image.height,
+        pixels: image.pixels,
+        favorite: false,
+        rotation: 0,
+        flip: false
+    };
+    insertPhoto(record);
+    storePhoto(record);
+    return record;
+}
+
+function insertPhoto(record) {
+    photos.push(record);
+    createPhotoTile(record);
+    renderPhotoTile(record);
+    arrangeGallery();
+    updateButtonStates();
+}
+
+function removePhotos(records) {
+    if (!records.length) return;
+    const ids = new Set(records.map(r => r.id));
+    photos = photos.filter(r => !ids.has(r.id));
+    records.forEach(r => r.el && r.el.remove());
+    deleteStoredPhotos(Array.from(ids));
+    updateButtonStates();
+    updateSelectionBar();
+}
+
+// Four shades fit in a byte; a 160x144 photo is 5.6 KB stored
+function packShades(pixels) {
+    const out = new Uint8Array(Math.ceil(pixels.length / 4));
+    for (let i = 0; i < pixels.length; i++) out[i >> 2] |= (pixels[i] & 3) << ((i & 3) * 2);
+    return out;
+}
+
+function unpackShades(packed, count) {
+    const out = new Uint8Array(count);
+    for (let i = 0; i < count; i++) out[i] = (packed[i >> 2] >> ((i & 3) * 2)) & 3;
+    return out;
+}
+
+// ---- Gallery storage (IndexedDB) ----
+// Best effort: without IndexedDB (some private modes) the gallery simply lasts
+// as long as the page, as it always used to.
+
+const PHOTO_DB = "gbca-gallery";
+const PHOTO_STORE = "photos";
+let photoDbPromise = null;
+
+function openPhotoDb() {
+    if (!photoDbPromise) {
+        photoDbPromise = new Promise((resolve) => {
+            try {
+                const request = indexedDB.open(PHOTO_DB, 1);
+                request.onupgradeneeded = () => request.result.createObjectStore(PHOTO_STORE, { keyPath: "id" });
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => resolve(null);
+                request.onblocked = () => resolve(null);
+            } catch (e) {
+                resolve(null);
             }
+        });
+    }
+    return photoDbPromise;
+}
+
+function withPhotoStore(mode, work) {
+    return openPhotoDb().then((db) => new Promise((resolve) => {
+        if (!db) return resolve(null);
+        try {
+            const tx = db.transaction(PHOTO_STORE, mode);
+            const request = work(tx.objectStore(PHOTO_STORE));
+            tx.oncomplete = () => resolve(request ? request.result : null);
+            tx.onerror = tx.onabort = () => {
+                console.error("Gallery storage failed:", tx.error);
+                resolve(null);
+            };
+        } catch (e) {
+            console.error("Gallery storage failed:", e);
+            resolve(null);
+        }
+    }));
+}
+
+function storePhoto(record) {
+    return withPhotoStore("readwrite", store => store.put({
+        id: record.id,
+        created: record.created,
+        width: record.width,
+        height: record.height,
+        shades: packShades(record.pixels),
+        favorite: record.favorite,
+        rotation: record.rotation,
+        flip: record.flip
+    }));
+}
+
+function deleteStoredPhotos(ids) {
+    return withPhotoStore("readwrite", store => {
+        ids.forEach(id => store.delete(id));
+        return null;
+    });
+}
+
+async function restoreGallery() {
+    const stored = await withPhotoStore("readonly", store => store.getAll());
+    if (!stored || !stored.length) return;
+    const known = new Set(photos.map(r => r.id));
+    stored.forEach((s) => {
+        if (known.has(s.id) || !s.shades) return;
+        const record = {
+            id: s.id,
+            created: s.created,
+            width: s.width,
+            height: s.height,
+            pixels: unpackShades(s.shades, s.width * s.height),
+            favorite: !!s.favorite,
+            rotation: s.rotation || 0,
+            flip: !!s.flip
+        };
+        photos.push(record);
+        createPhotoTile(record);
+        renderPhotoTile(record);
+    });
+    arrangeGallery();
+    updateButtonStates();
+}
+
+// ---- Image helpers (shade arrays) ----
+
+function stackImages(images) {
+    const width = images[0].width;
+    const height = images.reduce((total, image) => total + image.height, 0);
+    const pixels = new Uint8Array(width * height);
+    let offset = 0;
+    images.forEach((image) => {
+        pixels.set(image.pixels.subarray(0, image.width * image.height), offset);
+        offset += image.width * image.height;
+    });
+    return { width, height, pixels };
+}
+
+function cropShades(image, x0, y0, w, h) {
+    const pixels = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+        const from = (y0 + y) * image.width + x0;
+        pixels.set(image.pixels.subarray(from, from + w), y * w);
+    }
+    return { width: w, height: h, pixels };
+}
+
+function flipShades(image) {
+    const { width, height } = image;
+    const pixels = new Uint8Array(width * height);
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) pixels[y * width + x] = image.pixels[y * width + width - 1 - x];
+    }
+    return { width, height, pixels };
+}
+
+// A quarter turn clockwise
+function rotateShades(image) {
+    const { width, height } = image;
+    const pixels = new Uint8Array(width * height);
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) pixels[x * height + (height - 1 - y)] = image.pixels[y * width + x];
+    }
+    return { width: height, height: width, pixels };
+}
+
+// Centre every image on a canvas as big as the largest, lightest shade around
+function padImages(images) {
+    const width = Math.max(...images.map(i => i.width));
+    const height = Math.max(...images.map(i => i.height));
+    return images.map((image) => {
+        if (image.width === width && image.height === height) return image;
+        const pixels = new Uint8Array(width * height);
+        const ox = Math.floor((width - image.width) / 2);
+        const oy = Math.floor((height - image.height) / 2);
+        for (let y = 0; y < image.height; y++) {
+            pixels.set(image.pixels.subarray(y * image.width, (y + 1) * image.width), (oy + y) * width + ox);
+        }
+        return { width, height, pixels };
+    });
+}
+
+// ---- Frames ----
+// A Game Boy Camera print is 160x144: the 128x112 picture inside a 16 pixel frame.
+
+const CAMERA_FRAME = { width: 160, height: 144, x: 16, y: 16, w: 128, h: 112 };
+const FRAME_MODES = ["keep", "remove", "custom"];
+const FRAME_MODE_KEY = "photoFrame";
+const CUSTOM_FRAME_KEY = "customFrame";
+let customFrame = null; // shades of a 160x144 frame
+let frameVersion = 0;   // bumped when the frame setting changes, for the caches
+
+function getFrameMode() {
+    const select = document.getElementById("photoFrame");
+    const raw = select ? select.value : readStored(FRAME_MODE_KEY);
+    return FRAME_MODES.includes(raw) ? raw : "keep";
+}
+
+function applyFrame(image) {
+    const mode = getFrameMode();
+    const F = CAMERA_FRAME;
+    const framed = image.width === F.width && image.height === F.height;
+    const bare = image.width === F.w && image.height === F.h;
+    if (mode === "remove" && framed) return cropShades(image, F.x, F.y, F.w, F.h);
+    if (mode === "custom" && customFrame && (framed || bare)) {
+        const pixels = customFrame.slice();
+        const ox = framed ? F.x : 0, oy = framed ? F.y : 0;
+        for (let y = 0; y < F.h; y++) {
+            const from = (oy + y) * image.width + ox;
+            pixels.set(image.pixels.subarray(from, from + F.w), (F.y + y) * F.width + F.x);
+        }
+        return { width: F.width, height: F.height, pixels };
+    }
+    return image;
+}
+
+function bytesToBase64(bytes) {
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(binary);
+}
+
+function base64ToBytes(text) {
+    const binary = atob(text);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+}
+
+function loadStoredFrame() {
+    const stored = readStored(CUSTOM_FRAME_KEY);
+    if (!stored) return;
+    try {
+        customFrame = unpackShades(base64ToBytes(stored), CAMERA_FRAME.width * CAMERA_FRAME.height);
+    } catch (e) {
+        customFrame = null;
+    }
+}
+
+// Any picture becomes a 160x144 frame in Game Boy shades; only its border is used
+async function loadCustomFrame(input) {
+    const file = input.files && input.files[0];
+    input.value = "";
+    if (!file) return;
+    let source;
+    try {
+        source = await loadImageFile(file);
+    } catch (e) {
+        showMessage("COULD NOT OPEN THE IMAGE");
+        return;
+    }
+    const F = CAMERA_FRAME;
+    const canvas = document.createElement("canvas");
+    canvas.width = F.width;
+    canvas.height = F.height;
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(source, 0, 0, F.width, F.height);
+    const data = ctx.getImageData(0, 0, F.width, F.height).data;
+    const levels = detectGameBoyLevels(data);
+    const pixels = new Uint8Array(F.width * F.height);
+    for (let p = 0; p < pixels.length; p++) {
+        const i = p * 4;
+        const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        if (levels) {
+            let nearest = 0;
+            for (let n = 1; n < 4; n++) if (Math.abs(gray - levels[n]) < Math.abs(gray - levels[nearest])) nearest = n;
+            pixels[p] = nearest;
+        } else {
+            pixels[p] = nearestShade(gray);
         }
     }
-    if (changed) ctx.putImageData(imageData, 0, 0);
+    customFrame = pixels;
+    writeStored(CUSTOM_FRAME_KEY, bytesToBase64(packShades(pixels)));
+    const select = document.getElementById("photoFrame");
+    if (select) select.value = "custom";
+    writeStored(FRAME_MODE_KEY, "custom");
+    onFrameChanged();
 }
 
-function addCanvasToGallery(canvas) {
-    if (canvas.height > 1) {
-        const div = document.createElement("div");
-        div.classList.add("gallery-image");
-
-        const img = new Image();
-        img.src = canvas.toDataURL();
-        img.addEventListener("click", function() {
-            showPopupWithUpscaledImage(img);
-        });
-
-        const btn = document.createElement("button");
-        btn.textContent = "SAVE";
-        btn.addEventListener("click", function(e) {
-            e.stopPropagation(); // Prevent opening popup when clicking SAVE
-            downloadImage(img);
-        });
-
-        div.appendChild(img);
-        div.appendChild(btn);
-
-        gallery.appendChild(div);
-
-        // updateButtonStates() also enables "select all" when that button exists;
-        // touching it directly threw here, as index.html has no such button
-        updateButtonStates();
-        return div;
+function onFrameChanged() {
+    frameVersion++;
+    const mode = getFrameMode();
+    const button = document.getElementById("frame-file-btn");
+    if (button) button.classList.toggle("hidden", mode !== "custom");
+    const note = document.getElementById("frame-note");
+    if (note) {
+        note.textContent = mode === "custom"
+            ? "Use a 160 x 144 picture: its 16 pixel border is the frame, the 128 x 112 middle is replaced by the photo. Colours become the 4 Game Boy shades."
+            : mode === "remove"
+                ? "Crops 160 x 144 camera prints to the 128 x 112 picture. Other sizes are left alone."
+                : "Applies to Game Boy Camera photos.";
     }
-    return null;
+    renderAllTiles();
 }
 
-function showPopupWithUpscaledImage(image) {
+function setupFrameSelector() {
+    loadStoredFrame();
+    const select = document.getElementById("photoFrame");
+    if (!select) return;
+    const stored = readStored(FRAME_MODE_KEY);
+    select.value = FRAME_MODES.includes(stored) ? stored : "keep";
+    safeAddEventListener(select, "change", () => {
+        writeStored(FRAME_MODE_KEY, select.value);
+        onFrameChanged();
+    });
+    onFrameChanged();
+}
+
+// The photo as it is shown and saved: frame, then flip, then rotation
+function photoPixels(record) {
+    const key = `${frameVersion}|${record.rotation}|${record.flip}`;
+    if (record.composed && record.composedKey === key) return record.composed;
+    let image = applyFrame({ width: record.width, height: record.height, pixels: record.pixels });
+    if (record.flip) image = flipShades(image);
+    for (let r = 0; r < record.rotation; r++) image = rotateShades(image);
+    record.composed = image;
+    record.composedKey = key;
+    return image;
+}
+
+// ---- Palettes ----
+
+const BUILTIN_PALETTES = [
+    { id: "grayscale", colors: [[255, 255, 255], [191, 191, 191], [127, 127, 127], [63, 63, 63]] },
+    { id: "game-boy", colors: [[208, 217, 60], [120, 164, 106], [84, 88, 84], [36, 70, 36]] },
+    { id: "super-game-boy", colors: [[255, 255, 255], [181, 179, 189], [84, 83, 103], [9, 7, 19]] },
+    { id: "game-boy-color-jpn", colors: [[240, 240, 240], [218, 196, 106], [112, 88, 52], [30, 30, 30]] },
+    { id: "game-boy-color-usa-gold", colors: [[240, 240, 240], [220, 160, 160], [136, 78, 78], [30, 30, 30]] },
+    { id: "game-boy-color-usa-eur", colors: [[240, 240, 240], [134, 200, 100], [58, 96, 132], [30, 30, 30]] }
+];
+const GRAYSCALE = BUILTIN_PALETTES[0].colors;
+const PALETTE_KEY = "selectedColorScheme";
+const CUSTOM_PALETTES_KEY = "customPalettes";
+
+let customPalettes = [];
+let activePaletteId = "grayscale";
+
+function loadCustomPalettes() {
+    try {
+        const parsed = JSON.parse(readStored(CUSTOM_PALETTES_KEY) || "[]");
+        customPalettes = Array.isArray(parsed)
+            ? parsed.filter(p => p && p.id && Array.isArray(p.colors) && p.colors.length === 4)
+            : [];
+    } catch (e) {
+        customPalettes = [];
+    }
+}
+
+function storeCustomPalettes() {
+    writeStored(CUSTOM_PALETTES_KEY, JSON.stringify(customPalettes));
+}
+
+function findPalette(id) {
+    return BUILTIN_PALETTES.concat(customPalettes).find(p => p.id === id) || null;
+}
+
+// The four colours of the selected palette, lightest first (shade order)
+function activeSchemeColors() {
+    return (findPalette(activePaletteId) || BUILTIN_PALETTES[0]).colors;
+}
+
+function rgbToHex(r, g, b) {
+    return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
+}
+
+function hexToRgb(hex) {
+    const value = parseInt(hex.replace("#", ""), 16);
+    return [(value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF];
+}
+
+function paletteGradient(colors) {
+    const hex = colors.map(c => rgbToHex(c[0], c[1], c[2]));
+    return `linear-gradient(to right, ${hex[0]} 25%, ${hex[1]} 25% 50%, ${hex[2]} 50% 75%, ${hex[3]} 75%)`;
+}
+
+// "e0f8d0-88c070-346856-081820": four colours, lightest first, easy to share
+function paletteCode(colors) {
+    return colors.map(c => rgbToHex(c[0], c[1], c[2]).slice(1)).join("-");
+}
+
+function parsePaletteCode(text) {
+    const found = (text || "").match(/[0-9a-f]{6}/gi);
+    return (found && found.length === 4) ? found.map(hexToRgb) : null;
+}
+
+function renderPaletteSelector() {
+    const container = document.getElementById("color-selector");
+    if (!container) return;
+    container.innerHTML = "";
+    BUILTIN_PALETTES.concat(customPalettes).forEach((palette) => {
+        const circle = document.createElement("button");
+        circle.type = "button";
+        circle.className = "color-circle" + (palette.id === activePaletteId ? " active" : "");
+        circle.style.background = paletteGradient(palette.colors);
+        circle.dataset.scheme = palette.id;
+        circle.setAttribute("aria-label", palette.id.startsWith("custom") ? "Custom palette" : palette.id.replace(/-/g, " ") + " palette");
+        circle.addEventListener("click", () => selectPalette(palette.id));
+        container.appendChild(circle);
+    });
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "color-circle color-circle--add";
+    add.textContent = "+";
+    add.setAttribute("aria-label", "New palette");
+    add.addEventListener("click", () => openPaletteEditor(null));
+    container.appendChild(add);
+
+    const edit = document.getElementById("palette-edit-btn");
+    if (edit) edit.classList.toggle("hidden", !activePaletteId.startsWith("custom"));
+}
+
+function selectPalette(id) {
+    if (!findPalette(id)) id = "grayscale";
+    activePaletteId = id;
+    writeStored(PALETTE_KEY, id);
+    renderPaletteSelector();
+    renderAllTiles();
+    redrawLiveView();
+}
+
+let editingPaletteId = null;
+
+function paletteEditorInputs() {
+    return Array.from(document.querySelectorAll("#palette-popup .palette-color"));
+}
+
+function paletteEditorColors() {
+    return paletteEditorInputs().map(input => hexToRgb(input.value));
+}
+
+function openPaletteEditor(id) {
+    editingPaletteId = id;
+    const palette = id ? findPalette(id) : null;
+    const colors = palette ? palette.colors : activeSchemeColors();
+    paletteEditorInputs().forEach((input, i) => { input.value = rgbToHex(colors[i][0], colors[i][1], colors[i][2]); });
+    const title = document.getElementById("palette-popup-title");
+    if (title) title.textContent = id ? "Edit Palette" : "New Palette";
+    const del = document.getElementById("palette-delete-btn");
+    if (del) del.classList.toggle("hidden", !id);
+    updatePaletteEditor();
+    const popup = document.getElementById("palette-popup");
+    if (popup) popup.classList.remove("hidden");
+}
+
+function editActivePalette() {
+    if (activePaletteId.startsWith("custom")) openPaletteEditor(activePaletteId);
+}
+
+function closePaletteEditor() {
+    const popup = document.getElementById("palette-popup");
+    if (popup) popup.classList.add("hidden");
+}
+
+// Shows the palette on the first photo in the gallery, or on four bars
+function updatePaletteEditor() {
+    const colors = paletteEditorColors();
+    const code = document.getElementById("palette-code");
+    if (code && document.activeElement !== code) code.value = paletteCode(colors);
+    const preview = document.getElementById("palette-preview");
+    if (!preview) return;
+    const first = displayedPhotos()[0];
+    let image;
+    if (first) {
+        image = photoPixels(first);
+    } else {
+        const pixels = new Uint8Array(160 * 36);
+        for (let p = 0; p < pixels.length; p++) pixels[p] = Math.floor((p % 160) / 40);
+        image = { width: 160, height: 36, pixels };
+    }
+    paintPixels(preview, image, colors);
+}
+
+function onPaletteCodeInput(input) {
+    const colors = parsePaletteCode(input.value);
+    if (!colors) return;
+    paletteEditorInputs().forEach((el, i) => { el.value = rgbToHex(colors[i][0], colors[i][1], colors[i][2]); });
+    updatePaletteEditor();
+}
+
+function copyPaletteCode() {
+    const code = document.getElementById("palette-code");
+    if (!code) return;
+    // The clipboard API needs https; the page is plain http, so select and copy
+    code.focus();
+    code.select();
+    let copied = false;
+    try {
+        copied = document.execCommand("copy");
+    } catch (e) { /* not supported */ }
+    const button = document.getElementById("palette-copy-btn");
+    if (button) {
+        button.textContent = copied ? "Copied" : "Select + copy";
+        setTimeout(() => { button.textContent = "Copy"; }, 1500);
+    }
+}
+
+function savePaletteFromEditor() {
+    const colors = paletteEditorColors();
+    let id = editingPaletteId;
+    const existing = id ? customPalettes.find(p => p.id === id) : null;
+    if (existing) {
+        existing.colors = colors;
+    } else {
+        id = "custom-" + Date.now();
+        customPalettes.push({ id, colors });
+    }
+    storeCustomPalettes();
+    closePaletteEditor();
+    selectPalette(id);
+}
+
+function deletePaletteFromEditor() {
+    if (!editingPaletteId || !confirm("Delete this palette?")) return;
+    customPalettes = customPalettes.filter(p => p.id !== editingPaletteId);
+    storeCustomPalettes();
+    closePaletteEditor();
+    selectPalette(activePaletteId === editingPaletteId ? "grayscale" : activePaletteId);
+}
+
+function setupPalettes() {
+    loadCustomPalettes();
+    activePaletteId = readStored(PALETTE_KEY) || "grayscale";
+    if (!findPalette(activePaletteId)) activePaletteId = "grayscale";
+    renderPaletteSelector();
+    paletteEditorInputs().forEach(input => input.addEventListener("input", updatePaletteEditor));
+}
+
+// ---- Gallery tiles ----
+
+const STAR_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17.4l-6.1 3.5 1.5-6.8L2.2 9.5l6.9-.7z"/></svg>';
+const tileCanvas = document.createElement("canvas");
+
+function createPhotoTile(record) {
+    const div = document.createElement("div");
+    div.className = "gallery-image";
+    div.photo = record;
+    record.el = div;
+
+    const img = new Image();
+    img.alt = "Game Boy photo";
+    img.draggable = false;
+
+    const fav = document.createElement("button");
+    fav.type = "button";
+    fav.className = "photo-fav";
+    fav.innerHTML = STAR_SVG;
+    fav.setAttribute("aria-label", "Favorite");
+    fav.addEventListener("click", (e) => {
+        e.stopPropagation();
+        togglePhotoFavorite(record);
+    });
+
+    const save = document.createElement("button");
+    save.type = "button";
+    save.className = "photo-save";
+    save.textContent = "SAVE";
+    save.addEventListener("click", (e) => {
+        e.stopPropagation(); // Prevent opening popup when clicking SAVE
+        downloadImage(record);
+    });
+
+    div.addEventListener("click", () => {
+        if (selectMode) togglePhotoSelected(record);
+        else showPopupWithUpscaledImage(record);
+    });
+
+    div.appendChild(img);
+    div.appendChild(fav);
+    div.appendChild(save);
+}
+
+function renderPhotoTile(record, colors = activeSchemeColors()) {
+    if (!record.el) return;
+    paintPixels(tileCanvas, photoPixels(record), colors);
+    record.el.querySelector("img").src = tileCanvas.toDataURL();
+    record.el.classList.toggle("favorite", !!record.favorite);
+    record.el.classList.toggle("selected", !!record.selected);
+}
+
+function renderAllTiles() {
+    const colors = activeSchemeColors();
+    photos.forEach(record => renderPhotoTile(record, colors));
+}
+
+const GALLERY_SORTS = ["oldest", "newest", "favorites"];
+const GALLERY_SORT_KEY = "gallerySort";
+
+function getGallerySort() {
+    const select = document.getElementById("gallery-sort");
+    const raw = select ? select.value : readStored(GALLERY_SORT_KEY);
+    return GALLERY_SORTS.includes(raw) ? raw : "oldest";
+}
+
+function sortedPhotos() {
+    const mode = getGallerySort();
+    const list = photos.slice().sort((a, b) => mode === "newest" ? (b.created - a.created || b.id - a.id) : (a.created - b.created || a.id - b.id));
+    // Array.sort is stable, so favourites keep their age order
+    if (mode === "favorites") list.sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0));
+    return list;
+}
+
+function arrangeGallery() {
+    if (!gallery) return;
+    sortedPhotos().forEach((record, i) => {
+        if (gallery.children[i] !== record.el) gallery.insertBefore(record.el, gallery.children[i] || null);
+    });
+}
+
+// In the order they are on screen
+function displayedPhotos() {
+    return gallery ? Array.from(gallery.children).map(el => el.photo).filter(Boolean) : [];
+}
+
+function setupGallerySort() {
+    const select = document.getElementById("gallery-sort");
+    if (!select) return;
+    const stored = readStored(GALLERY_SORT_KEY);
+    select.value = GALLERY_SORTS.includes(stored) ? stored : "oldest";
+    safeAddEventListener(select, "change", () => {
+        writeStored(GALLERY_SORT_KEY, select.value);
+        arrangeGallery();
+    });
+}
+
+function togglePhotoFavorite(record) {
+    record.favorite = !record.favorite;
+    renderPhotoTile(record);
+    storePhoto(record);
+    arrangeGallery();
+}
+
+// ---- Selection ----
+
+let selectMode = false;
+
+function setSelectMode(on) {
+    selectMode = !!on;
+    if (!selectMode) {
+        photos.forEach((record) => {
+            if (record.selected) {
+                record.selected = false;
+                if (record.el) record.el.classList.remove("selected");
+            }
+        });
+    }
+    if (gallery) gallery.classList.toggle("selecting", selectMode);
+    updateSelectionBar();
+}
+
+function togglePhotoSelected(record) {
+    record.selected = !record.selected;
+    record.el.classList.toggle("selected", record.selected);
+    updateSelectionBar();
+}
+
+function selectAllPhotos() {
+    const all = photos.length > 0 && photos.every(r => r.selected);
+    photos.forEach((record) => {
+        record.selected = !all;
+        record.el.classList.toggle("selected", record.selected);
+    });
+    updateSelectionBar();
+}
+
+function selectedPhotos() {
+    return displayedPhotos().filter(r => r.selected);
+}
+
+function updateSelectionBar() {
+    const main = document.getElementById("toolbar-main");
+    const bar = document.getElementById("toolbar-select");
+    if (main) main.classList.toggle("hidden", selectMode);
+    const toolbar = document.getElementById("gallery-toolbar");
+    if (toolbar) toolbar.classList.toggle("selecting", selectMode);
+    if (bar) bar.classList.toggle("hidden", !selectMode);
+    if (!bar) return;
+    const count = photos.filter(r => r.selected).length;
+    const label = document.getElementById("selection-count");
+    if (label) label.textContent = `${count} selected`;
+    bar.querySelectorAll("[data-needs]").forEach((button) => {
+        button.disabled = count < parseInt(button.dataset.needs);
+    });
+    const all = document.getElementById("select-all-btn");
+    if (all) all.textContent = (count > 0 && count === photos.length) ? "None" : "All";
+}
+
+function saveSelectedPhotos() {
+    savePhotos(selectedPhotos());
+}
+
+function deleteSelectedPhotos() {
+    const selected = selectedPhotos();
+    if (!selected.length) return;
+    if (!confirm(selected.length === 1 ? "Delete this photo?" : `Delete ${selected.length} photos?`)) return;
+    removePhotos(selected);
+    if (!photos.length) setSelectMode(false);
+}
+
+function joinSelectedPhotos() {
+    const images = selectedPhotos().map(photoPixels);
+    if (images.length < 2) return;
+    if (images.some(image => image.width !== images[0].width)) {
+        showMessage("PHOTOS MUST BE THE SAME WIDTH TO JOIN<br><br><small>Rotate them the same way first</small>");
+        return;
+    }
+    addPhoto(stackImages(images));
+    setSelectMode(false);
+}
+
+function printSelectedPhotos() {
+    const images = selectedPhotos().map(photoPixels);
+    if (!images.length) return;
+    sendPhotosToPrinter(images);
+    setSelectMode(false);
+    setMode("printer");
+}
+
+function contactSheetSelected() {
+    saveContactSheet(selectedPhotos());
+}
+
+function animateSelectedPhotos() {
+    const records = selectedPhotos();
+    if (records.length < 2) return;
+    openAnimatePopup((format, delay) => {
+        const images = padImages(records.map(photoPixels));
+        const getFrame = (i) => ({ image: images[i], delay: delay });
+        if (format === "video") saveAnimationVideo(images.length, getFrame, "animation");
+        else saveAnimationGif(images.length, getFrame, "animation");
+    }, true);
+}
+
+// ---- Photo viewer ----
+
+function showPopupWithUpscaledImage(record) {
     // Create overlay
     const overlay = document.createElement("div");
     overlay.id = "image-popup-overlay";
     overlay.classList.add("popup-overlay");
 
-    // Create popup container
     const popup = document.createElement("div");
-    popup.classList.add("image-container");
-    // Ensure relative positioning for the close button
-    popup.style.position = "relative";
-    popup.style.display = "flex";
-    popup.style.flexDirection = "column";
-    popup.style.alignItems = "center";
-    popup.style.gap = "0";
-    popup.style.padding = "0";
-    popup.style.backgroundColor = "transparent"; // Remove weird background square
-    popup.style.borderRadius = "10px";
-    popup.style.boxSizing = "border-box";
-    popup.style.maxWidth = "90vw";
-    popup.style.maxHeight = "90vh";
-    popup.style.justifyContent = "center";
+    popup.classList.add("image-container", "viewer");
 
     // Show the upscaled photo as a real <img>, not a <canvas>: iOS only offers its
     // native long-press "Add to Photos" menu on images, and long-pressing a canvas
@@ -352,18 +979,21 @@ function showPopupWithUpscaledImage(image) {
     upscaled.classList.add("popup-image");
     upscaled.alt = "Game Boy Camera photo";
 
-    const setUpscaledSrc = (loaded) => {
-        try {
-            upscaled.src = renderPhotoDataUrl(loaded);
-        } catch (e) {
-            console.error("Upscale failed:", e);
-            upscaled.src = loaded.src;
-        }
-    };
-
     // The photo on screen; the arrows, arrow keys and swipes move it through the gallery
-    let current = image;
-    const galleryImages = () => Array.from(document.querySelectorAll(".gallery-image img"));
+    let current = record;
+    let showOriginal = false;
+
+    // A blob: URL rather than the data: URL itself. iOS (Safari and Chrome alike)
+    // offered the long-press "Save to Photos" menu only once per page load while
+    // the photo was a data: URL of the whole upscaled file; a blob: URL is the
+    // same bytes without the half-megabyte string.
+    let objectUrl = null;
+    const setPhotoSrc = (dataUrl) => {
+        const url = URL.createObjectURL(dataUrlToBlob(dataUrl));
+        upscaled.src = url;
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        objectUrl = url;
+    };
 
     const prevButton = document.createElement("button");
     prevButton.textContent = "<";
@@ -375,34 +1005,84 @@ function showPopupWithUpscaledImage(image) {
     nextButton.classList.add("popup-nav-button", "popup-nav-button--next");
     nextButton.setAttribute("aria-label", "Next photo");
 
-    const showImage = (img) => {
-        current = img;
-        if (img.complete && img.naturalWidth !== 0) {
-            setUpscaledSrc(img);
-        } else {
-            const loader = new Image();
-            loader.crossOrigin = "Anonymous"; // This enables CORS
-            loader.onload = function() {
-                if (current === img) setUpscaledSrc(loader);
-            };
-            loader.src = img.src;
+    const toolbar = document.createElement("div");
+    toolbar.className = "viewer-toolbar";
+    const tool = (text, label, onClick) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "viewer-btn";
+        b.textContent = text;
+        b.setAttribute("aria-label", label);
+        b.addEventListener("click", (e) => {
+            e.stopPropagation();
+            onClick();
+        });
+        toolbar.appendChild(b);
+        return b;
+    };
+
+    const showImage = (target) => {
+        current = target;
+        try {
+            setPhotoSrc(renderPhotoDataUrl(target, showOriginal ? GRAYSCALE : activeSchemeColors()));
+        } catch (e) {
+            console.error("Upscale failed:", e);
+            upscaled.src = target.el ? target.el.querySelector("img").src : "";
         }
-        const images = galleryImages();
-        const index = images.indexOf(img);
+        const list = displayedPhotos();
+        const index = list.indexOf(target);
         prevButton.classList.toggle("hidden", index <= 0);
-        nextButton.classList.toggle("hidden", index < 0 || index >= images.length - 1);
+        nextButton.classList.toggle("hidden", index < 0 || index >= list.length - 1);
+        favButton.classList.toggle("active", !!target.favorite);
     };
 
     const step = (delta) => {
-        const images = galleryImages();
-        const index = images.indexOf(current);
-        if (index >= 0 && images[index + delta]) showImage(images[index + delta]);
+        const list = displayedPhotos();
+        const index = list.indexOf(current);
+        if (index >= 0 && list[index + delta]) showImage(list[index + delta]);
     };
 
     prevButton.onclick = (e) => { e.stopPropagation(); step(-1); };
     nextButton.onclick = (e) => { e.stopPropagation(); step(1); };
 
-    showImage(image);
+    const edited = () => {
+        renderPhotoTile(current);
+        storePhoto(current);
+        showImage(current);
+    };
+
+    tool("ROTATE", "Rotate a quarter turn", () => {
+        current.rotation = (current.rotation + 1) % 4;
+        edited();
+    });
+    tool("FLIP", "Mirror left to right", () => {
+        // The flip is stored before the rotation; mirroring what is on screen
+        // reverses the turn as well
+        current.rotation = (4 - current.rotation) % 4;
+        current.flip = !current.flip;
+        edited();
+    });
+    const favButton = tool("FAVORITE", "Favorite", () => {
+        togglePhotoFavorite(current);
+        favButton.classList.toggle("active", !!current.favorite);
+    });
+    const originalButton = tool("ORIGINAL", "Compare with the original greys", () => {
+        showOriginal = !showOriginal;
+        originalButton.classList.toggle("active", showOriginal);
+        showImage(current);
+    });
+    tool("DELETE", "Delete photo", () => {
+        if (!confirm("Delete this photo?")) return;
+        const list = displayedPhotos();
+        const index = list.indexOf(current);
+        const next = list[index + 1] || list[index - 1];
+        removePhotos([current]);
+        if (next) showImage(next);
+        else closePopup();
+    });
+    tool("SAVE", "Save photo", () => downloadImage(current));
+
+    showImage(record);
     popup.appendChild(upscaled);
 
     // Point iOS users at the long-press route, which lands straight in Photos
@@ -412,35 +1092,7 @@ function showPopupWithUpscaledImage(image) {
         hint.textContent = "Touch and hold the photo to add it to Photos";
         popup.appendChild(hint);
     }
-
-    // Create save button as text at the bottom
-    const saveButton = document.createElement("button");
-    saveButton.textContent = "SAVE";
-    saveButton.style.background = "none";
-    saveButton.style.border = "none";
-    saveButton.style.color = "white";
-    saveButton.style.padding = "0"; // Remove horizontal padding as it's right aligned
-    saveButton.style.fontFamily = "inherit";
-    saveButton.style.fontSize = "1.2rem";
-    saveButton.style.marginTop = "20px";
-    saveButton.style.alignSelf = "flex-end";
-    saveButton.style.marginRight = "10px";
-    saveButton.style.cursor = "pointer";
-    saveButton.style.transition = "opacity 0.2s";
-
-    saveButton.onmouseover = () => {
-        saveButton.style.opacity = "0.8";
-        saveButton.style.textDecoration = "underline";
-    };
-    saveButton.onmouseout = () => {
-        saveButton.style.opacity = "1";
-        saveButton.style.textDecoration = "none";
-    };
-
-    saveButton.onclick = () => {
-        downloadImage(current);
-    };
-    popup.appendChild(saveButton);
+    popup.appendChild(toolbar);
 
     // Create close button
     const closeButton = document.createElement("button");
@@ -456,6 +1108,8 @@ function showPopupWithUpscaledImage(image) {
     const closePopup = () => {
         document.removeEventListener("keydown", onKey);
         overlay.remove();
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        objectUrl = null;
     };
 
     closeButton.onclick = closePopup;
@@ -481,43 +1135,21 @@ function showPopupWithUpscaledImage(image) {
     document.body.appendChild(overlay);
 }
 
-
 function updateButtonStates() {
-    const items = gallery.children;
-    let anyChecked = false;
-    for (let i = 0; i < items.length; i++) {
-        if (items[i].markedForAction) {
-            anyChecked = true;
-            break;
-        }
-    }
-    if (deleteSelectedBtn) deleteSelectedBtn.disabled = !anyChecked;
-    if (averageSelectedBtn) averageSelectedBtn.disabled = !anyChecked;
-    if (selectAllBtn) selectAllBtn.disabled = items.length === 0;
-
-    // Show "Save All" and color selector only if there are images
+    const count = photos.length;
     const colors = document.querySelector('.color-selector-container');
+    const toolbar = document.getElementById('gallery-toolbar');
     const saveAll = document.getElementById('save_all_btn');
     const description = document.getElementById('description');
 
     // The live view needs the palette picker too, and stands in for the empty-gallery hint
-    if (items.length > 0 || liveViewOpen()) {
-        if (description) description.classList.add('hidden');
-        if (colors) colors.classList.remove('hidden');
-    } else {
-        if (description) description.classList.remove('hidden');
-        if (colors) colors.classList.add('hidden');
-    }
-
-    // "Save All" button should be visible only if there are two or more images.
-    // Never on iOS: see saveAllSupported().
-    if (saveAll) {
-        if (items.length >= 2 && saveAllSupported()) {
-            saveAll.classList.remove('hidden');
-        } else {
-            saveAll.classList.add('hidden');
-        }
-    }
+    const showTools = count > 0 || liveViewOpen();
+    if (description) description.classList.toggle('hidden', showTools);
+    if (colors) colors.classList.toggle('hidden', !showTools);
+    if (toolbar) toolbar.classList.toggle('hidden', count === 0);
+    // One file per photo was hopeless on iOS (a save prompt each); it is a single ZIP now
+    if (saveAll) saveAll.classList.toggle('hidden', count < 2);
+    if (count === 0 && selectMode) setSelectMode(false);
 }
 
 function makeFileName(suffix, ext = PHOTO_FORMATS[getPhotoFormat()].extension, prefix = "image") {
@@ -534,18 +1166,10 @@ const DEFAULT_PHOTO_SCALE = 10;
 const PHOTO_SCALE_KEY = "photoScale";
 
 function getPhotoScale() {
-    let raw = null;
     // A select that has not been rendered yet, or storage blocked in private
     // mode, must not break saving -- fall back to the default.
     const select = document.getElementById("photoScale");
-    if (select) {
-        raw = select.value;
-    } else {
-        try {
-            raw = localStorage.getItem(PHOTO_SCALE_KEY);
-        } catch (e) { /* storage unavailable */ }
-    }
-
+    const raw = select ? select.value : readStored(PHOTO_SCALE_KEY);
     const scale = parseInt(raw, 10);
     return PHOTO_SCALES.includes(scale) ? scale : DEFAULT_PHOTO_SCALE;
 }
@@ -553,20 +1177,9 @@ function getPhotoScale() {
 function setupPhotoScaleSelector() {
     const select = document.getElementById("photoScale");
     if (!select) return;
-
-    let stored = null;
-    try {
-        stored = localStorage.getItem(PHOTO_SCALE_KEY);
-    } catch (e) { /* storage unavailable */ }
-
-    const scale = parseInt(stored, 10);
+    const scale = parseInt(readStored(PHOTO_SCALE_KEY), 10);
     select.value = String(PHOTO_SCALES.includes(scale) ? scale : DEFAULT_PHOTO_SCALE);
-
-    safeAddEventListener(select, "change", () => {
-        try {
-            localStorage.setItem(PHOTO_SCALE_KEY, select.value);
-        } catch (e) { /* storage unavailable */ }
-    });
+    safeAddEventListener(select, "change", () => writeStored(PHOTO_SCALE_KEY, select.value));
 }
 
 // File format photos are saved in. Both carry the camera tags below; PNG is
@@ -579,38 +1192,41 @@ const DEFAULT_PHOTO_FORMAT = "jpeg";
 const PHOTO_FORMAT_KEY = "photoFormat";
 
 function getPhotoFormat() {
-    let raw = null;
     // Same fallbacks as getPhotoScale(): an unrendered select or blocked storage
     // must not break saving.
     const select = document.getElementById("photoFormat");
-    if (select) {
-        raw = select.value;
-    } else {
-        try {
-            raw = localStorage.getItem(PHOTO_FORMAT_KEY);
-        } catch (e) { /* storage unavailable */ }
-    }
-
+    const raw = select ? select.value : readStored(PHOTO_FORMAT_KEY);
     return Object.prototype.hasOwnProperty.call(PHOTO_FORMATS, raw) ? raw : DEFAULT_PHOTO_FORMAT;
 }
 
 function setupPhotoFormatSelector() {
     const select = document.getElementById("photoFormat");
     if (!select) return;
+    const stored = readStored(PHOTO_FORMAT_KEY);
+    select.value = Object.prototype.hasOwnProperty.call(PHOTO_FORMATS, stored) ? stored : DEFAULT_PHOTO_FORMAT;
+    safeAddEventListener(select, "change", () => writeStored(PHOTO_FORMAT_KEY, select.value));
+}
 
-    let stored = null;
-    try {
-        stored = localStorage.getItem(PHOTO_FORMAT_KEY);
-    } catch (e) { /* storage unavailable */ }
+// How "Save All" hands over several photos: one ZIP file, or a download each
+const SAVE_ALL_MODES = ["zip", "files"];
+const SAVE_ALL_MODE_KEY = "saveAllMode";
 
-    select.value = Object.prototype.hasOwnProperty.call(PHOTO_FORMATS, stored)
-        ? stored : DEFAULT_PHOTO_FORMAT;
+function getSaveAllMode() {
+    // A download per photo means a save prompt per photo on iOS
+    if (isAppleMobile()) return "zip";
+    const select = document.getElementById("saveAllMode");
+    const raw = select ? select.value : readStored(SAVE_ALL_MODE_KEY);
+    return SAVE_ALL_MODES.includes(raw) ? raw : "zip";
+}
 
-    safeAddEventListener(select, "change", () => {
-        try {
-            localStorage.setItem(PHOTO_FORMAT_KEY, select.value);
-        } catch (e) { /* storage unavailable */ }
-    });
+function setupSaveAllModeSelector() {
+    const select = document.getElementById("saveAllMode");
+    const block = document.getElementById("save-all-mode-block");
+    if (block && isAppleMobile()) block.classList.add("hidden");
+    if (!select) return;
+    const stored = readStored(SAVE_ALL_MODE_KEY);
+    select.value = SAVE_ALL_MODES.includes(stored) ? stored : "zip";
+    safeAddEventListener(select, "change", () => writeStored(SAVE_ALL_MODE_KEY, select.value));
 }
 
 // The camera tags stamped into every saved photo, whatever the format.
@@ -630,23 +1246,6 @@ function buildExifPayload() {
     zeroth[piexif.ImageIFD.Model] = PHOTO_METADATA.model;
     zeroth[piexif.ImageIFD.Software] = PHOTO_METADATA.software;
     return piexif.dump({"0th": zeroth});
-}
-
-let crcTable = null;
-
-function crc32(bytes) {
-    if (!crcTable) {
-        crcTable = new Uint32Array(256);
-        for (let n = 0; n < 256; n++) {
-            let c = n;
-            for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-            crcTable[n] = c >>> 0;
-        }
-    }
-
-    let crc = 0xFFFFFFFF;
-    for (let i = 0; i < bytes.length; i++) crc = crcTable[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
-    return (crc ^ 0xFFFFFFFF) >>> 0;
 }
 
 // length + 4-char type + payload + CRC over type and payload.
@@ -708,23 +1307,24 @@ function insertPngMetadata(bytes) {
     return out;
 }
 
-// Render an <img> from the gallery to an upscaled, tagged data URL in the chosen
-// format. Synchronous on purpose: it must not consume the user gesture, or iOS
-// refuses to open the share sheet / start a download.
-function renderPhotoDataUrl(img) {
-    const width = img.naturalWidth || img.width;
-    const height = img.naturalHeight || img.height;
-    const scale = getPhotoScale();
+const scaleSource = document.createElement("canvas");
+
+// Shades painted in `colors`, nearest-neighbour upscaled
+function scaledPhotoCanvas(image, colors, scale) {
+    paintPixels(scaleSource, image, colors);
+    const canvas = document.createElement("canvas");
+    canvas.width = image.width * scale;
+    canvas.height = image.height * scale;
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(scaleSource, 0, 0, canvas.width, canvas.height);
+    return canvas;
+}
+
+// A canvas as a tagged data URL in the chosen format
+function encodePhotoCanvas(canvas) {
     const format = getPhotoFormat();
     const mime = PHOTO_FORMATS[format].mime;
-
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    canvas.width = width * scale;
-    canvas.height = height * scale;
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(img, 0, 0, width, height, 0, 0, canvas.width, canvas.height);
-
     const dataUrl = canvas.toDataURL(mime, 1.0);
 
     // Tagging is a nicety; a failure here must still leave a saveable photo.
@@ -741,6 +1341,13 @@ function renderPhotoDataUrl(img) {
     return dataUrl;
 }
 
+// A photo as an upscaled, tagged data URL in the chosen format. Synchronous on
+// purpose: it must not consume the user gesture, or iOS refuses to open the share
+// sheet / start a download.
+function renderPhotoDataUrl(record, colors = activeSchemeColors()) {
+    return encodePhotoCanvas(scaledPhotoCanvas(photoPixels(record), colors, getPhotoScale()));
+}
+
 function dataUrlToBytes(dataUrl) {
     const binary = atob(dataUrl.slice(dataUrl.indexOf(',') + 1));
     const bytes = new Uint8Array(binary.length);
@@ -749,13 +1356,7 @@ function dataUrlToBytes(dataUrl) {
 }
 
 function bytesToDataUrl(bytes, mime) {
-    // btoa takes a string, and spreading a whole megapixel PNG into one
-    // fromCharCode call overflows the argument limit -- convert in slices.
-    let binary = "";
-    for (let i = 0; i < bytes.length; i += 0x8000) {
-        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-    }
-    return `data:${mime};base64,${btoa(binary)}`;
+    return `data:${mime};base64,${bytesToBase64(bytes)}`;
 }
 
 function dataUrlToBlob(dataUrl) {
@@ -764,9 +1365,9 @@ function dataUrlToBlob(dataUrl) {
     return new Blob([dataUrlToBytes(dataUrl)], { type: mime });
 }
 
-function renderPhotoFile(img, suffix) {
+function renderPhotoFile(record, suffix) {
     const name = makeFileName(suffix);
-    const blob = dataUrlToBlob(renderPhotoDataUrl(img));
+    const blob = dataUrlToBlob(renderPhotoDataUrl(record));
     return new File([blob], name, { type: blob.type });
 }
 
@@ -778,14 +1379,6 @@ function canShareFiles(files) {
     return typeof navigator.canShare === "function" &&
            typeof navigator.share === "function" &&
            navigator.canShare({ files: files });
-}
-
-// Saving many files at once is only sane when they can go out as one share batch.
-// On iOS each file instead becomes a separate download, so Safari/Chrome throw up
-// their own save-destination prompt per photo — hide the button rather than walk
-// the user through N dialogs. Single SAVE and long-press still work.
-function saveAllSupported() {
-    return !isAppleMobile();
 }
 
 // iOS/iPadOS ignores the `download` attribute and blocks navigation to data: URLs,
@@ -818,129 +1411,83 @@ function saveFiles(files) {
     return Promise.resolve();
 }
 
-function downloadImage(image) {
-    downloadIndex += 1;
-
-    if (image.complete && image.naturalWidth !== 0) {
-        return saveFiles([renderPhotoFile(image)]);
-    }
-
-    // Not decoded yet — the gesture is lost by the time it loads, so the share
-    // sheet is unavailable and we go straight to a blob download.
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.crossOrigin = "Anonymous";
-        img.onload = function () {
-            downloadViaLink(renderPhotoFile(img));
-            resolve();
-        };
-        img.onerror = resolve;
-        img.src = image.src;
-    });
+function downloadImage(record) {
+    return saveFiles([renderPhotoFile(record)]);
 }
 
+function saveAllPictures() {
+    savePhotos(displayedPhotos());
+}
 
-safeAddEventListener(getImageBtn, "click", async function() {
-    await get_camera_image(canvas, imageBinPath);
-});
-
-safeAddEventListener(selectAllBtn, "click", function() {
-    var items = gallery.children;
-    if (items.length != 0) {
-        Array.from(items).forEach(item => {
-            const input = item.querySelector("input[type='checkbox']");
-            if (input) {
-                input.checked = true;
-                item.markedForAction = true;
-            }
-        });
-        if (deleteSelectedBtn) deleteSelectedBtn.disabled = false;
-        if (averageSelectedBtn) averageSelectedBtn.disabled = false;
-    } else {
-        if (deleteSelectedBtn) deleteSelectedBtn.disabled = true;
-        if (averageSelectedBtn) averageSelectedBtn.disabled = false;
+async function savePhotos(records) {
+    if (!records.length) return;
+    if (records.length === 1) {
+        downloadImage(records[0]);
+        return;
     }
-});
 
-safeAddEventListener(deleteSelectedBtn, "click", function() {
-    var items = gallery.children;
-    for (var i = items.length - 1; i >= 0; i--) {
-        if (items[i].markedForAction) items[i].remove();
-    }
-    updateButtonStates();
-});
-
-safeAddEventListener(tearBtn, "click", async function() {
-    fetch(resetPath)
-        .then((response) => {
-            return response.json();
-        })
-        .then((data) => {
-            if (data.result != "ok") return;
-            else {
-                var items = gallery.children;
-                for (var i = items.length - 1; i >= 0; i--) {
-                    items[i].remove();
-                }
-                updateButtonStates();
-            };
-            if (getImageBtn) getImageBtn.click();
-        });
-
-});
-
-safeAddEventListener(averageSelectedBtn, "click", function() {
-    const items = gallery.children;
-
-    const avgCanvas = document.createElement('canvas');
-    const avgCtx = avgCanvas.getContext('2d');
-
-    const tmpCanvas = document.createElement('canvas');
-    const tmpCtx = tmpCanvas.getContext('2d');
-
-    // Verify that image dimensions are the same
-    const firstImg = items[0].querySelector("img");
-    const tmpW = firstImg.width;
-    const tmpH = firstImg.height;
-    for (let i = 1; i < items.length; i++) {
-        const img = items[i].querySelector("img");
-        if (tmpW != img.width || tmpH != img.height) {
-            alert("Image dimensions should be the same to do an average");
+    // The share sheet (https only) takes them all at once and lands in Photos.
+    // Render everything up front, still inside the click handler: iOS allows only
+    // one share per user gesture.
+    if (typeof navigator.canShare === "function") {
+        const files = records.map((record, index) => renderPhotoFile(record, String(index + 1).padStart(2, '0')));
+        if (canShareFiles(files)) {
+            saveFiles(files);
             return;
         }
     }
 
-    tmpCanvas.width = tmpW;
-    tmpCanvas.height = tmpH;
+    showGeneralPopup();
+    if (getSaveAllMode() === "files") {
+        records.forEach((record, index) => {
+            setTimeout(() => {
+                updateGeneralPopup(`SAVING PHOTO ${index + 1}/${records.length}`, index === records.length - 1);
+                downloadViaLink(renderPhotoFile(record, String(index + 1).padStart(2, '0')));
+            }, 500 * index);
+        });
+        return;
+    }
 
-    avgCanvas.width = tmpW;
-    avgCanvas.height = tmpH;
+    const entries = [];
+    for (let i = 0; i < records.length; i++) {
+        updateGeneralPopup(`PACKING PHOTO ${i + 1}/${records.length}`, false);
+        await sleep(0); // let the popup paint
+        entries.push({
+            name: makeFileName(String(i + 1).padStart(2, '0')),
+            data: dataUrlToBytes(renderPhotoDataUrl(records[i])),
+            date: new Date(records[i].created)
+        });
+    }
+    const zip = buildZip(entries);
+    downloadViaLink(new File([zip], makeFileName(null, "zip", "photos"), { type: "application/zip" }));
+    updateGeneralPopup(`SAVED ${records.length} PHOTOS<br><br><small>in one ZIP file</small>`, true);
+}
 
-    const sumImgData = [];
-    const avgImgData = avgCtx.createImageData(avgCanvas.width, avgCanvas.height);
-    let selectedItems = 0;
-    // Generate average image
-    for (let i = items.length - 1; i >= 0; i--) {
-        if (items[i].markedForAction) {
-            selectedItems++;
-            const item = items[i];
-            const img = item.querySelector("img");
-            tmpCtx.drawImage(img, 0, 0);
-            const tmpImgData = tmpCtx.getImageData(0, 0, tmpCanvas.width, tmpCanvas.height);
-            for (let j = 0; j < tmpImgData.data.length; j += 1) {
-                if (!sumImgData[j]) {
-                    sumImgData.push(0);
-                }
-                sumImgData[j] += tmpImgData.data[j];
-            }
+// Every photo on one page, darkest shade between them like a film contact sheet
+function saveContactSheet(records) {
+    if (!records.length) return;
+    const images = records.map(photoPixels);
+    const GAP = 8;
+    const cellW = Math.max(...images.map(i => i.width));
+    const cellH = Math.max(...images.map(i => i.height));
+    const cols = Math.ceil(Math.sqrt(images.length));
+    const rows = Math.ceil(images.length / cols);
+    const width = cols * cellW + (cols + 1) * GAP;
+    const height = rows * cellH + (rows + 1) * GAP;
+    const pixels = new Uint8Array(width * height).fill(3);
+    images.forEach((image, i) => {
+        const x0 = GAP + (i % cols) * (cellW + GAP) + Math.floor((cellW - image.width) / 2);
+        const y0 = GAP + Math.floor(i / cols) * (cellH + GAP) + Math.floor((cellH - image.height) / 2);
+        for (let y = 0; y < image.height; y++) {
+            pixels.set(image.pixels.subarray(y * image.width, (y + 1) * image.width), (y0 + y) * width + x0);
         }
-    }
-    for (let i = 0; i < avgImgData.data.length; i += 1) {
-        avgImgData.data[i] = (sumImgData[i] / selectedItems);
-    }
-    avgCtx.putImageData(avgImgData, 0, 0);
-    addCanvasToGallery(avgCanvas);
-});
+    });
+    // Big enough to print, small enough for any phone to open
+    const scale = Math.max(1, Math.min(getPhotoScale(), Math.floor(4096 / Math.max(width, height))));
+    const dataUrl = encodePhotoCanvas(scaledPhotoCanvas({ width, height, pixels }, activeSchemeColors(), scale));
+    const blob = dataUrlToBlob(dataUrl);
+    saveFiles([new File([blob], makeFileName(null, PHOTO_FORMATS[getPhotoFormat()].extension, "contact_sheet"), { type: blob.type })]);
+}
 
 // auto fetch images
 var fetch_skip = false;
@@ -953,20 +1500,12 @@ function setReceiveOverlay(visible) {
     if (visible === receiveOverlayVisible) return;
     receiveOverlayVisible = visible;
     const overlay = document.getElementById("receive-overlay");
-    if (overlay) {
-        if (visible) {
-            overlay.classList.remove("hidden");
-            overlay.style.display = "flex";
-        } else {
-            overlay.classList.add("hidden");
-            overlay.style.display = "none";
-        }
-    }
+    if (overlay) overlay.classList.toggle("hidden", !visible);
 }
 
 async function is_receiving() {
     try {
-        const res = await fetch('/status.json', { cache: "no-store" });
+        const res = await fetchWithTimeout('/status.json', 5000);
         if (!res.ok) return false;
         const data = await res.json();
         return data && data.status && data.status.receiving === 1;
@@ -990,7 +1529,12 @@ async function periodic_fetch() {
         const receiving = live ? false : await is_receiving();
         if (receiving) setReceiveOverlay(true);
 
-        const fetch_ok = await get_camera_image(canvas, imageBinPath);
+        const fetch_ok = await get_camera_image();
+
+        // A long print whose next part never came is a photo of its own
+        if (!fetch_ok && !receiving && pendingPrint && (Date.now() - pendingPrint.time) > PENDING_PRINT_MS) {
+            flushPendingPrint();
+        }
 
         // Hide the loader only after the finished photo has been fetched/rendered
         if (!receiving || liveStreaming()) setReceiveOverlay(false);
@@ -1023,7 +1567,7 @@ const LIVE_DEFAULT_DELAY_MS = 100;
 let liveFrames = [];              // { tiles: Uint8Array, time: ms }
 let liveUnsaved = false;
 let liveIdleTimer = null;
-let lastTransferPhoto = null;     // { item, tiles, time } of the latest plain Transfer
+let lastTransferPhoto = null;     // { record, tiles, time } of the latest plain Transfer
 
 function liveViewOpen() {
     const view = document.getElementById("live-view");
@@ -1046,8 +1590,8 @@ function liveStreaming() {
     return liveFrames.length > 0 && (Date.now() - liveFrames[liveFrames.length - 1].time) < liveIdleTimeout();
 }
 
-function rememberTransferPhoto(item, tiles) {
-    lastTransferPhoto = item ? { item: item, tiles: tiles, time: Date.now() } : null;
+function rememberTransferPhoto(record, tiles) {
+    lastTransferPhoto = record ? { record: record, tiles: tiles, time: Date.now() } : null;
 }
 
 function addLiveFrame(tiles) {
@@ -1057,7 +1601,7 @@ function addLiveFrame(tiles) {
     // The adapter can only tell a REC stream from a single Transfer once the second
     // frame arrives, so the first one landed in the gallery: move it over here.
     if (liveFrames.length === 0 && lastTransferPhoto && (now - lastTransferPhoto.time) < LIVE_FIRST_FRAME_MS) {
-        lastTransferPhoto.item.remove();
+        removePhotos([lastTransferPhoto.record]);
         liveFrames.push({ tiles: lastTransferPhoto.tiles, time: lastTransferPhoto.time });
     }
     lastTransferPhoto = null;
@@ -1095,12 +1639,6 @@ function decodeTilePixels(tiles, tileWidth) {
         }
     }
     return { width: width, height: height, pixels: pixels };
-}
-
-// The four colours of the selected palette, lightest first (palette index order)
-function activeSchemeColors() {
-    const scheme = document.querySelector(".color-circle.active")?.dataset.scheme;
-    return Object.values(pocketCameraPalettes[scheme] || pocketCameraPalettes["grayscale"]);
 }
 
 function paintPixels(canvas, image, colors) {
@@ -1145,46 +1683,32 @@ function updateLiveStatus() {
 // Copy the frame on screen into the gallery as an ordinary photo
 function saveLiveFrame() {
     if (liveFrames.length === 0) return;
-    const frameCanvas = document.createElement("canvas");
-    // Canonical greys, like every gallery photo: the gallery applies the palette itself
-    paintPixels(frameCanvas, decodeTilePixels(liveFrames[liveFrames.length - 1].tiles, CAMERA_WIDTH),
-                Object.values(pocketCameraPalettes["grayscale"]));
-    addCanvasToGallery(frameCanvas);
+    addPhoto(decodeTilePixels(liveFrames[liveFrames.length - 1].tiles, CAMERA_WIDTH));
+}
+
+// The recording with its real timing; the last frame holds for as long as the one before it
+function liveAnimation() {
+    const frames = liveFrames.slice();
+    return {
+        count: frames.length,
+        getFrame: (i) => {
+            const delay = (i + 1 < frames.length) ? frames[i + 1].time - frames[i].time
+                : (frames.length > 1 ? frames[i].time - frames[i - 1].time : LIVE_DEFAULT_DELAY_MS);
+            return { image: decodeTilePixels(frames[i].tiles, CAMERA_WIDTH), delay: delay };
+        }
+    };
 }
 
 function saveLiveVideo() {
     if (liveFrames.length === 0) return;
-    const frames = liveFrames.slice();
-    const colors = activeSchemeColors();
-    const scale = Math.min(getPhotoScale(), LIVE_GIF_MAX_SCALE);
+    const live = liveAnimation();
+    saveAnimationGif(live.count, live.getFrame, "video", () => { liveUnsaved = false; });
+}
 
-    showGeneralPopup();
-    updateGeneralPopup("ENCODING GIF", false);
-    // Let the popup paint before the encoder holds the main thread. The share sheet
-    // is out of reach over plain http anyway (see canShareFiles), so losing the
-    // click gesture here costs nothing.
-    setTimeout(() => {
-        try {
-            const first = decodeTilePixels(frames[0].tiles, CAMERA_WIDTH);
-            let lastDelay = LIVE_DEFAULT_DELAY_MS;
-            const gif = encodeGif(first.width * scale, first.height * scale, colors, frames.length, (i) => {
-                // Real timing; the last frame holds for as long as the one before it
-                const delay = (i + 1 < frames.length) ? frames[i + 1].time - frames[i].time : lastDelay;
-                lastDelay = delay;
-                return {
-                    pixels: scalePixels(decodeTilePixels(frames[i].tiles, CAMERA_WIDTH), scale),
-                    delay: Math.max(2, Math.round(delay / 10))
-                };
-            });
-            const name = makeFileName(null, "gif", "video");
-            saveFiles([new File([gif], name, { type: "image/gif" })]);
-            liveUnsaved = false;
-            closeGeneralPopup();
-        } catch (e) {
-            console.error("GIF export failed:", e);
-            updateGeneralPopup("COULD NOT SAVE THE GIF", true);
-        }
-    }, 50);
+function saveLiveMovie() {
+    if (liveFrames.length === 0) return;
+    const live = liveAnimation();
+    saveAnimationVideo(live.count, live.getFrame, "video", () => { liveUnsaved = false; });
 }
 
 function closeLiveView() {
@@ -1210,6 +1734,140 @@ function scalePixels(image, scale) {
         for (let r = 1; r < scale; r++) out.copyWithin(rowStart + r * width, rowStart, rowStart + width);
     }
     return out;
+}
+
+// getFrame(i) returns { image, delay } with the delay in ms
+function saveAnimationGif(count, getFrame, prefix, onDone) {
+    const colors = activeSchemeColors();
+    const scale = Math.min(getPhotoScale(), LIVE_GIF_MAX_SCALE);
+
+    showGeneralPopup();
+    updateGeneralPopup("ENCODING GIF", false);
+    // Let the popup paint before the encoder holds the main thread. The share sheet
+    // is out of reach over plain http anyway (see canShareFiles), so losing the
+    // click gesture here costs nothing.
+    setTimeout(() => {
+        try {
+            const first = getFrame(0).image;
+            const gif = encodeGif(first.width * scale, first.height * scale, colors, count, (i) => {
+                const frame = getFrame(i);
+                return {
+                    pixels: scalePixels(frame.image, scale),
+                    delay: Math.max(2, Math.round(frame.delay / 10))
+                };
+            });
+            const name = makeFileName(null, "gif", prefix);
+            saveFiles([new File([gif], name, { type: "image/gif" })]);
+            if (onDone) onDone();
+            closeGeneralPopup();
+        } catch (e) {
+            console.error("GIF export failed:", e);
+            updateGeneralPopup("COULD NOT SAVE THE GIF", true);
+        }
+    }, 50);
+}
+
+// MP4 where the browser can record it (Safari, recent Chrome), WebM otherwise
+function videoMimeType() {
+    if (typeof MediaRecorder === "undefined" || typeof HTMLCanvasElement.prototype.captureStream !== "function") return null;
+    const types = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+    return types.find(t => {
+        try {
+            return MediaRecorder.isTypeSupported(t);
+        } catch (e) {
+            return false;
+        }
+    }) || null;
+}
+
+// Plays the frames on a canvas and records it, so it takes as long as the clip
+async function saveAnimationVideo(count, getFrame, prefix, onDone) {
+    const mime = videoMimeType();
+    if (!mime) {
+        showMessage("THIS BROWSER CANNOT RECORD VIDEO<br><br><small>Save a GIF instead</small>");
+        return;
+    }
+    const colors = activeSchemeColors();
+    const first = getFrame(0).image;
+    // Video codecs smear single pixels, so never record at 1x
+    const scale = Math.max(2, Math.min(4, getPhotoScale()));
+    const canvas = document.createElement("canvas");
+    canvas.width = first.width * scale;
+    canvas.height = first.height * scale;
+    canvas.className = "video-preview";
+    const ctx = canvas.getContext("2d");
+    const draw = (image) => {
+        paintPixels(scaleSource, image, colors);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(scaleSource, 0, 0, canvas.width, canvas.height);
+    };
+    draw(first);
+
+    showGeneralPopup();
+    updateGeneralPopup("RECORDING VIDEO<br><br><small id=\"video-progress\"></small>", true);
+    // Shown while recording: some browsers only capture a canvas that is on the page
+    const content = document.querySelector(".general-popup-content");
+    if (content) content.appendChild(canvas);
+    const popup = document.getElementById("general-popup");
+    const cancelled = () => !popup || popup.classList.contains("hidden");
+
+    let recorder, stream;
+    const chunks = [];
+    try {
+        stream = canvas.captureStream(30);
+        recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 5000000 });
+    } catch (e) {
+        console.error("Video recording failed:", e);
+        updateGeneralPopup("COULD NOT RECORD THE VIDEO", true);
+        return;
+    }
+    recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    const stopped = new Promise(resolve => { recorder.onstop = resolve; });
+    recorder.start(500);
+
+    for (let i = 0; i < count && !cancelled(); i++) {
+        const frame = getFrame(i);
+        draw(frame.image);
+        const progress = document.getElementById("video-progress");
+        if (progress) progress.textContent = `Frame ${i + 1} of ${count}`;
+        await sleep(Math.max(33, frame.delay));
+    }
+    recorder.stop();
+    await stopped;
+    stream.getTracks().forEach(track => track.stop());
+    if (cancelled()) return;
+
+    const type = mime.split(";")[0];
+    const ext = type === "video/mp4" ? "mp4" : "webm";
+    saveFiles([new File([new Blob(chunks, { type })], makeFileName(null, ext, prefix), { type })]);
+    if (onDone) onDone();
+    updateGeneralPopup(`VIDEO SAVED<br><br><small>${ext.toUpperCase()}</small>`, true);
+}
+
+let animateCallback = null;
+
+function openAnimatePopup(onSave, withSpeed) {
+    animateCallback = onSave;
+    const popup = document.getElementById("animate-popup");
+    const speed = document.getElementById("animate-speed-block");
+    if (speed) speed.classList.toggle("hidden", !withSpeed);
+    const videoOption = document.querySelector('#animate-format option[value="video"]');
+    if (videoOption) videoOption.disabled = !videoMimeType();
+    const format = document.getElementById("animate-format");
+    if (format && format.value === "video" && !videoMimeType()) format.value = "gif";
+    if (popup) popup.classList.remove("hidden");
+}
+
+function closeAnimatePopup() {
+    const popup = document.getElementById("animate-popup");
+    if (popup) popup.classList.add("hidden");
+}
+
+function exportAnimation() {
+    const format = document.getElementById("animate-format");
+    const delay = document.getElementById("animate-delay");
+    closeAnimatePopup();
+    if (animateCallback) animateCallback(format ? format.value : "gif", delay ? parseInt(delay.value) || 200 : 200);
 }
 
 class ByteWriter {
@@ -1343,182 +2001,6 @@ function writeGifLzw(out, pixels) {
     out.byte(0); // block terminator
 }
 
-window.saveLiveVideo = saveLiveVideo;
-window.saveLiveFrame = saveLiveFrame;
-window.closeLiveView = closeLiveView;
-
-const pocketCameraPalettes = {
-    "grayscale": {
-        "#ffffff": [255, 255, 255],
-        "#bfbfbf": [191, 191, 191],
-        "#7f7f7f": [127, 127, 127],
-        "#3f3f3f": [63, 63, 63]
-    },
-    "game-boy": {
-        "#ffffff": [208, 217, 60],
-        "#bfbfbf": [120, 164, 106],
-        "#7f7f7f": [84, 88, 84],
-        "#3f3f3f": [36, 70, 36]
-    },
-    "super-game-boy": {
-        "#ffffff": [255, 255, 255],
-        "#bfbfbf": [181, 179, 189],
-        "#7f7f7f": [84, 83, 103],
-        "#3f3f3f": [9, 7, 19]
-    },
-    "game-boy-color-jpn": {
-        "#ffffff": [240, 240, 240],
-        "#bfbfbf": [218, 196, 106],
-        "#7f7f7f": [112, 88, 52],
-        "#3f3f3f": [30, 30, 30]
-    },
-    "game-boy-color-usa-gold": {
-        "#ffffff": [240, 240, 240],
-        "#bfbfbf": [220, 160, 160],
-        "#7f7f7f": [136, 78, 78],
-        "#3f3f3f": [30, 30, 30]
-    },
-    "game-boy-color-usa-eur": {
-        "#ffffff": [240, 240, 240],
-        "#bfbfbf": [134, 200, 100],
-        "#7f7f7f": [58, 96, 132],
-        "#3f3f3f": [30, 30, 30]
-    }
-};
-
-// Map reverse colors back to grayscale before applying a new scheme.
-// Keyed by "r,g,b" — cheap to build per pixel (no JSON.stringify in the hot loop).
-const reverseColorMapping = {};
-Object.keys(pocketCameraPalettes).forEach(scheme => {
-    Object.entries(pocketCameraPalettes[scheme]).forEach(([grayHex, rgb]) => {
-        reverseColorMapping[rgb.join(",")] = grayHex;
-    });
-});
-
-function applyColorScheme(scheme) {
-    const selectedPalette = pocketCameraPalettes[scheme];
-    if (!selectedPalette) return;
-
-    const images = document.querySelectorAll(".gallery-image img");
-
-    images.forEach(img => {
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        ctx.drawImage(img, 0, 0);
-
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
-
-        for (let i = 0; i < data.length; i += 4) {
-            const rgbKey = data[i] + "," + data[i + 1] + "," + data[i + 2];
-            const grayHex = reverseColorMapping[rgbKey] || rgbToHex(data[i], data[i + 1], data[i + 2]);
-
-            const newColor = selectedPalette[grayHex];
-            if (newColor) {
-                data[i] = newColor[0];
-                data[i + 1] = newColor[1];
-                data[i + 2] = newColor[2];
-            }
-        }
-
-        ctx.putImageData(imageData, 0, 0);
-        img.src = canvas.toDataURL();
-    });
-
-    redrawLiveView();
-}
-
-// Convert RGB values to HEX string
-function rgbToHex(r, g, b) {
-    return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
-}
-
-function parseScheme() {
-    console.log("parseScheme");
-
-    // Retrieve last selected scheme or default to grayscale
-    const savedScheme = localStorage.getItem("selectedColorScheme") || "grayscale";
-
-    // Find the corresponding color circle
-    const selectedCircle = document.querySelector(`.color-circle[data-scheme="${savedScheme}"]`);
-
-    if (selectedCircle) {
-        // clear any other selection (e.g. the hardcoded default in index.html),
-        // otherwise two circles can show as active at once
-        document.querySelectorAll(".color-circle.active").forEach(c => c.classList.remove("active"));
-        selectedCircle.classList.add("active");
-    }
-
-    console.log("applyColorScheme", savedScheme);
-    applyColorScheme(savedScheme);
-}
-
-function renderExtraViews() {
-    const description = document.getElementById("description");
-    if (description) {
-        description.classList.add("hidden");
-        console.log("Description hidden as gallery is not empty.");
-    }
-
-    const colors = document.getElementById("color-selector");
-    if (colors) {
-        colors.classList.remove("hidden");
-        console.log("Colors visible as gallery is not empty.");
-    }
-
-    const saveAll = document.getElementById("save_all_btn");
-    if (saveAll && saveAllSupported()) {
-        saveAll.classList.remove("hidden");
-    }
-}
-
-// Color scheme selector handler
-function setupColorSchemeSelector() {
-    document.querySelectorAll(".color-circle").forEach(circle => {
-        circle.onclick = () => {
-            // Remove active class from all circles
-            document.querySelectorAll(".color-circle").forEach(c => c.classList.remove("active"));
-
-            // Add active class to clicked circle
-            circle.classList.add("active");
-
-            // Store the selected scheme in localStorage
-            localStorage.setItem("selectedColorScheme", circle.dataset.scheme);
-
-            // Apply color scheme
-            applyColorScheme(circle.dataset.scheme);
-        };
-    });
-}
-
-// Function to observe changes in the gallery container
-function observeGalleryChanges() {
-    const gallery = document.getElementById("gallery");
-
-    if (!gallery) return;
-
-    let timeout = null; // Timeout variable to delay execution
-
-    const observer = new MutationObserver(() => {
-        // Clear any previous timeout to prevent multiple triggers
-        clearTimeout(timeout);
-
-        // Set a delay of 1 second (1000ms) before applying the color scheme
-        timeout = setTimeout(() => {
-            console.log("Gallery updated! Applying color scheme...");
-            const activeScheme = document.querySelector(".color-circle.active")?.dataset.scheme || "grayscale";
-            applyColorScheme(activeScheme);
-        }, 200);
-    });
-
-    observer.observe(gallery, {
-        childList: true
-    });
-}
-
 function isNewerVersion(latest, current) {
     const latestParts = latest.replace(/^v/, '').split('.').map(Number);
     const currentParts = current.replace(/^v/, '').split('.').map(Number);
@@ -1622,7 +2104,8 @@ const CRC32_TABLE = (() => {
     return table;
 })();
 
-// CRC-32 as zlib computes it; the adapter checks the staged image against it
+// CRC-32 as zlib computes it: PNG chunks, ZIP entries, and the adapter checks
+// the staged firmware image against it
 function crc32(bytes) {
     let crc = 0xFFFFFFFF;
     for (let i = 0; i < bytes.length; i++) crc = CRC32_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
@@ -1755,11 +2238,17 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Local initialization should be fast
-    parseScheme();
-    observeGalleryChanges();
-    setupColorSchemeSelector();
+    setupPalettes();
     setupPhotoScaleSelector();
     setupPhotoFormatSelector();
+    setupSaveAllModeSelector();
+    setupFrameSelector();
+    setupGallerySort();
+    updateSelectionBar();
+    restoreGallery();
+
+    const liveVideoBtn = document.getElementById("live-video-btn");
+    if (liveVideoBtn) liveVideoBtn.classList.toggle("hidden", !videoMimeType());
 
     // Background tasks
     fetchFirmwareVersion().then(() => {
@@ -1793,10 +2282,6 @@ function closeUpdateInstructions() {
     if (popup) popup.classList.add('hidden');
 }
 
-function checkForUpdate() {
-    window.open("https://github.com/antoxa2584x/gameboy-camera-adapter/releases", "_blank");
-}
-
 function startUpdate() {
     if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
         alert("⚠️ Update is only available on macOS or Windows.");
@@ -1806,7 +2291,7 @@ function startUpdate() {
     const currentOrigin = window.location.origin;
     const updateUrl = currentOrigin.includes('192.168.7.1') ? "http://192.168.7.1/update" : "/update";
 
-    // Navigate directly to the update endpoint. 
+    // Navigate directly to the update endpoint.
     // The server will respond with updating.html and then reboot.
     window.location.href = updateUrl;
 }
@@ -1869,44 +2354,6 @@ function loadLedStatus() {
         .catch(err => console.error("Failed to load LED status:", err));
 }
 
-function saveAllPictures() {
-    const images = Array.from(document.querySelectorAll('.gallery-image img'));
-    const total = images.length;
-
-    if (total == 0) {
-        return;
-    }
-
-    // Render everything up front, still inside the click handler: iOS allows only
-    // one share/download per user gesture, so all photos go out in a single batch.
-    const files = images
-        .filter(img => img.complete && img.naturalWidth !== 0)
-        .map((img, index) => renderPhotoFile(img, String(index + 1).padStart(2, '0')));
-
-    if (files.length == 0) {
-        return;
-    }
-
-    // The share sheet is its own full-screen UI and confirms the save itself, so
-    // don't stack our progress modal on top of it — that only leaves an extra
-    // dialog to dismiss. The popup is for the sequential fallback below, where
-    // per-file progress is the only feedback there is.
-    if (canShareFiles(files)) {
-        saveFiles(files);
-        return;
-    }
-
-    showGeneralPopup();
-    updateGeneralPopup('SAVING PHOTOS', false);
-    files.forEach((file, index) => {
-        setTimeout(() => {
-            let showButton = (index == files.length - 1);
-            updateGeneralPopup(`SAVING PHOTO ${index + 1}/${files.length}`, showButton);
-            downloadViaLink(file);
-        }, 500 * index);
-    });
-}
-
 function showGeneralPopup() {
     const popup = document.getElementById('general-popup');
     if (popup) popup.classList.remove('hidden');
@@ -1922,702 +2369,96 @@ function updateGeneralPopup(html, showCloseButton) {
     if (popupContent) popupContent.innerHTML = html;
 
     const closeButton = document.querySelector('.general-popup-button-close-button');
-    if (showCloseButton) {
-        if (closeButton) closeButton.classList.remove('hidden');
+    if (closeButton) closeButton.classList.toggle('hidden', !showCloseButton);
+}
+
+function showMessage(html) {
+    showGeneralPopup();
+    updateGeneralPopup(html, true);
+}
+
+// ---- Modes ----
+
+let currentMode = "scanner";
+let modeSwitching = false;
+
+function setMode(mode) {
+    if (mode === currentMode || modeSwitching) return;
+    const scanner = document.getElementById("scanner-mode");
+    const printer = document.getElementById("printer-mode");
+    const modeName = document.getElementById("mode-name");
+
+    const switchMode = () => {
+        modeSwitching = false;
+        const toPrinter = mode === "printer";
+        const from = toPrinter ? scanner : printer;
+        const to = toPrinter ? printer : scanner;
+        if (from) {
+            from.classList.add("hidden");
+            from.classList.remove("fade-out");
+        }
+        if (to) {
+            to.classList.remove("hidden");
+            to.classList.add("fade-in");
+        }
+        if (modeName) modeName.textContent = toPrinter ? "Printer" : "Gallery";
+        currentMode = mode;
+        if (toPrinter) {
+            periodic_fetch();
+            pollPrinterStatus();
+            startPrinterPolling();
+        } else {
+            stopPrinterPolling();
+            periodic_fetch();
+        }
+    };
+
+    const currentBlock = currentMode === "scanner" ? scanner : printer;
+    if (currentBlock) {
+        modeSwitching = true;
+        currentBlock.classList.remove("fade-in");
+        currentBlock.classList.add("fade-out");
+        currentBlock.addEventListener("animationend", switchMode, { once: true });
     } else {
-        if (closeButton) closeButton.classList.add('hidden');
+        switchMode();
     }
 }
+
+safeAddEventListener(document.getElementById("logo-img"), "click", () => {
+    setMode(currentMode === "scanner" ? "printer" : "scanner");
+});
 
 window.showFirmwarePopup = showFirmwarePopup;
 window.closeFirmwarePopup = closeFirmwarePopup;
 window.setLedColor = setLedColor;
-window.checkForUpdate = checkForUpdate;
 window.downloadImage = downloadImage;
 window.saveAllPictures = saveAllPictures;
-
-// Status bits that mean something went wrong: low battery, other error, paper
-// jam, packet error, checksum. Printing (0x02), image data full (0x04) and
-// unprocessed data (0x08) are what a healthy printer reports mid-job.
-const PRINTER_ERROR_MASK = 0xF1;
-
-function decodePrinterStatus(byte, ignoreBusyFull = false) {
-    if (byte === 0xFF) return "Disconnected";
-    const flags = [
-        "Checksum Error",
-        "Printing image",
-        "Image Data Full",
-        "", // unprocessed data: normal while a job is in the printer, not worth a label
-        "Packet Error",
-        "Paper Jam",
-        "Other Error",
-        "Battery Low"
-    ];
-    const errors = [];
-    if (byte === 0) return "OK";
-    for (let i = 0; i < 8; i++) {
-        if (byte & (1 << i)) {
-            if (ignoreBusyFull && (i === 1 || i === 2)) continue;
-            if (flags[i]) errors.push(flags[i]);
-        }
-    }
-    return errors.length ? errors.join(", ") : "OK";
-}
-
-let isPrintingActive = false;
-// The status poll that is still on its way, if any. done=1 sends whatever the
-// adapter has queued, so a poll landing after a print started buffering would
-// fire the first few chunks off as their own job: printing waits for it first.
-let printerPollInFlight = null;
-
-function pollPrinterStatus() {
-    if (typeof currentMode !== 'undefined' && currentMode !== "printer") return;
-    if (isPrintingActive || printerPollInFlight) return;
-
-    // Trigger status update on firmware if in printer mode
-    printerPollInFlight = fetch('/print_chunk?done=1')
-        .then(() => fetch('/status.json', { cache: "no-store" }))
-        .then(r => r.json())
-        .then(data => {
-            if (data.printer !== undefined) {
-                    const status = decodePrinterStatus(data.printer);
-                    const el = document.getElementById("printer-status");
-                    if (el) {
-                        el.textContent = "Printer Status: " + (status || "OK");
-                        if (data.printer === 0xFF) {
-                            el.style.color = "red";
-                        } else {
-                            // Red only for real errors; a printer that is busy with a job is orange
-                            const isError = (data.printer & PRINTER_ERROR_MASK) !== 0;
-                            el.style.color = isError ? "red" : (data.printer === 0 ? "lightgreen" : "orange");
-                        }
-                    }
-
-                    // Show overlay if busy, hide if OK or Disconnected
-                    const overlay = document.getElementById("print-overlay");
-                    const statusText = document.getElementById("print-status-text");
-                    if (overlay && statusText) {
-                        if (data.printer === 0xFF) {
-                            overlay.classList.add("hidden");
-                        } else if (data.printer & 0x02) { // Printer Busy (Printing image)
-                            overlay.classList.remove("hidden");
-                            statusText.textContent = "Printing image...";
-                        } else if (data.printer & 0x04) { // Image Data Full
-                            overlay.classList.remove("hidden");
-                            statusText.textContent = "Image Data Full";
-                        } else {
-                            // Idle (0x00), unprocessed data only (0x08) or an error: no
-                            // overlay -- errors already show in red in the status line
-                            overlay.classList.add("hidden");
-                        }
-                    }
-                }
-        })
-        .catch(err => {
-            console.error("Status error:", err);
-            const overlay = document.getElementById("print-overlay");
-            if (overlay) overlay.classList.add("hidden");
-        })
-        .finally(() => {
-            printerPollInFlight = null;
-        });
-}
-
-// Poll printer status only while in printer mode (started/stopped on mode switch)
-let printerPollId = null;
-
-function startPrinterPolling() {
-    if (printerPollId !== null) return;
-    printerPollId = setInterval(pollPrinterStatus, 3000);
-}
-
-function stopPrinterPolling() {
-    if (printerPollId !== null) {
-        clearInterval(printerPollId);
-        printerPollId = null;
-    }
-}
-
-const logoImg = document.getElementById("logo-img");
-let currentMode = "scanner";
-if (logoImg) {
-    logoImg.addEventListener("click", () => {
-        const scanner = document.getElementById("scanner-mode");
-        const printer = document.getElementById("printer-mode");
-        const modeName = document.getElementById("mode-name");
-
-        const switchMode = () => {
-            if (currentMode === "scanner") {
-                if (scanner) {
-                    scanner.classList.add("hidden");
-                    scanner.classList.remove("fade-out");
-                }
-                if (printer) {
-                    printer.classList.remove("hidden");
-                    printer.classList.add("fade-in");
-                }
-                if (modeName) modeName.textContent = "Printer";
-                currentMode = "printer";
-                periodic_fetch();
-                pollPrinterStatus();
-                startPrinterPolling();
-            } else {
-                if (printer) {
-                    printer.classList.add("hidden");
-                    printer.classList.remove("fade-out");
-                }
-                if (scanner) {
-                    scanner.classList.remove("hidden");
-                    scanner.classList.add("fade-in");
-                }
-                if (modeName) modeName.textContent = "Gallery";
-                currentMode = "scanner";
-                stopPrinterPolling();
-                periodic_fetch();
-            }
-        };
-
-        const currentBlock = currentMode === "scanner" ? scanner : printer;
-        if (currentBlock) {
-            currentBlock.classList.remove("fade-in");
-            currentBlock.classList.add("fade-out");
-            currentBlock.addEventListener("animationend", () => {
-                switchMode();
-            }, { once: true });
-        } else {
-            switchMode();
-        }
-    });
-}
 window.startUpdate = startUpdate;
 window.startAutoUpdate = startAutoUpdate;
 window.installFirmwareFile = installFirmwareFile;
 window.showUpdateInstructions = showUpdateInstructions;
 window.closeUpdateInstructions = closeUpdateInstructions;
 window.closeGeneralPopup = closeGeneralPopup;
-
-function canvasToTileData(canvas) {
-    const ctx = canvas.getContext("2d");
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const pixels = imgData.data;
-    const tiles = [];
-
-    const w = canvas.width;
-    const h = canvas.height;
-
-    // Pad to 160px width (centered) and next 8px boundary for height
-    const tileH = Math.ceil(h / 8) * 8;
-    const tileW = 160;
-    const offsetX = Math.floor((tileW - w) / 2);
-
-    for (let y = 0; y < tileH; y += 8) {
-        for (let x = 0; x < tileW; x += 8) {
-            for (let row = 0; row < 8; row++) {
-                let byte1 = 0;
-                let byte2 = 0;
-                for (let col = 0; col < 8; col++) {
-                    let shade = 0; // Default to white
-                    let curY = y + row;
-                    let curX = x + col - offsetX;
-
-                    if (curY < h && curX >= 0 && curX < w) {
-                        let px = (curY * w + curX) * 4;
-                        // Game Boy grayscale uses inverted intensity: 0=White, 3=Black
-                        let gray = (0.299 * pixels[px] + 0.587 * pixels[px + 1] + 0.114 * pixels[px + 2]);
-                        shade = gray > 192 ? 0 : gray > 128 ? 1 : gray > 64 ? 2 : 3;
-                    }
-                    
-                    byte1 |= ((shade & 1) << (7 - col));
-                    byte2 |= (((shade >> 1) & 1) << (7 - col));
-                }
-                tiles.push(byte1);
-                tiles.push(byte2);
-            }
-        }
-    }
-
-    return new Uint8Array(tiles);
-}
-
-function printSelectedImage() {
-    // The print canvas, not the visible preview: the preview additionally
-    // simulates the burn, which must not end up in the tile data.
-    const binaryData = canvasToTileData(printCanvas);
-    // Pad to complete strips (640 bytes each = 2 tile rows = 16px)
-    const STRIP_SIZE = 640;
-    const totalStrips = Math.ceil(binaryData.length / STRIP_SIZE);
-    const targetLen = totalStrips * STRIP_SIZE;
-    
-    let finalData = binaryData;
-    if (binaryData.length < targetLen) {
-        finalData = new Uint8Array(targetLen);
-        finalData.set(binaryData);
-        // Rest is already 0 which is White for GB Printer
-    }
-    
-    console.log(`Image: ${binaryData.length} bytes -> ${totalStrips} strips (${targetLen} bytes)`);
-    sendChunkedData(finalData);
-}
-
-function sendChunkedData(binaryData, chunkSize = 256) {
-    const totalChunks = Math.ceil(binaryData.length / chunkSize);
-
-    function calculateChecksum(command, data) {
-        let sum = command + (data.length & 0xFF) + (data.length >> 8);
-        for (let i = 0; i < data.length; i++) {
-            sum = (sum + data[i]);
-        }
-        return sum & 0xFFFF;
-    }
-
-    const packetInit = "88330100000001000000";
-    const packetStatus = "88330f0000000f000000";
-
-    function createDataPacket(data) {
-        let header = "88330400";
-        let lenL = (data.length & 0xFF).toString(16).padStart(2, '0');
-        let lenH = (data.length >> 8).toString(16).padStart(2, '0');
-        let hexData = '';
-        for (let i = 0; i < data.length; i++) {
-            hexData += data[i].toString(16).padStart(2, '0');
-        }
-        let checksum = calculateChecksum(0x04, data);
-        let checkL = (checksum & 0xFF).toString(16).padStart(2, '0');
-        let checkH = (checksum >> 8).toString(16).padStart(2, '0');
-        return header + lenL + lenH + hexData + checkL + checkH + "0000";
-    }
-
-    let packets = [];
-    packets.push({ data: packetInit, name: "INIT" });
-    packets.push({ data: packetStatus, name: "STATUS" });
-
-    for (let i = 0; i < totalChunks; i++) {
-        const start = i * chunkSize;
-        const end = Math.min(start + chunkSize, binaryData.length);
-        const chunk = binaryData.slice(start, end);
-        packets.push({ data: createDataPacket(chunk), name: "DATA" });
-    }
-
-    // Empty DATA packet signals end of image data to the printer
-    packets.push({ data: "88330400000004000000", name: "DATA_END" });
-
-    // PRINT packet. The slider follows the Game Boy Camera's exposure bar: right
-    // is darker, left is lighter, which is already the direction of the printer's
-    // exposure byte, so the value goes through as is.
-    const expValue = currentPrintExposure();
-    const printData = new Uint8Array([0x01, 0x03, 0xE4, expValue]);
-    const printHeader = "883302000400";
-    let printHexData = "0103e4" + expValue.toString(16).padStart(2, '0');
-    const printChecksum = calculateChecksum(0x02, printData);
-    const printCheckL = (printChecksum & 0xFF).toString(16).padStart(2, '0');
-    const printCheckH = (printChecksum >> 8).toString(16).padStart(2, '0');
-    packets.push({ data: printHeader + printHexData + printCheckL + printCheckH + "0000", name: "PRINT" });
-
-    // Status checks after print
-    packets.push({ data: packetStatus, name: "STATUS" });
-    packets.push({ data: packetStatus, name: "STATUS" });
-    packets.push({ data: packetStatus, name: "STATUS" });
-
-    function getPrinterStatusDisplay(status) {
-        return decodePrinterStatus(status, true);
-    }
-
-    const printBtn = document.getElementById("print-button");
-    const overlay = document.getElementById("print-overlay");
-    const statusText = document.getElementById("print-status-text");
-
-    isPrintingActive = true;
-    if (printBtn) printBtn.style.display = "none";
-
-    // Put the page back if the job dies part way, instead of leaving the
-    // "Sending to printer..." overlay up and the print button hidden for good
-    function abortPrint(message) {
-        isPrintingActive = false;
-        if (printBtn) printBtn.style.display = "block";
-        if (overlay) {
-            overlay.classList.add("hidden");
-            overlay.style.display = "none";
-        }
-        const el = document.getElementById("printer-status");
-        if (el && message) {
-            el.textContent = "Printer Status: " + message;
-            el.style.color = "red";
-        }
-    }
-    // Check current status before showing overlay
-    fetch("/status.json")
-        .then(res => res.json())
-        .then(data => {
-            if (overlay) {
-        if (data.printer !== 0xFF && data.printer !== undefined) {
-            overlay.classList.remove("hidden");
-            overlay.style.display = "flex";
-            if (statusText) statusText.textContent = "Sending to printer...";
-        }
-    }
-        })
-        .catch(() => {
-             // If we can't even get status, don't show overlay
-             if (overlay) {
-                 overlay.classList.add("hidden");
-                 overlay.style.display = "none";
-             }
-        });
-
-    // Buffer all packets to firmware, then trigger burst send
-    function bufferNextPacket(index) {
-        if (index >= packets.length) {
-            console.log(`All ${packets.length} packets buffered. Triggering burst send...`);
-            if (statusText) statusText.textContent = "Starting print...";
-            fetch("/print_chunk?done=1")
-                .then(() => new Promise(resolve => setTimeout(resolve, 2000))) // wait for printing
-                .then(() => fetch("/status.json"))
-                .then(res => res.json())
-                .then(statusData => {
-                    isPrintingActive = false;
-                    if (printBtn) printBtn.style.display = "block";
-                    // Note: overlay is managed by pollPrinterStatus from now on
-                    const printerStatus = statusData.printer;
-                    console.log(`Final status: 0x${printerStatus.toString(16).padStart(2, '0')} (${getPrinterStatusDisplay(printerStatus)})`);
-                    const statusDesc = getPrinterStatusDisplay(printerStatus);
-
-                    if (printerStatus === 0x00 || printerStatus === 0xFF) {
-                        if (overlay) {
-                            overlay.classList.add("hidden");
-                            overlay.style.display = "none";
-                        }
-                    } else if (statusDesc !== "OK") {
-                        if (statusText) statusText.textContent = statusDesc;
-                        // If it's a real error (not just busy), maybe keep it visible?
-                        // "close when status ok or disconected" - implies we close on those.
-                    }
-                })
-                .catch(err => {
-                    isPrintingActive = false;
-                    console.error("Print failed", err);
-                    if (printBtn) printBtn.style.display = "block";
-                    if (overlay) {
-                        overlay.classList.add("hidden");
-                        overlay.style.display = "none";
-                    }
-                });
-            return;
-        }
-
-        const packet = packets[index];
-        const url = `/print_chunk?data=${packet.data}`;
-        console.log(`[${index}/${packets.length}] Buffering ${packet.name} (${packet.data.length / 2} bytes)`);
-
-        fetch(url)
-            .then(res => {
-                if (!res.ok) throw new Error("Server error");
-                return res.json();
-            })
-            .then(reply => {
-                // The adapter answers "error" when it refuses a packet (queue full, malformed)
-                if (!reply || reply.result !== "ok") throw new Error("Packet refused");
-                setTimeout(() => bufferNextPacket(index + 1), 50);
-            })
-            .catch(err => {
-                console.error("Buffer failed at packet " + index, err);
-                abortPrint("Could not send the image, try again");
-            });
-    }
-
-    // Let a status poll already on its way finish first (see printerPollInFlight)
-    (printerPollInFlight || Promise.resolve()).then(() => bufferNextPacket(0));
-}
-
-let currentImage = null;
-
-function handleFileInput(e) {
-    const file = e.target.files[0];
-    const nameDisplay = document.getElementById("file-name");
-    const printButton = document.getElementById("print-button");
-    const printerControls = document.getElementById("printer-controls");
-
-    if (file) {
-        if (nameDisplay) {
-            const name = file.name;
-            const dotIndex = name.lastIndexOf(".");
-            const base = dotIndex > 0 ? name.substring(0, dotIndex) : name;
-            const ext = dotIndex > 0 ? name.substring(dotIndex) : "";
-            nameDisplay.textContent = base.length > 47 ? base.substring(0, 30) + "..." + base.substring(base.length - 3, base.length) + ext : name;
-        }
-        if (printButton) printButton.classList.remove("hidden");
-        if (printerControls) printerControls.classList.remove("hidden");
-    } else {
-        if (nameDisplay) nameDisplay.textContent = "No file selected";
-        if (printButton) printButton.classList.add("hidden");
-        if (printerControls) printerControls.classList.add("hidden");
-        return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = function (evt) {
-        const img = new Image();
-        img.onload = function () {
-            currentImage = img;
-            // Default to fit
-            const modeSelect = document.getElementById("image-mode");
-            if (modeSelect) modeSelect.value = "fit";
-            
-            // Force display of elements that might be hidden by CSS !important
-            if (printButton) printButton.classList.remove("hidden");
-            if (printerControls) printerControls.classList.remove("hidden");
-            
-            refreshPreview();
-        };
-        img.src = evt.target.result;
-    };
-    reader.readAsDataURL(file);
-}
-
-function refreshPreview() {
-    if (!currentImage) return;
-    const mode = document.getElementById("image-mode").value;
-    processImage(currentImage, mode);
-}
-
-// The four greys the print quantiser emits, brightest first. canvasToTileData()
-// turns them into Game Boy shades 0..3.
-const PRINT_LEVELS = [255, 170, 85, 0];
-
-// Holds exactly what the printer will receive. Kept apart from the visible
-// preview canvas because the two are not the same picture: the tile data is
-// always the faithful four shade quantisation, while the preview additionally
-// simulates how dark the exposure will burn those shades onto paper.
-const printCanvas = document.createElement("canvas");
-
-// 4x4 ordered dither matrix.
-const BAYER_4X4 = [
-    [0, 8, 2, 10],
-    [12, 4, 14, 6],
-    [3, 11, 1, 9],
-    [15, 7, 13, 5]
-];
-
-// Decide whether the canvas already holds a Game Boy picture, i.e. one built from
-// exactly four shades. Photos saved from the gallery are normalised to 255/191/
-// 127/63 and then written out as a 10x upscaled image; saved as JPEG the shades
-// come back slightly smeared and cannot simply be compared for equality - they are
-// clustered with a tolerance instead (a saved PNG lands dead on the levels). Returns the four shades brightest first, or null when
-// the source is an ordinary photo that still needs quantising.
-function detectGameBoyLevels(data, tolerance = 12, coverage = 0.97) {
-    const histogram = new Uint32Array(256);
-    const pixels = data.length / 4;
-    for (let i = 0; i < data.length; i += 4) {
-        const gray = (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-        histogram[Math.round(gray)]++;
-    }
-
-    // Greedily take the densest remaining shade as a cluster centre and absorb
-    // everything within tolerance of it. Four clusters that between them account
-    // for nearly every pixel means four shades; a continuous tone photo spreads
-    // far too widely to be covered by four narrow windows.
-    const centres = [];
-    let counted = 0;
-    for (let n = 0; n < 4; n++) {
-        let peak = -1;
-        for (let v = 0; v < 256; v++) {
-            if (histogram[v] > 0 && (peak === -1 || histogram[v] > histogram[peak])) peak = v;
-        }
-        if (peak === -1) break;
-        centres.push(peak);
-        for (let v = Math.max(0, peak - tolerance); v <= Math.min(255, peak + tolerance); v++) {
-            counted += histogram[v];
-            histogram[v] = 0;
-        }
-    }
-
-    if (centres.length !== 4 || counted < pixels * coverage) return null;
-    return centres.sort((a, b) => b - a);
-}
-
-// The exposure the slider is currently asking for, clamped to what the printer
-// accepts. Single source of truth for both the PRINT packet and the preview.
-function currentPrintExposure() {
-    const { min, max } = printExposureRange();
-    const el = document.getElementById("print-exposure");
-    const value = el ? parseInt(el.value) : NaN;
-    const exposure = Number.isFinite(value) ? value : min;
-    return Math.min(max, Math.max(min, exposure));
-}
-
-// Exposure never changes the tile data, so moving the slider only needs the
-// preview repainted rather than the whole image re-quantised.
-function refreshExposure() {
-    renderPrintPreview(currentPrintExposure());
-}
-
-// How far the burn simulation goes at the darkest end of the slider. INK is how
-// much further each shade is pushed towards black, GAIN is how far a burnt dot
-// bleeds into the white next to it - real thermal dots grow with burn time, and
-// it is that thickening, more than the shades themselves, that makes a longer
-// exposure read as darker on paper.
-// How completely the paper takes the ink at each end of the slider. Below 1.0 the
-// head does not burn long enough to lay a shade down in full, so even a black pixel
-// comes out a washed grey with no true black - which is the whole of issue #9. 1.0
-// at the dark end means black arrives at solid exactly at the top of the travel;
-// going past 1.0 would only clip it to 0 early and flatten the last stretch of the
-// slider. Over-burn past nominal shows through the dot gain below instead.
-const BURN_DENSITY_MIN = 0.55;
-const BURN_DENSITY_MAX = 1.0;
-// How far a burnt dot bleeds into the white beside it at the dark end of the
-// slider. Real thermal dots grow with burn time, and that thickening is a large
-// part of why a longer exposure reads as darker on paper.
-const BURN_GAIN = 0.4;
-
-// Paint the visible preview from the print data, showing what the exposure will do
-// on paper. Exposure is burn time: it does not change which of the four shades a
-// pixel is, only how heavily each one is laid down. This is what keeps the slider
-// responsive even for a source whose pixels go to the printer untouched.
-function renderPrintPreview(exposure) {
-    const preview = document.getElementById("preview-canvas");
-    if (!preview || !printCanvas.width) return;
-
-    const w = printCanvas.width;
-    const h = printCanvas.height;
-    preview.width = w;
-    preview.height = h;
-    const ctx = preview.getContext("2d");
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(printCanvas, 0, 0);
-
-    const { min, max } = printExposureRange();
-    const span = max - min;
-    const burn = span > 0 ? Math.min(1, Math.max(0, (exposure - min) / span)) : 0;
-
-    const imageData = ctx.getImageData(0, 0, w, h);
-    const data = imageData.data;
-    const source = new Uint8ClampedArray(w * h);
-    for (let p = 0; p < w * h; p++) source[p] = data[p * 4];
-
-    const density = BURN_DENSITY_MIN + (BURN_DENSITY_MAX - BURN_DENSITY_MIN) * burn;
-    const gain = BURN_GAIN * burn;
-    // A shade asks for a certain amount of ink; the burn decides how much of it the
-    // paper actually gets. White asks for none, so it stays bare paper at any
-    // exposure and can only be reached by a neighbouring dot growing into it. Black
-    // asks for all of it, so it is the shade the exposure changes most.
-    const inked = v => Math.max(0, 255 - (255 - v) * density);
-
-    for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-            const p = y * w + x;
-            let darkest = source[p];
-            if (x > 0) darkest = Math.min(darkest, source[p - 1]);
-            if (x < w - 1) darkest = Math.min(darkest, source[p + 1]);
-            if (y > 0) darkest = Math.min(darkest, source[p - w]);
-            if (y < h - 1) darkest = Math.min(darkest, source[p + w]);
-
-            const self = inked(source[p]);
-            const v = self - gain * (self - inked(darkest));
-
-            const i = p * 4;
-            data[i] = data[i + 1] = data[i + 2] = Math.round(v);
-        }
-    }
-    ctx.putImageData(imageData, 0, 0);
-}
-
-function processImage(img, mode) {
-    const canvas = printCanvas;
-    const ctx = canvas.getContext("2d");
-
-    let targetWidth = 160;
-    let targetHeight = 144;
-    let sourceX = 0, sourceY = 0, sourceWidth = img.width, sourceHeight = img.height;
-    let destX = 0, destY = 0, destWidth = 160, destHeight = 144;
-
-    if (mode === 'crop') {
-        const targetRatio = 160 / 144;
-        const imgRatio = img.width / img.height;
-
-        if (imgRatio > targetRatio) {
-            // Wider than target: crop sides
-            sourceWidth = Math.round(img.height * targetRatio);
-            sourceX = Math.round((img.width - sourceWidth) / 2);
-        } else {
-            // Taller than target: crop top/bottom
-            sourceHeight = Math.round(img.width / targetRatio);
-            sourceY = Math.round((img.height - sourceHeight) / 2);
-        }
-    } else if (mode === 'fit') {
-        const targetRatio = 160 / 144;
-        const imgRatio = img.width / img.height;
-
-        if (imgRatio > targetRatio) {
-            // Wider than target: scale to 160 width, add vertical borders
-            destHeight = Math.round(160 / imgRatio);
-            destY = Math.round((144 - destHeight) / 2);
-        } else {
-            // Taller than target: scale to 144 height, add horizontal borders
-            destWidth = Math.round(144 * imgRatio);
-            destX = Math.round((160 - destWidth) / 2);
-        }
-    }
-
-    canvas.width = targetWidth;
-    canvas.height = targetHeight;
-
-    // Fill with white
-    ctx.fillStyle = "white";
-    ctx.fillRect(0, 0, targetWidth, targetHeight);
-
-    // Nearest neighbour, not the default bilinear. Photos saved from the gallery
-    // are 10x nearest-neighbour upscaled, so scaling one back down to 160x144
-    // with smoothing on blurs every hard pixel edge into its neighbours, and the
-    // four level threshold below then turns that blur into blotches - which is why
-    // a re-print looked lower resolution than the same photo printed by the Game
-    // Boy. Point sampling puts the original pixel grid back.
-    ctx.imageSmoothingEnabled = false;
-    ctx.mozImageSmoothingEnabled = false;
-    ctx.webkitImageSmoothingEnabled = false;
-    ctx.msImageSmoothingEnabled = false;
-
-    ctx.drawImage(img, sourceX, sourceY, sourceWidth, sourceHeight, destX, destY, destWidth, destHeight);
-
-    // The tile data below is deliberately independent of the exposure. Exposure is
-    // the printer's burn time, not part of the picture, so folding it into the
-    // quantisation would mean the slider silently altered the image for ordinary
-    // photos while doing nothing at all for a source that is already four shades.
-    // renderPrintPreview() shows its effect instead.
-    const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
-    const data = imageData.data;
-
-    const gbLevels = detectGameBoyLevels(data);
-
-    for (let y = 0; y < targetHeight; y++) {
-        for (let x = 0; x < targetWidth; x++) {
-            const i = (y * targetWidth + x) * 4;
-            const gray = (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-            let level;
-            if (gbLevels) {
-                // Already a Game Boy picture: hand the four shades straight over
-                // instead of re-quantising them, so a photo taken by the camera
-                // re-prints exactly as the camera itself would have printed it.
-                let nearest = 0;
-                for (let n = 1; n < gbLevels.length; n++) {
-                    if (Math.abs(gray - gbLevels[n]) < Math.abs(gray - gbLevels[nearest])) nearest = n;
-                }
-                level = PRINT_LEVELS[nearest];
-            } else {
-                // Ordered dither, the way the camera itself does it. A flat
-                // threshold collapses gradients into big even blobs, which is
-                // what made an adapter print look coarser than a Game Boy one.
-                const shade = gray + ((BAYER_4X4[y & 3][x & 3] + 0.5) / 16 - 0.5) * 64;
-                level = shade > 192 ? 255 : shade > 128 ? 170 : shade > 64 ? 85 : 0;
-            }
-            data[i] = data[i + 1] = data[i + 2] = level;
-        }
-    }
-    ctx.putImageData(imageData, 0, 0);
-
-    renderPrintPreview(currentPrintExposure());
-}
-
-window.handleFileInput = handleFileInput;
-window.refreshPreview = refreshPreview;
-window.refreshExposure = refreshExposure;
-window.printSelectedImage = printSelectedImage;
+window.saveLiveVideo = saveLiveVideo;
+window.saveLiveMovie = saveLiveMovie;
+window.saveLiveFrame = saveLiveFrame;
+window.closeLiveView = closeLiveView;
 window.showPopupWithUpscaledImage = showPopupWithUpscaledImage;
+window.setSelectMode = setSelectMode;
+window.selectAllPhotos = selectAllPhotos;
+window.saveSelectedPhotos = saveSelectedPhotos;
+window.deleteSelectedPhotos = deleteSelectedPhotos;
+window.joinSelectedPhotos = joinSelectedPhotos;
+window.printSelectedPhotos = printSelectedPhotos;
+window.contactSheetSelected = contactSheetSelected;
+window.animateSelectedPhotos = animateSelectedPhotos;
+window.openPaletteEditor = openPaletteEditor;
+window.editActivePalette = editActivePalette;
+window.closePaletteEditor = closePaletteEditor;
+window.onPaletteCodeInput = onPaletteCodeInput;
+window.copyPaletteCode = copyPaletteCode;
+window.savePaletteFromEditor = savePaletteFromEditor;
+window.deletePaletteFromEditor = deletePaletteFromEditor;
+window.loadCustomFrame = loadCustomFrame;
+window.closeAnimatePopup = closeAnimatePopup;
+window.exportAnimation = exportAnimation;

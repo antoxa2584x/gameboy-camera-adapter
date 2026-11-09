@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Firmware-v2.3.0-266d3f?style=for-the-badge&logo=raspberrypi" alt="Firmware Version">
+  <img src="https://img.shields.io/badge/Firmware-v2.4.0-266d3f?style=for-the-badge&logo=raspberrypi" alt="Firmware Version">
   <img src="https://img.shields.io/badge/Hardware-RP2040-004d25?style=for-the-badge" alt="Hardware">
   <img src="https://img.shields.io/badge/Compatibility-iOS_%7C_Android_%7C_Web-4caf50?style=for-the-badge" alt="Compatibility">
 </p>
@@ -19,12 +19,16 @@
 <div align="center">
 <table>
   <tr>
-    <td align="center"><b>🖼️ Web Gallery</b><br>Real-time photo receiving</td>
-    <td align="center"><b>🎨 Color Palettes</b><br>Retro GB & GBC styles</td>
+    <td align="center"><b>🖼️ Web Gallery</b><br>Real-time photo receiving, kept across reloads</td>
+    <td align="center"><b>🎨 Color Palettes</b><br>Retro GB & GBC styles, or your own</td>
   </tr>
   <tr>
-    <td align="center"><b>🖨️ Printer Mode</b><br>Print from PC to GameBoy</td>
+    <td align="center"><b>🖨️ Printer Mode</b><br>Pictures, text and QR labels, banners</td>
     <td align="center"><b>📱 Mobile Ready</b><br>iOS & Android Support</td>
+  </tr>
+  <tr>
+    <td align="center"><b>🎞️ Animations</b><br>GIF or video from your photos</td>
+    <td align="center"><b>🗂️ Contact Sheets</b><br>All your photos on one page</td>
   </tr>
 </table>
 </div>
@@ -58,10 +62,12 @@ If the web UI is unreachable, use a serial terminal to send:
 #### 📥 Scanner Mode (Default)
 Acts as a virtual **Game Boy Printer**. Simply select "Print" on your Game Boy, and photos will appear instantly in the web gallery.
 
-With [gb-photo](https://github.com/untoxa/gb-photo) the adapter also takes **Transfer** / **Transfer all** (fast raw transfers of the camera roll) and **Print all**. **Transfer REC** opens a live view in the web UI that you can save as an animated GIF or grab single frames from.
+With [gb-photo](https://github.com/untoxa/gb-photo) the adapter also takes **Transfer** / **Transfer all** (fast raw transfers of the camera roll) and **Print all**. **Transfer REC** opens a live view in the web UI that you can save as an animated GIF or video, or grab single frames from.
+
+Photos stay in the gallery until you delete them, even after a reload. Tap **Select** to save several at once (one ZIP file), print them, join them into one tall picture, turn them into a GIF or video, or lay them out on a contact sheet. Open a photo to rotate, flip or favorite it. Pick a palette above the gallery, or tap **+** to make your own and share it as a code. **Settings → Photo Frame** keeps, removes or replaces the Game Boy Camera frame.
 
 #### 📤 Printer Mode
-Click the **Logo** in the web interface to switch. Upload any image from your device to print it on a real Game Boy Printer connected to the adapter. Includes **Live Preview** and **Exposure Control**.
+Click the **Logo** in the web interface to switch, then pick what to print: a **Picture** from your device, or **Text or QR** for a label. The preview shows exactly what comes out of a real Game Boy Printer connected to the adapter. Choose a layout (Fit, Fill, Actual size, or Long for banners), set the darkness, and print. Add more pictures or labels to print several in a row, with copies; **More options** has shading styles, brightness and contrast. If the printer jams or runs out of paper, fix it and tap **Resume**.
 
 ---
 

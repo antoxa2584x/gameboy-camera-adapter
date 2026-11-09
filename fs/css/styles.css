@@ -9,6 +9,7 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    min-height: 100dvh; /* only what shows between the browser bars */
 }
 
 @font-face {
@@ -212,19 +213,21 @@ p {
     }
 }
 
-/* Exposure Seekbar Theme */
-#print-exposure {
+/* Printer Seekbar Theme */
+.gb-range {
     -webkit-appearance: none;
+    appearance: none;
     width: 100%;
-    max-width: 150px;
+    max-width: 160px;
     height: 8px;
     background: #004d25;
     border-radius: 4px;
     outline: none;
     margin: 0;
+    flex: 1;
 }
 
-#print-exposure::-webkit-slider-thumb {
+.gb-range::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
     width: 18px;
@@ -235,7 +238,7 @@ p {
     border: 2px solid white;
 }
 
-#print-exposure::-moz-range-thumb {
+.gb-range::-moz-range-thumb {
     width: 18px;
     height: 18px;
     background: #4caf50;
@@ -249,9 +252,13 @@ footer {
     left: 0;
     bottom: 0;
     width: 100%;
+    /* The padding inside the width: 100% plus padding made the footer 20px wider
+       than the screen, and iOS then let the whole page be dragged around, far
+       past the footer */
+    box-sizing: border-box;
     background-color: #004d25;
     color: white;
-    padding: 10px;
+    padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
     text-align: center;
     z-index: 100;
 }
@@ -365,7 +372,7 @@ footer .links {
     z-index: 1;
 }
 
-.gallery-image button {
+.gallery-image .photo-save {
     background: none;
     border: none;
     color: white;
@@ -379,7 +386,7 @@ footer .links {
     transition: color 0.2s, opacity 0.2s;
 }
 
-.gallery-image button:hover {
+.gallery-image .photo-save:hover {
     opacity: 0.8;
     text-decoration: underline;
 }
@@ -395,10 +402,13 @@ footer .links {
 }
 
 
+/* A fixed box, so a long joined print does not stretch its whole row */
 .gallery-image img {
     width: 100%;
     max-width: 160px;
-    height: auto;
+    aspect-ratio: 160 / 144;
+    object-fit: contain;
+    image-rendering: pixelated;
     display: block;
     margin: 0 auto;
 }
@@ -419,10 +429,10 @@ footer .links {
 /* Overlay Styles */
 .popup-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
+    /* Pinned to all four edges rather than 100vw x 100vh: on iOS 100vh is the
+       height with the browser bars hidden, so the bottom of a dialog ended up
+       under Safari's / Chrome's toolbar */
+    inset: 0;
     background-color: rgba(0, 0, 0, 0.8);
     display: flex;
     justify-content: center;
@@ -435,7 +445,7 @@ footer .links {
     overflow-x: hidden;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    padding: 2rem 0;
+    padding: calc(2rem + env(safe-area-inset-top)) 0 calc(2rem + env(safe-area-inset-bottom));
     box-sizing: border-box;
 }
 
@@ -446,6 +456,7 @@ footer .links {
     max-width: 90vw;
     /* Ensures the container doesn't overflow the viewport width */
     max-height: 90vh;
+    max-height: 90dvh; /* only what shows between the browser bars */
     /* Ensures the container doesn't overflow the viewport height */
     overflow: visible;
     /* Centre via auto margins, not the overlay's align-items: a flex item
@@ -468,6 +479,7 @@ footer .links {
     max-width: 90vw;
     /* Fit within the viewport width */
     max-height: 90vh;
+    max-height: 90dvh; /* only what shows between the browser bars */
     /* Fit within the viewport height */
     width: auto;
     /* Maintain aspect ratio */
@@ -480,6 +492,7 @@ footer .links {
 .image-container img.popup-image {
     max-width: 90vw;
     max-height: 80vh;
+    max-height: 80dvh; /* only what shows between the browser bars */
     width: auto;
     height: auto;
     display: block;
@@ -561,27 +574,43 @@ footer .links {
     }
 }
 
-/* Color selector container and Save All hidden by default in scanner mode */
-.color-selector-container.hidden, #save_all_btn.hidden {
+/* Color selector hidden by default in scanner mode */
+.color-selector-container.hidden {
     display: none !important;
 }
 
-.color-selector-container, #save_all_btn {
+.color-selector-container {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
     margin: 10px auto;
-    gap: 20px;
+    gap: 8px;
+    width: 100%;
+}
+
+#color-selector {
+    flex-wrap: wrap;
+    padding: 6px 12px;
 }
 
 .color-circle {
     width: 40px;
     height: 40px;
+    padding: 0;
     border-radius: 50%;
     cursor: pointer;
     transition: transform 0.2s ease;
     border: 2px solid #ffffff;
     /* White border for better visibility */
     background-size: 100% 100%;
+    flex: none;
+}
+
+.color-circle--add {
+    background: #004d25;
+    color: white;
+    font-size: 1rem;
+    line-height: 1;
 }
 
 .color-circle:hover {
@@ -985,11 +1014,6 @@ input:checked + .slider:before {
     opacity: 0.8;
 }
 
-.save-all-row {
-    display: flex;
-    justify-content: center;
-    width: 100%;
-}
 
 #printer-mode {
     padding-bottom: 2rem;
@@ -1007,77 +1031,51 @@ input:checked + .slider:before {
     text-align: center;
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: 1.2rem;
     align-items: center;
+    width: 100%;
+    max-width: 420px;
+    padding: 0 16px;
+    box-sizing: border-box;
 }
 
-#printer-status {
-    color: white;
-    text-align: center;
-    margin-top: 10px;
-}
 
 .upload-label {
     color: white;
-    font-size: 1.1rem;
+    font-size: 0.9rem;
+}
+
+.preview-wrap {
+    max-height: 60vh;
+    max-height: 60dvh; /* only what shows between the browser bars */
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid white;
+    line-height: 0;
+    width: min(320px, 100%);
+    box-sizing: content-box;
 }
 
 #preview-canvas {
-    border: 1px solid white;
-    max-width: 160px;
+    display: block;
+    width: 100%;
+    height: auto;
+    image-rendering: crisp-edges;
+    image-rendering: pixelated;
+    background: white;
 }
 
 #file-input {
     display: none;
 }
 
-.file-btn {
-    background: #4caf50;
-    color: white;
-    padding: 0.5rem 1rem;
-    border-radius: 5px;
-    cursor: pointer;
-    font-weight: bold;
-    margin-bottom: 0.5rem;
-}
 
-#printer-controls {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    width: 100%;
-    margin-top: 1rem;
-}
-
-.crop-row {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    color: white;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-}
 
 .small-label {
-    font-size: 0.8rem;
+    font-size: 0.7rem;
 }
 
-#image-mode {
-    padding: 0.4rem;
-    width: 200px;
-}
-
-.exposure-row {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    color: white;
-    gap: 0.5rem;
-}
-
-#print-button {
-    margin-top: 1rem;
-}
 
 .beta-note {
     margin-top: 2rem;
@@ -1178,4 +1176,852 @@ input:checked + .slider:before {
 .live-controls button {
     font-size: 0.7rem;
     padding: 8px 12px;
+}
+
+/* --- Gallery toolbar --- */
+
+.gallery-toolbar {
+    width: 100%;
+    max-width: 800px;
+    padding: 0 20px;
+    box-sizing: border-box;
+}
+
+.toolbar-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+}
+
+.tool-btn {
+    font-size: 0.65rem;
+    padding: 9px 12px;
+    background-color: #004d25;
+    line-height: 1.2;
+}
+
+.tool-btn:disabled {
+    background-color: #004d25;
+    opacity: 0.4;
+}
+
+.tool-btn--danger {
+    background-color: #b71c1c;
+}
+
+.tool-btn--danger:hover {
+    background-color: #8e1515;
+}
+
+.tool-btn--done {
+    background-color: #4caf50;
+}
+
+.tool-select {
+    font-family: inherit;
+    font-size: 0.6rem;
+    padding: 8px;
+}
+
+/* Selecting: the count with All / Done above, the actions in an even grid -
+   one row on a wide screen, two on a phone - and kept in view while scrolling */
+.gallery-toolbar.selecting {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    padding-top: 6px;
+}
+
+.selection-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border-radius: 10px;
+    background-color: #1e5a34;
+    box-shadow: 0 4px 12px rgb(0 0 0 / 30%);
+}
+
+.selection-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.selection-count {
+    color: white;
+    font-size: 0.7rem;
+    flex: 1;
+    text-align: left;
+}
+
+.selection-actions {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 6px;
+}
+
+.selection-actions .tool-btn {
+    padding-left: 4px;
+    padding-right: 4px;
+}
+
+@media (max-width: 600px) {
+    .selection-actions {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+.link-btn {
+    background: none;
+    color: white;
+    font-size: 0.6rem;
+    padding: 4px 8px;
+    text-decoration: underline;
+    opacity: 0.85;
+}
+
+.link-btn:hover {
+    background: none;
+    opacity: 1;
+}
+
+/* --- Gallery tiles --- */
+
+.gallery-image .photo-fav {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 28px;
+    height: 28px;
+    padding: 4px;
+    margin: 0;
+    border-radius: 50%;
+    background: rgb(0 0 0 / 45%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 3;
+}
+
+.gallery-image .photo-fav svg {
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: white;
+    stroke-width: 2;
+}
+
+.gallery-image:hover .photo-fav,
+.gallery-image.favorite .photo-fav {
+    opacity: 1;
+}
+
+.gallery-image.favorite .photo-fav svg {
+    fill: #ffd54f;
+    stroke: #ffd54f;
+}
+
+/* Touch screens have no hover: keep the star reachable */
+@media (hover: none) {
+    .gallery-image .photo-fav {
+        opacity: 0.8;
+    }
+}
+
+#gallery.selecting .photo-fav,
+#gallery.selecting .photo-save {
+    visibility: hidden;
+}
+
+.gallery-image.selected::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 5px;
+    z-index: 2;
+}
+
+.gallery-image.selected::after {
+    content: "\2714";
+    font-size: 2rem;
+    color: white;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+}
+
+.gallery-image.selected {
+    border-color: #ffd54f;
+}
+
+/* --- Photo viewer --- */
+
+.image-container.viewer {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0;
+    background: transparent;
+    border-radius: 10px;
+    box-sizing: border-box;
+    justify-content: center;
+}
+
+.image-container.viewer img.popup-image {
+    max-height: 70vh;
+    max-height: 70dvh; /* only what shows between the browser bars */
+}
+
+.viewer-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 14px;
+    max-width: 90vw;
+}
+
+.viewer-btn {
+    font-size: 0.6rem;
+    padding: 8px 10px;
+    background-color: rgb(0 0 0 / 55%);
+    border: 1px solid rgb(255 255 255 / 25%);
+}
+
+.viewer-btn.active {
+    background-color: #4caf50;
+    color: #111;
+}
+
+/* --- Dialogs --- */
+
+.popup-container button.small-btn,
+.small-btn {
+    width: auto;
+    margin-top: 0;
+    padding: 8px 12px;
+    font-size: 0.65rem;
+}
+
+.gb-input {
+    font-family: inherit;
+    font-size: 0.7rem;
+    padding: 0.6rem;
+    border-radius: 5px;
+    background: #1e4a2b;
+    color: white;
+    border: 1px solid #4caf50;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+}
+
+.gb-input::placeholder {
+    color: rgb(255 255 255 / 55%);
+}
+
+.code-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+
+.palette-preview {
+    width: 100%;
+    max-width: 240px;
+    height: auto;
+    image-rendering: pixelated;
+    border: 1px solid white;
+}
+
+.palette-swatches {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+}
+
+.palette-swatch {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.55rem;
+    color: white;
+    cursor: pointer;
+}
+
+.palette-swatch input[type="color"] {
+    width: 52px;
+    height: 40px;
+    padding: 0;
+    border: 2px solid white;
+    border-radius: 6px;
+    background: none;
+    cursor: pointer;
+}
+
+.video-preview {
+    display: block;
+    width: 100%;
+    max-width: 320px;
+    height: auto;
+    margin: 1rem auto 0;
+    image-rendering: pixelated;
+}
+
+/* --- Printer --- */
+
+.printer-status-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.printer-help {
+    color: #ffcc80;
+    font-size: 0.6rem;
+    line-height: 1.5;
+    max-width: 320px;
+}
+
+
+
+
+
+.text-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    width: 100%;
+    margin-top: 4px;
+}
+
+.text-options .gb-select {
+    min-width: 0;
+    font-family: inherit;
+    font-size: 0.6rem;
+}
+
+.text-options .gb-select:first-child {
+    grid-column: 1 / -1;
+}
+
+textarea.gb-input {
+    resize: vertical;
+    line-height: 1.5;
+}
+
+.print-queue {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.queue-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px;
+    border: 1px solid #004d25;
+    border-radius: 5px;
+    background-color: rgb(0 0 0 / 20%);
+    cursor: pointer;
+    color: white;
+    text-align: left;
+}
+
+.queue-item.selected {
+    border-color: #ffd54f;
+    background-color: rgb(0 0 0 / 35%);
+}
+
+.queue-thumb {
+    width: 40px;
+    height: auto;
+    max-height: 60px;
+    object-fit: contain;
+    object-position: top;
+    image-rendering: pixelated;
+    flex: none;
+    background: white;
+}
+
+.queue-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.55rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.queue-controls {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: none;
+}
+
+.queue-controls button {
+    font-size: 0.6rem;
+    padding: 6px 7px;
+    min-width: 26px;
+}
+
+.queue-controls button:disabled {
+    background: none;
+    opacity: 0.3;
+}
+
+.queue-copies {
+    font-size: 0.55rem;
+    white-space: nowrap;
+}
+
+.preview-caption {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: white;
+    font-size: 0.6rem;
+    margin-top: -0.6rem;
+}
+
+.preview-caption #print-size {
+    opacity: 0.7;
+}
+
+
+
+
+.slider-row {
+    display: grid;
+    grid-template-columns: 7.5rem 1fr 2.5rem;
+    align-items: center;
+    gap: 0.5rem;
+    color: white;
+    width: 100%;
+    max-width: 340px;
+    text-align: left;
+}
+
+.slider-row .gb-range {
+    max-width: none;
+}
+
+.slider-value {
+    font-size: 0.55rem;
+    text-align: right;
+}
+
+.scale-note.centered {
+    text-align: center;
+}
+
+.print-status-detail {
+    margin-top: 0.8rem;
+    font-size: 0.65rem;
+    line-height: 1.6;
+    text-align: center;
+}
+
+.print-job-buttons {
+    width: 100%;
+}
+
+.print-job-buttons button {
+    margin-top: 1.5rem;
+}
+
+.popup-box--progress #print-cancel-btn {
+    margin-top: 1rem;
+}
+
+@media (max-width: 480px) {
+    .gallery-toolbar {
+        padding: 0 10px;
+    }
+
+    .tool-btn {
+        font-size: 0.55rem;
+        padding: 8px 9px;
+    }
+
+    .viewer-btn {
+        font-size: 0.5rem;
+        padding: 8px;
+    }
+
+    .slider-row {
+        grid-template-columns: 6rem 1fr 2.2rem;
+    }
+
+    .small-label {
+        font-size: 0.6rem;
+    }
+
+    .upload-label {
+        font-size: 0.75rem;
+    }
+}
+
+/* --- Printer page --- */
+
+#printer-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: white;
+    font-size: 0.8rem;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: rgb(0 0 0 / 22%);
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #bdbdbd;
+    flex: none;
+}
+
+#printer-status[data-state="ready"] .status-dot { background: #69f0ae; }
+#printer-status[data-state="busy"] .status-dot { background: #ffd54f; }
+#printer-status[data-state="error"] .status-dot,
+#printer-status[data-state="off"] .status-dot { background: #ff8a80; }
+
+.print-start,
+.print-editor {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    width: 100%;
+}
+
+.print-question {
+    color: white;
+    font-size: 0.85rem;
+    margin: 0.5rem 0 0;
+}
+
+.print-choices {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    width: 100%;
+}
+
+.print-choice {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 20px 10px;
+    border: 2px solid rgb(255 255 255 / 25%);
+    border-radius: 12px;
+    background: #004d25;
+    color: white;
+    cursor: pointer;
+    font-family: inherit;
+    transition: border-color 0.2s, background-color 0.2s;
+}
+
+.print-choice:hover {
+    border-color: #69f0ae;
+    background: #003d1d;
+}
+
+.print-choice-icon svg {
+    width: 40px;
+    height: 40px;
+    fill: none;
+    stroke: white;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.print-choice-title {
+    font-size: 0.8rem;
+}
+
+.print-choice-text {
+    font-size: 0.5rem;
+    opacity: 0.75;
+    line-height: 1.5;
+}
+
+.print-tip {
+    color: white;
+    font-size: 0.55rem;
+    opacity: 0.75;
+    max-width: 320px;
+    margin: 0;
+}
+
+.print-queue-block {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.print-queue-title {
+    color: white;
+    font-size: 0.7rem;
+    text-align: left;
+}
+
+.print-queue-hint {
+    font-size: 0.5rem;
+    opacity: 0.7;
+    margin-left: 6px;
+}
+
+.printer-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+    width: 100%;
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    color: white;
+    width: 100%;
+}
+
+.control-label {
+    font-size: 0.7rem;
+}
+
+.control-hint {
+    font-size: 0.55rem;
+    opacity: 0.75;
+    line-height: 1.5;
+}
+
+.control-group .gb-select {
+    font-family: inherit;
+    font-size: 0.6rem;
+    max-width: 100%;
+}
+
+.segmented {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    padding: 4px;
+    width: 100%;
+    max-width: 340px;
+    box-sizing: border-box;
+    background: #004d25;
+    border-radius: 10px;
+}
+
+.segmented button {
+    font-size: 0.6rem;
+    padding: 10px 2px;
+    border-radius: 7px;
+}
+
+.segmented button.active {
+    background-color: #4caf50;
+}
+
+.control-actions,
+.add-more {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+}
+
+.pill-btn {
+    display: inline-block;
+    font-family: inherit;
+    font-size: 0.6rem;
+    padding: 9px 14px;
+    border-radius: 999px;
+    border: 1px solid rgb(255 255 255 / 40%);
+    background: transparent;
+    color: white;
+    cursor: pointer;
+}
+
+.pill-btn:hover {
+    background: #004d25;
+}
+
+.range-ends {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    max-width: 340px;
+    font-size: 0.5rem;
+}
+
+.range-ends .gb-range {
+    max-width: none;
+}
+
+.more-options {
+    width: 100%;
+    color: white;
+    border-top: 1px solid rgb(255 255 255 / 20%);
+    padding-top: 0.8rem;
+}
+
+.more-options summary {
+    cursor: pointer;
+    font-size: 0.65rem;
+    opacity: 0.85;
+    margin-bottom: 0.4rem;
+}
+
+.more-options-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.9rem;
+    padding-top: 0.4rem;
+}
+
+.print-button {
+    width: 100%;
+    max-width: 340px;
+    padding: 16px;
+    font-size: 1rem;
+    border-radius: 10px;
+    background-color: #4caf50;
+    box-shadow: 0 4px 0 #2e7d32;
+}
+
+.print-button:hover {
+    background-color: #43a047;
+}
+
+.print-button:active {
+    transform: translateY(2px);
+    box-shadow: 0 2px 0 #2e7d32;
+}
+
+/* Text dialog */
+
+.text-dialog {
+    gap: 8px;
+    align-items: stretch;
+    text-align: left;
+}
+
+.text-dialog h2 {
+    text-align: center;
+}
+
+.field-label {
+    color: white;
+    font-size: 0.65rem;
+    margin-top: 0.6rem;
+}
+
+.field-optional {
+    opacity: 0.6;
+}
+
+.label-preview {
+    display: block;
+    width: 160px;
+    max-width: 100%;
+    height: auto;
+    margin: 1rem auto 0;
+    image-rendering: pixelated;
+    border: 1px solid white;
+    background: white;
+}
+
+.label-error {
+    color: #ffcc80;
+    font-size: 0.6rem;
+    text-align: center;
+    line-height: 1.5;
+}
+
+@media (max-width: 480px) {
+    .print-choice {
+        padding: 16px 6px;
+    }
+
+    .segmented button {
+        font-size: 0.55rem;
+    }
+}
+
+/* Print screen columns. Phones: one column, the print list above the preview.
+   Wide screens: the preview with the print list under it on the left, the
+   options beside them, so nothing has to be scrolled past to reach Print. */
+.print-preview-col,
+.print-controls-col {
+    display: contents;
+}
+
+.print-queue-block {
+    order: -1;
+}
+
+@media (min-width: 860px) {
+    .printer-panel.editing {
+        max-width: 800px;
+    }
+
+    .print-editor {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 2rem;
+        align-items: start;
+    }
+
+    .print-preview-col,
+    .print-controls-col {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+        min-width: 0;
+    }
+
+    .print-preview-col .preview-wrap {
+        width: min(384px, 100%);
+        max-height: 45vh;
+        max-height: 45dvh; /* leaves room for the print list below */
+    }
+
+    .print-preview-col .preview-caption {
+        margin-top: 0;
+    }
+
+    .print-queue-block {
+        order: 0;
+        margin-top: 0.5rem;
+    }
 }

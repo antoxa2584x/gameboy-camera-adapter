@@ -15,7 +15,10 @@
     <link rel="manifest" href="img/site.webmanifest">
     <link rel="stylesheet" href="css/styles.css">
     <script defer src="js/piexifjs.js"></script>
+    <script defer src="js/zip.js"></script>
+    <script defer src="js/qr.js"></script>
     <script defer src="js/script.js"></script>
+    <script defer src="js/printer.js"></script>
 </head>
 <body>
 <button id="firmware-version-btn" onclick="showFirmwarePopup()">Settings</button>
@@ -26,7 +29,7 @@
         <div class="flex-col-center">
             <!-- Close Button -->
             <button class="close-btn" onclick="closeFirmwarePopup()">X</button>
-            <p id="firmware-version-text">Current firmware is v2.3.0</p>
+            <p id="firmware-version-text">Current firmware is v2.4.0</p>
             <!-- Color Picker + Button -->
             <div class="settings-container">
                 <div class="led-color-row">
@@ -80,6 +83,28 @@
                 </select>
                 <label class="scale-note">Applies immediately. No reboot needed.</label>
             </div>
+
+            <!-- Frame around Game Boy Camera photos. Browser-side only. -->
+            <div class="scale-block">
+                <label class="switch-label">Photo Frame</label>
+                <select id="photoFrame" class="gb-select">
+                    <option value="keep" selected>Keep as printed</option>
+                    <option value="remove">Remove frame - 128 x 112</option>
+                    <option value="custom">Custom frame</option>
+                </select>
+                <input type="file" id="frame-file-input" accept="image/*" class="hidden" onchange="loadCustomFrame(this)">
+                <button id="frame-file-btn" class="darkgreen small-btn hidden" onclick="document.getElementById('frame-file-input').click()">Choose Frame Image</button>
+                <label id="frame-note" class="scale-note">Applies to Game Boy Camera photos.</label>
+            </div>
+
+            <!-- How Save All hands over several photos. Browser-side only. -->
+            <div id="save-all-mode-block" class="scale-block">
+                <label class="switch-label">Save All As</label>
+                <select id="saveAllMode" class="gb-select">
+                    <option value="zip" selected>One ZIP file</option>
+                    <option value="files">Separate files</option>
+                </select>
+            </div>
             <!-- Firmware Controls -->
             <button class="red" onclick="closeFirmwarePopup(); showUpdateInstructions()">Firmware Update</button>
             <label class="fw-update-hint">Check for and install a new Adapter Firmware</label>
@@ -114,6 +139,61 @@
         </div>
     </div>
 </div>
+<!-- Palette editor -->
+<div id="palette-popup" class="popup-overlay hidden">
+    <div class="popup-container popup-box">
+        <button class="close-btn" onclick="closePaletteEditor()">X</button>
+        <div class="flex-col-center">
+            <h2 id="palette-popup-title">New Palette</h2>
+            <canvas id="palette-preview" class="palette-preview" width="160" height="144"></canvas>
+            <div class="palette-swatches">
+                <label class="palette-swatch"><input type="color" class="palette-color" value="#ffffff"><span>Light</span></label>
+                <label class="palette-swatch"><input type="color" class="palette-color" value="#bfbfbf"><span>Mid 1</span></label>
+                <label class="palette-swatch"><input type="color" class="palette-color" value="#7f7f7f"><span>Mid 2</span></label>
+                <label class="palette-swatch"><input type="color" class="palette-color" value="#3f3f3f"><span>Dark</span></label>
+            </div>
+            <div class="scale-block">
+                <label class="switch-label" for="palette-code">Palette Code</label>
+                <div class="code-row">
+                    <input id="palette-code" class="gb-input" type="text" spellcheck="false" autocomplete="off" oninput="onPaletteCodeInput(this)">
+                    <button id="palette-copy-btn" class="darkgreen small-btn" onclick="copyPaletteCode()">Copy</button>
+                </div>
+                <label class="scale-note">Share the code, or paste one here.</label>
+            </div>
+            <button onclick="savePaletteFromEditor()">Save Palette</button>
+            <button id="palette-delete-btn" class="red hidden" onclick="deletePaletteFromEditor()">Delete Palette</button>
+        </div>
+    </div>
+</div>
+
+<!-- Animation export -->
+<div id="animate-popup" class="popup-overlay hidden">
+    <div class="popup-container popup-box">
+        <button class="close-btn" onclick="closeAnimatePopup()">X</button>
+        <div class="flex-col-center">
+            <h2>Animation</h2>
+            <div id="animate-speed-block" class="scale-block">
+                <label class="switch-label" for="animate-delay">Time Per Photo</label>
+                <select id="animate-delay" class="gb-select">
+                    <option value="100">0.1 s</option>
+                    <option value="200" selected>0.2 s</option>
+                    <option value="500">0.5 s</option>
+                    <option value="1000">1 s</option>
+                    <option value="2000">2 s</option>
+                </select>
+            </div>
+            <div class="scale-block">
+                <label class="switch-label" for="animate-format">Format</label>
+                <select id="animate-format" class="gb-select">
+                    <option value="gif" selected>GIF - plays everywhere</option>
+                    <option value="video">Video - MP4 or WebM</option>
+                </select>
+            </div>
+            <button onclick="exportAnimation()">Save</button>
+        </div>
+    </div>
+</div>
+
 <div id="general-popup" class="popup-overlay hidden">
     <div class="popup-container popup-box">
         <div class="general-popup-content flex-col-center"></div>
@@ -136,29 +216,34 @@
     <!-- Mode Containers -->
     <div id="scanner-mode" class="mode-block">
         <div class="color-selector-container hidden">
-            <div id="color-selector" class="flex-row">
-                <div class="color-circle active"
-                     style="background:linear-gradient(to right, #ffffff 25%, #bfbfbf 25% 50%, #7f7f7f 50% 75%, #3f3f3f 75%)"
-                     data-scheme="grayscale"></div>
-                <div class="color-circle"
-                     style="background:linear-gradient(to right, #d0d93c 25%, #78a46a 25% 50%, #545854 50% 75%, #244624 75%)"
-                     data-scheme="game-boy"></div>
-                <div class="color-circle"
-                     style="background:linear-gradient(to right, #ffffff 25%, #b5b3bd 25% 50%, #545367 50% 75%, #090713 75%)"
-                     data-scheme="super-game-boy"></div>
-                <div class="color-circle"
-                     style="background:linear-gradient(to right, #f0f0f0 25%, #dac46a 25% 50%, #705834 50% 75%, #1e1e1e 75%)"
-                     data-scheme="game-boy-color-jpn"></div>
-                <div class="color-circle"
-                     style="background:linear-gradient(to right, #f0f0f0 25%, #dca0a0 25% 50%, #884e4e 50% 75%, #1e1e1e 75%)"
-                     data-scheme="game-boy-color-usa-gold"></div>
-                <div class="color-circle"
-                     style="background:linear-gradient(to right, #f0f0f0 25%, #86c864 25% 50%, #3a6084 50% 75%, #1e1e1e 75%)"
-                     data-scheme="game-boy-color-usa-eur"></div>
-            </div>
+            <div id="color-selector" class="flex-row"></div>
+            <button id="palette-edit-btn" class="link-btn hidden" onclick="editActivePalette()">Edit palette</button>
         </div>
-        <div class="save-all-row">
-            <button id="save_all_btn" class="hidden" onclick="saveAllPictures()">Save All</button>
+        <div id="gallery-toolbar" class="gallery-toolbar hidden">
+            <div id="toolbar-main" class="toolbar-row">
+                <button class="tool-btn" onclick="setSelectMode(true)">Select</button>
+                <button id="save_all_btn" class="tool-btn hidden" onclick="saveAllPictures()">Save All</button>
+                <select id="gallery-sort" class="gb-select tool-select" aria-label="Sort photos">
+                    <option value="oldest">Oldest first</option>
+                    <option value="newest">Newest first</option>
+                    <option value="favorites">Favorites first</option>
+                </select>
+            </div>
+            <div id="toolbar-select" class="selection-bar hidden">
+                <div class="selection-head">
+                    <span id="selection-count" class="selection-count">0 selected</span>
+                    <button id="select-all-btn" class="tool-btn" onclick="selectAllPhotos()">All</button>
+                    <button class="tool-btn tool-btn--done" onclick="setSelectMode(false)">Done</button>
+                </div>
+                <div class="selection-actions">
+                    <button class="tool-btn" data-needs="1" onclick="saveSelectedPhotos()">Save</button>
+                    <button class="tool-btn" data-needs="1" onclick="printSelectedPhotos()">Print</button>
+                    <button class="tool-btn" data-needs="2" onclick="joinSelectedPhotos()">Join</button>
+                    <button class="tool-btn" data-needs="2" onclick="animateSelectedPhotos()">Animate</button>
+                    <button class="tool-btn" data-needs="1" onclick="contactSheetSelected()">Sheet</button>
+                    <button class="tool-btn tool-btn--danger" data-needs="1" onclick="deleteSelectedPhotos()">Delete</button>
+                </div>
+            </div>
         </div>
         <!-- Live view: frames streamed by gb-photo's "Transfer REC" -->
         <div id="live-view" class="live-view hidden">
@@ -169,6 +254,7 @@
             <canvas id="live-canvas" width="128" height="112"></canvas>
             <div class="live-controls">
                 <button class="darkgreen" onclick="saveLiveVideo()">Save GIF</button>
+                <button id="live-video-btn" class="darkgreen hidden" onclick="saveLiveMovie()">Save Video</button>
                 <button class="darkgreen" onclick="saveLiveFrame()">Add Frame</button>
                 <button onclick="closeLiveView()">Close</button>
             </div>
@@ -181,46 +267,169 @@
     <div id="printer-mode" class="mode-block hidden">
         <div class="printer-wrap">
             <div class="printer-panel">
-                <div id="printer-status">Printer Status: OK</div>
-
-                <label class="upload-label">Upload Image for Printing</label>
-
-                <canvas id="preview-canvas" width="160" height="144"></canvas>
-
-                <div id="file-name" class="upload-label">No file selected</div>
-
-                <input type="file" id="file-input" accept="image/*" onchange="handleFileInput(event)">
-
-                <div class="flex-col-center">
-                    <label for="file-input" class="file-btn">Choose File</label>
+                <div class="printer-status-block">
+                    <div id="printer-status"><span class="status-dot"></span><span id="printer-status-text">Printer: Checking...</span></div>
+                    <div id="printer-status-help" class="printer-help hidden"></div>
                 </div>
 
-                <div id="printer-controls" class="hidden">
-                    <div class="crop-row">
-                        <label for="image-mode" class="small-label">Crop mode:</label>
-                        <select id="image-mode" class="gb-select" onchange="refreshPreview()">
-                            <option value="crop">Crop to 160x144</option>
-                            <option value="fit">Fit with white borders</option>
-                        </select>
+                <input type="file" id="file-input" accept="image/*" multiple onchange="handleFileInput(event)">
+
+                <!-- Nothing to print yet: two big choices -->
+                <div id="print-start" class="print-start">
+                    <p class="print-question">What would you like to print?</p>
+                    <div class="print-choices">
+                        <label for="file-input" class="print-choice">
+                            <span class="print-choice-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 8"/></svg>
+                            </span>
+                            <span class="print-choice-title">Picture</span>
+                            <span class="print-choice-text">A photo or any image</span>
+                        </label>
+                        <button type="button" class="print-choice" onclick="openTextDialog()">
+                            <span class="print-choice-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13M8 19h8"/></svg>
+                            </span>
+                            <span class="print-choice-title">Text or QR</span>
+                            <span class="print-choice-text">A label, a note, a link</span>
+                        </button>
                     </div>
-                    <div class="exposure-row">
-                        <label for="print-exposure" class="small-label">Exposure:</label>
-                        <!-- The printer's full exposure range, 0x00 to 0x7F, defaulting to the
-                             Game Boy's own 0x40. The lightest settings genuinely do print washed
-                             out with no true black; the preview shows that rather than hiding it.
-                             script.js reads these bounds off this element, so changing them here
-                             is enough - there is no constant to keep in step. -->
-                        <input type="range" id="print-exposure" min="0" max="127" value="64" oninput="refreshExposure()">
-                    </div>
+                    <p class="print-tip">Tip: to print Game Boy photos, open the Gallery, tap Select, pick photos, then Print.</p>
                 </div>
 
-                <button id="print-button" class="darkgreen hidden" onclick="printSelectedImage()">Print to the Game Boy</button>
+                <!-- Something to print -->
+                <div id="print-editor" class="print-editor hidden">
+                    <div class="print-preview-col">
+                        <div class="preview-wrap">
+                            <canvas id="preview-canvas" width="160" height="144"></canvas>
+                        </div>
+                        <div class="preview-caption">
+                            <span id="file-name"></span>
+                            <span id="print-size"></span>
+                        </div>
+                        <div id="print-queue-block" class="print-queue-block hidden">
+                            <div class="print-queue-title">Print list <span class="print-queue-hint">tap one to adjust it</span></div>
+                            <div id="print-queue" class="print-queue"></div>
+                        </div>
+                    </div>
+
+                    <div class="print-controls-col">
+                        <div id="printer-controls" class="printer-controls">
+                            <div class="control-group">
+                                <div class="control-label">Layout</div>
+                                <div class="segmented" role="group" aria-label="Layout">
+                                    <button type="button" data-layout="fit">Fit</button>
+                                    <button type="button" data-layout="crop">Fill</button>
+                                    <button type="button" data-layout="center">Actual</button>
+                                    <button type="button" data-layout="banner">Long</button>
+                                </div>
+                                <div id="layout-hint" class="control-hint"></div>
+                                <div class="control-actions">
+                                    <button type="button" class="pill-btn" onclick="rotatePrintItem()">Rotate</button>
+                                    <button type="button" id="edit-text-btn" class="pill-btn hidden" onclick="openTextDialog(selectedQueueId)">Edit text</button>
+                                </div>
+                            </div>
+
+                            <div class="control-group">
+                                <div class="control-label">Darkness</div>
+                                <div class="range-ends">
+                                    <span>Lighter</span>
+                                    <!-- The printer's full exposure range, 0x00 to 0x7F, defaulting to the
+                                         Game Boy's own 0x40. The lightest settings genuinely do print washed
+                                         out with no true black; the preview shows that rather than hiding it.
+                                         printer.js reads these bounds off this element, so changing them here
+                                         is enough - there is no constant to keep in step. -->
+                                    <input type="range" id="print-exposure" class="gb-range" min="0" max="127" value="64" oninput="refreshExposure()" aria-label="Darkness">
+                                    <span>Darker</span>
+                                </div>
+                            </div>
+
+                            <details class="more-options">
+                                <summary>More options</summary>
+                                <div class="more-options-body">
+                                <div class="control-group">
+                                    <label for="print-dither" class="control-label">Shading style</label>
+                                    <select id="print-dither" class="gb-select">
+                                        <option value="bayer" selected>Game Boy dots (default)</option>
+                                        <option value="floyd">Smooth (Floyd-Steinberg)</option>
+                                        <option value="atkinson">High contrast (Atkinson)</option>
+                                        <option value="none">Flat - 4 shades</option>
+                                        <option value="bw">Black and white</option>
+                                    </select>
+                                    <div id="print-passthrough-hint" class="control-hint hidden">Already Game Boy shades: printed exactly as they are.</div>
+                                </div>
+                                <div class="slider-row">
+                                    <label for="print-brightness" class="small-label">Brightness</label>
+                                    <input type="range" id="print-brightness" class="gb-range" min="-100" max="100" value="0">
+                                    <span id="print-brightness-value" class="slider-value">0</span>
+                                </div>
+                                <div class="slider-row">
+                                    <label for="print-contrast" class="small-label">Contrast</label>
+                                    <input type="range" id="print-contrast" class="gb-range" min="-100" max="100" value="0">
+                                    <span id="print-contrast-value" class="slider-value">0</span>
+                                </div>
+                                <button type="button" class="link-btn" onclick="resetPrintAdjustments()">Reset brightness and contrast</button>
+                                <div id="print-spacing-row" class="control-group hidden">
+                                    <label for="print-spacing" class="control-label">Between prints</label>
+                                    <select id="print-spacing" class="gb-select">
+                                        <option value="feed" selected>Feed paper, tear off each</option>
+                                        <option value="none">No gap, one long strip</option>
+                                    </select>
+                                </div>
+                                </div>
+                            </details>
+                        </div>
+
+                        <button id="print-button" class="print-button" onclick="printSelectedImage()">Print</button>
+
+                        <div class="add-more">
+                            <label for="file-input" class="pill-btn">+ Picture</label>
+                            <button type="button" class="pill-btn" onclick="openTextDialog()">+ Text or QR</button>
+                            <button type="button" class="link-btn" onclick="clearPrintQueue()">Start over</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
         <p class="description beta-note">
             This is a beta feature.<br>
             It may work incorrectly with some printer models.
         </p>
+    </div>
+</div>
+
+<!-- Text and QR label -->
+<div id="text-popup" class="popup-overlay hidden">
+    <div class="popup-container popup-box">
+        <button class="close-btn" onclick="closeTextDialog()">X</button>
+        <div class="flex-col-center text-dialog">
+            <h2 id="text-popup-title">Text or QR Code</h2>
+            <label class="field-label" for="print-text">Text</label>
+            <textarea id="print-text" class="gb-input" rows="3" placeholder="Type something to print"></textarea>
+            <div class="text-options">
+                <select id="print-text-font" class="gb-select" aria-label="Font">
+                    <option value="pixel" selected>Pixel font</option>
+                    <option value="sans">Sans</option>
+                    <option value="serif">Serif</option>
+                    <option value="mono">Mono</option>
+                </select>
+                <select id="print-text-size" class="gb-select" aria-label="Text size">
+                    <option value="s">Small</option>
+                    <option value="m" selected>Medium</option>
+                    <option value="l">Large</option>
+                    <option value="xl">Huge</option>
+                </select>
+                <select id="print-text-align" class="gb-select" aria-label="Alignment">
+                    <option value="left">Left</option>
+                    <option value="center" selected>Center</option>
+                    <option value="right">Right</option>
+                </select>
+            </div>
+            <label class="field-label" for="print-qr">QR code <span class="field-optional">(optional)</span></label>
+            <input id="print-qr" class="gb-input" type="text" placeholder="A link or any text" autocomplete="off">
+            <canvas id="label-preview" class="label-preview" width="160" height="40"></canvas>
+            <div id="label-error" class="label-error hidden"></div>
+            <button id="text-save-btn" onclick="saveTextDialog()">Add to List</button>
+        </div>
     </div>
 </div>
 
@@ -235,8 +444,13 @@
 <!-- Print Progress Overlay -->
 <div id="print-overlay" class="popup-overlay hidden">
     <div class="popup-container popup-box popup-box--progress">
-        <div class="loader-spinner"></div>
+        <div id="print-spinner" class="loader-spinner"></div>
         <div id="print-status-text">Sending to printer...</div>
+        <div id="print-status-detail" class="print-status-detail"></div>
+        <div id="print-job-buttons" class="print-job-buttons hidden">
+            <button class="darkgreen" onclick="resumePrintJob()">Resume</button>
+        </div>
+        <button id="print-cancel-btn" class="red hidden" onclick="cancelPrintJob()">Cancel</button>
     </div>
 </div>
 
