@@ -16,10 +16,6 @@ extern void receive_data_commit(uint8_t cmd);
 extern void receive_transfer_begin(void);
 extern bool receive_buffer_ready(void);
 
-extern uint8_t base_r, base_g, base_b;
-extern void load_color_from_flash(void);
-extern void setRGB(uint8_t r, uint8_t g, uint8_t b);
-
 // printer packet state machine
 void protocol_reset() {
     printer_state = PRN_STATE_WAIT_FOR_SYNC_1;
@@ -42,7 +38,6 @@ uint8_t protocol_data_process(uint8_t data_in) {
             if (data_in == 0x33) printer_state = PRN_STATE_COMMAND; else PRINTER_RESET;
             break;
         case PRN_STATE_COMMAND:
-            setRGB(base_r, base_g, base_b);
             printer_command = data_in;
             printer_state = PRN_STATE_COMPRESSION_INDICATOR;
             printer_status = next_printer_status;
@@ -103,9 +98,6 @@ uint8_t protocol_data_process(uint8_t data_in) {
 #ifdef PRINT_PROGRESS_LED
             if ((receive_byte_counter & 0x3F) == 0) LED_TOGGLE;
 #endif
-            if ((receive_byte_counter & 0x3F) == 0){
-                setRGB(base_r, base_g, base_b);
-            }
             if(++receive_byte_counter == packet_data_length) printer_state = PRN_STATE_CHECKSUM_1;
             if (printer_command == PRN_COMMAND_PRINT && receive_byte_counter == 4) {
                 // byte 4 of PRINT command is exposure (contrast)
@@ -131,7 +123,6 @@ uint8_t protocol_data_process(uint8_t data_in) {
 #ifdef PRINT_PROGRESS_LED
             LED_OFF;
 #endif
-            setRGB(0, 0, 0);
             break;
         case PRN_STATE_CHECKSUM_2:
             printer_checksum |= ((uint16_t)data_in << 8);

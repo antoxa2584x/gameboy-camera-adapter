@@ -176,6 +176,10 @@ bool fw_update_finish(uint32_t delay_ms) {
     return true;
 }
 
+bool fw_update_active(void) {
+    return fw_open || fw_applying;
+}
+
 uint32_t fw_update_received(void) {
     return fw_received;
 }

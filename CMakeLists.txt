@@ -36,6 +36,7 @@ add_executable(
     src/usb_descriptors.c
     src/cdc_sender.c
     src/fw_update.c
+    src/led_status.c
     ${TINYUSB_LIBNETWORKING_SOURCES}
 )
 

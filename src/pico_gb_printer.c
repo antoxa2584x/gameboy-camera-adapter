@@ -27,6 +27,7 @@
 
 #include "cdc_sender.h"
 #include "fw_update.h"
+#include "led_status.h"
 #include "lwip/apps/httpd.h"
 
 // GameBoy Printer status
@@ -46,8 +47,6 @@ uint32_t last_file_len = 0;
 uint32_t picture_count = 0;
 
 uint8_t base_r = 0, base_g = 255, base_b = 0; // default green
-uint8_t wave_index = 0;
-uint8_t led_mode = 0; // 0 = wave, 1 = static
 
 uint8_t saved_color[3] = {0};
 bool use_rgb_mode = true; // default mode string
@@ -297,6 +296,8 @@ static void cdc_handle_fw_update(const char *path) {
   } else {
     snprintf(resp, sizeof(resp), "FW_ERR command\n");
   }
+  if (strncmp(resp, "FW_ERR", 6) == 0) led_status_activity(LED_STATUS_ERROR);
+  else if (strncmp(path, "/fw_finish", 10) == 0) led_status_hold(LED_STATUS_UPDATING);
   cdc_send_string(resp);
 #endif
 }
@@ -336,6 +337,7 @@ static void cdc_handle_line(const char* line) {
     }
 
     if (strncmp(path, "/update", 7) == 0) {
+      led_status_hold(LED_STATUS_UPDATING); // the LED keeps it while in the bootloader
       cdc_send_string("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK - Entering Bootloader...\r\n");
       add_alarm_in_ms(300, reboot_callback, NULL, false);
       return;
@@ -530,6 +532,8 @@ void receive_data_write(uint8_t b) {
     double_init = false;
     datablock_t * block;
 
+    led_status_activity(live_frame ? LED_STATUS_LIVE : LED_STATUS_RECEIVING);
+
     // mirror the byte into the CDC stream first, so the serial host still gets
     // the photo when the web buffer is full; sent later from the main loop
     cdc_file_write(b);
@@ -632,6 +636,7 @@ int64_t reboot_callback(alarm_id_t id, void *user_data) {
 const char* cgi_update(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
     // Schedule reboot in 300ms, which gives time for browser to receive response
     add_alarm_in_ms(300, reboot_callback, NULL, false);
+    led_status_hold(LED_STATUS_UPDATING); // the LED keeps it while in the bootloader
 
     return "/updating.html";
 }
@@ -651,7 +656,10 @@ err_t httpd_post_begin(void *connection, const char *uri, const char *http_reque
     fw_connection = NULL;
     if (strncmp(uri, "/fw_upload", 10) != 0) return ERR_VAL;
     const char *crc = strstr(uri, "crc=");
-    if (!crc || content_len <= 0 || !fw_update_begin((uint32_t)content_len, strtoul(crc + 4, NULL, 16))) return ERR_VAL;
+    if (!crc || content_len <= 0 || !fw_update_begin((uint32_t)content_len, strtoul(crc + 4, NULL, 16))) {
+        led_status_activity(LED_STATUS_ERROR);
+        return ERR_VAL;
+    }
     fw_connection = connection;
     return ERR_OK;
 }
@@ -660,12 +668,15 @@ err_t httpd_post_receive_data(void *connection, struct pbuf *p) {
     bool ok = (connection == fw_connection);
     for (struct pbuf *q = p; ok && q; q = q->next) ok = fw_update_write(q->payload, q->len);
     pbuf_free(p);
+    if (!ok) led_status_activity(LED_STATUS_ERROR);
     return ok ? ERR_OK : ERR_VAL;
 }
 
 void httpd_post_finished(void *connection, char *response_uri, u16_t response_uri_len) {
     fw_http_ok = (connection == fw_connection) && fw_update_finish(FW_APPLY_DELAY_MS);
     fw_connection = NULL;
+    if (fw_http_ok) led_status_hold(LED_STATUS_UPDATING);
+    else led_status_activity(LED_STATUS_ERROR);
     snprintf(response_uri, response_uri_len, FW_RESULT_FILE);
 }
 
@@ -723,13 +734,6 @@ void load_color_from_flash() {
 }
 
 
-#define WAVE_STEPS 13
-float wave_levels[WAVE_STEPS] = {
-    0.2f, 0.3f, 0.4f, 0.5f,
-    0.65f, 0.8f, 1.0f,
-    0.8f, 0.65f, 0.5f, 0.4f, 0.3f, 0.2f
-};
-
 int64_t soft_restart(alarm_id_t id, void *user_data) {
     watchdog_enable(1, 1); // short timeout
     while (1);             // wait for reset
@@ -751,24 +755,6 @@ static const char *cgi_set_color(int iIndex, int iNumParams, char *pcParam[], ch
     add_alarm_in_ms(300, soft_restart, NULL, false);
 
     return "/index.html";
-}
-
-uint64_t last_blink = 0;
-const uint32_t interval = 150000; // 200ms
-
-void update_led_wave() {
-    uint64_t now = time_us_64();
-    if (led_mode == 0 && now - last_blink >= interval) {
-        float scale = wave_levels[wave_index];
-        uint8_t r = (uint8_t)(base_r * scale);
-        uint8_t g = (uint8_t)(base_g * scale);
-        uint8_t b = (uint8_t)(base_b * scale);
-
-        setRGB(r, g, b);
-
-        wave_index = (wave_index + 1) % WAVE_STEPS;
-        last_blink = now;
-    }
 }
 
 #define PIN_SCK    2  // CLK: from Pico to printer
@@ -804,7 +790,20 @@ uint8_t printer_send_byte(uint8_t byteToSend) {
     return gbReply;
 }
 
+// A real print job is going out, not a lone status query
+static bool print_job_running = false;
+
+// Status bits that mean the print failed (see PRINTER_ERROR_MASK in printer.js):
+// low battery, other error, paper jam, packet error, checksum
+#define PRINTER_ERROR_MASK 0xF1
+
 void printer_send_packet(const uint8_t* packet, int length) {
+    // The burst blocks the main loop for seconds: keep the LED going from here
+    if (print_job_running) {
+        led_status_activity(LED_STATUS_PRINTING);
+        led_status_service();
+    }
+
     // First call: disable PIO and configure GPIO (subsequent calls reuse same pin config)
     if (!printing_active) {
         pio_sm_set_enabled(LINKCABLE_PIO, LINKCABLE_SM, false);
@@ -909,6 +908,7 @@ static void print_queue_flush(void) {
             static const uint8_t status_packet[] = {0x88, 0x33, 0x0f, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00};
             printer_send_packet(status_packet, sizeof(status_packet));
         } else {
+            print_job_running = true;
             // Collect all DATA payloads and reassemble into 640-byte strips.
             // The GB Printer requires exactly 640-byte DATA packets (2 tile rows).
             // HTTP chunks may be smaller (e.g. 256 bytes), so we reassemble here.
@@ -963,6 +963,10 @@ static void print_queue_flush(void) {
             int post_start = (last_data >= 0) ? last_data + 1 : 0;
             for (int p = post_start; p < pkt_queue_count; p++)
                 printer_send_packet(&pkt_queue_buf[pkt_queue_offsets[p]], pkt_queue_lengths[p]);
+
+            print_job_running = false;
+            uint8_t status = get_printer_status();
+            if ((status == PRINTER_STATUS_DISCONNECTED) || (status & PRINTER_ERROR_MASK)) led_status_activity(LED_STATUS_ERROR);
         }
         // Reset queue
         pkt_queue_count = 0;
@@ -1205,7 +1209,8 @@ int main(void) {
 #endif
         }
 
-        update_led_wave();
+        if (fw_update_active()) led_status_activity(LED_STATUS_UPDATING);
+        led_status_service();
     }
 
     return 0;

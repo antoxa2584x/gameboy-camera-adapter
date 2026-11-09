@@ -48,6 +48,18 @@
                     <label for="colorMode" class="switch-label">If colors are not as expected, switch this</label>
                 </div>
 
+                <!-- Fixed status colors, set in firmware (led_status.c) -->
+                <div class="scale-block">
+                    <label class="switch-label">The LED shows your color when idle, and</label>
+                    <ul class="led-legend">
+                        <li><span class="led-dot" style="background:#0030ff"></span>Blue blink &mdash; receiving a photo</li>
+                        <li><span class="led-dot" style="background:#00c0c0"></span>Cyan blink &mdash; live view</li>
+                        <li><span class="led-dot" style="background:#ff6000"></span>Orange blink &mdash; printing</li>
+                        <li><span class="led-dot" style="background:#a000ff"></span>Purple &mdash; firmware update</li>
+                        <li><span class="led-dot" style="background:#ff0000"></span>Red blink &mdash; print or update failed</li>
+                    </ul>
+                </div>
+
                 <!-- Mobile Compatibility Selector -->
                 <div class="mobile-mode-block">
                     <label class="switch-label">Mobile Compatibility</label>

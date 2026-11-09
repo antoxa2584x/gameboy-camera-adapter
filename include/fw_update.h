@@ -25,6 +25,9 @@ bool fw_update_write(const uint8_t *data, uint32_t len);
 // otherwise.
 bool fw_update_finish(uint32_t delay_ms);
 
+// An upload is open, or a checked image is about to be installed
+bool fw_update_active(void);
+
 // Bytes received in the current upload
 uint32_t fw_update_received(void);
 
