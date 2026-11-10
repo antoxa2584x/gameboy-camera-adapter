@@ -11,6 +11,8 @@
   - Save several photos as an animated **GIF** or a **video**
   - gb-photo **Transfer REC**: step through the recording with the arrows or the slider and **Save Frame** keeps the one you pick
   - Simpler **Settings**: photo, adapter and firmware options in their own sections, quick LED color choices
+  - Cleaner main page: **Gallery / Printer** tabs, photos grouped by day with a count, **NEW** on photos you have not opened, an adapter status line and a **Receiving…** tile while a photo comes in, and touch and hold a photo to start selecting
+  - The photo viewer shows which photo you are on and when it arrived, with the arrows beside the photo
 - **Status LED:** fixed colors show what the adapter is doing: blue blink while receiving a photo, cyan for live view, orange while printing, purple during a firmware update, red blink when a print or update fails. Your LED color shows when idle.
 - **Printer:**
   - A simpler print page: pick a **Picture** or **Text or QR**, check the preview, print

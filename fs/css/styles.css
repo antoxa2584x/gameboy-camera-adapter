@@ -1,3 +1,14 @@
+/* No rubber-band past the ends on iOS: the bounce slid the page under the fixed footer */
+html,
+body {
+    overscroll-behavior-y: none;
+}
+
+/* Keep the scrollbar's room when a dialog locks the page, so it does not jump */
+html {
+    scrollbar-gutter: stable;
+}
+
 body {
     font-family: 'Press Start 2P', cursive;
     /* Pixelated font */
@@ -6,10 +17,21 @@ body {
     /* Mint green background */
     margin: 0;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    /* The safe-area padding counts inside the 100dvh: on top of it, it made even a
+       short page taller than an iPhone screen, scrolling content under the footer */
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     min-height: 100vh;
     min-height: 100dvh; /* only what shows between the browser bars */
+}
+
+/* A dialog is open: the page holds still behind it (see updateScrollLock) */
+body.scroll-locked {
+    position: fixed;
+    left: 0;
+    right: 0;
+    overflow: hidden;
 }
 
 @font-face {
@@ -25,7 +47,7 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    margin-top: 40px;
+    margin-top: 12px;
     margin-bottom: 120px;
     width: 100%;
     box-sizing: border-box;
@@ -157,60 +179,105 @@ p {
 /* Gallery Layout */
 #gallery {
     width: 100%;
-    max-width: 800px;
+    max-width: 1200px;
     margin: 0 auto;
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 10px;
-    justify-content: center;
-    padding: 20px;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+    padding: 12px 20px 20px;
     box-sizing: border-box;
 }
 
+/* Just the photo: no card padding, no per-tile button */
 .gallery-image {
     width: 100%;
     min-width: 0;
-    max-width: 190px;
-    padding: 10px;
-    margin: 0 auto; /* Center within grid cell */
+    padding: 0;
     background-color: rgb(0 0 0 / 28%);
     border: 1px solid #004d25;
-    border-radius: 5px;
+    border-radius: 8px;
+    overflow: hidden;
     box-sizing: border-box;
     position: relative;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
     cursor: pointer;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    align-items: center;
+    -webkit-touch-callout: none; /* touch and hold selects, no image menu */
+    -webkit-user-select: none;
+    user-select: none;
 }
 
-.gallery-image:hover {
-    transform: scale(1.05);
-    box-shadow: 0 0 15px rgba(76, 175, 80, 0.5);
-    z-index: 10;
-}
-
-@media (max-width: 800px) {
-    #gallery {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        padding: 15px;
-    }
-}
-
-@media (max-width: 640px) {
-    #gallery {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        padding: 12px;
+/* Mouse only: on a touch screen the first tap would leave it stuck enlarged */
+@media (hover: hover) {
+    .gallery-image:hover {
+        transform: scale(1.03);
+        box-shadow: 0 0 15px rgba(76, 175, 80, 0.5);
+        z-index: 10;
     }
 }
 
 @media (max-width: 480px) {
     #gallery {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        padding: 10px;
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+        gap: 8px;
+        padding: 10px 8px 16px;
     }
+}
+
+/* Day (or favorites) heading, across the whole row */
+.gallery-group {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    color: white;
+    font-size: 0.65rem;
+    padding: 12px 2px 4px;
+    border-bottom: 1px solid rgb(255 255 255 / 12%);
+    text-align: left;
+}
+
+.gallery-group:first-child {
+    padding-top: 0;
+}
+
+.gallery-group-count {
+    opacity: 0.6;
+}
+
+/* Stands in for the photo the Game Boy is sending */
+.gallery-image--pending {
+    aspect-ratio: 160 / 144;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    color: white;
+    font-size: 0.55rem;
+    border: 1px dashed #4caf50;
+    cursor: default;
+}
+
+.gallery-image--pending:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+.photo-new {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    display: none;
+    padding: 3px 5px;
+    border-radius: 4px;
+    background: #ffd54f;
+    color: #111;
+    font-size: 0.45rem;
+    z-index: 3;
+}
+
+.gallery-image.fresh .photo-new {
+    display: block;
 }
 
 /* Printer Seekbar Theme */
@@ -275,7 +342,7 @@ footer .links {
 
 .container {
     width: 90%;
-    max-width: 800px;
+    max-width: 1200px;
     margin: 0 auto;
     text-align: center;
 }
@@ -288,15 +355,6 @@ footer .links {
     .popup-container .close-btn, .popup-close-button {
         right: 5px;
         top: 5px;
-    }
-
-    #logo-img {
-        width: 90% !important;
-        padding: 10% 5% 5% !important;
-    }
-
-    #mode-name {
-        font-size: 1.2rem !important;
     }
 
     .color-circle {
@@ -368,25 +426,6 @@ footer .links {
     z-index: 1;
 }
 
-.gallery-image .photo-save {
-    background: none;
-    border: none;
-    color: white;
-    padding: 0;
-    font-family: inherit;
-    font-size: 0.7rem;
-    cursor: pointer;
-    width: 100%;
-    text-align: center;
-    margin-top: 10px;
-    transition: color 0.2s, opacity 0.2s;
-}
-
-.gallery-image .photo-save:hover {
-    opacity: 0.8;
-    text-decoration: underline;
-}
-
 #description {
     color: white;
     display: flex;
@@ -401,12 +440,11 @@ footer .links {
 /* A fixed box, so a long joined print does not stretch its whole row */
 .gallery-image img {
     width: 100%;
-    max-width: 160px;
     aspect-ratio: 160 / 144;
     object-fit: contain;
     image-rendering: pixelated;
     display: block;
-    margin: 0 auto;
+    -webkit-touch-callout: none;
 }
 
 .footer-link {
@@ -533,11 +571,9 @@ footer .links {
     background-color: #D32F2F;
 }
 
-/* Previous / next arrows of the photo viewer, pinned to the window edges */
+/* Previous / next arrows of the photo viewer, either side of the photo */
 .popup-nav-button {
-    position: fixed;
-    top: 50%;
-    transform: translateY(-50%);
+    flex: none;
     width: 44px;
     height: 44px;
     padding: 0;
@@ -555,12 +591,41 @@ footer .links {
     background-color: #004d25;
 }
 
-.popup-nav-button--prev {
-    left: 12px;
+.popup-nav-button.nav-off {
+    visibility: hidden;
 }
 
-.popup-nav-button--next {
-    right: 12px;
+.viewer-overlay {
+    background-color: rgb(0 0 0 / 92%);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+}
+
+.viewer-stage {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.viewer-info {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 12px;
+    color: white;
+    font-size: 0.6rem;
+    opacity: 0.85;
+}
+
+.viewer-photo {
+    position: relative;
+}
+
+/* Touch screens swipe between photos; the arrows would only eat width */
+@media (hover: none), (max-width: 600px) {
+    .viewer-stage .popup-nav-button {
+        display: none;
+    }
 }
 
 @media (max-width: 550px) {
@@ -586,7 +651,43 @@ footer .links {
 
 #color-selector {
     flex-wrap: wrap;
+    align-items: center;
     padding: 6px 12px;
+}
+
+.palette-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 8px;
+    color: white;
+    font-size: 0.65rem;
+}
+
+.palette-label {
+    color: #a1d99b;
+}
+
+.palette-head .link-btn {
+    font-size: 0.6rem;
+    padding: 0 4px;
+}
+
+.palette-new {
+    height: 40px;
+    padding: 0 14px;
+    border-radius: 20px;
+    border: 2px dashed white;
+    background: #004d25;
+    font-size: 0.55rem;
+    flex: none;
+}
+
+@media (max-width: 480px) {
+    .palette-new {
+        height: 30px;
+        padding: 0 10px;
+    }
 }
 
 .color-circle {
@@ -649,15 +750,6 @@ footer .links {
     animation: fadeOut 0.3s ease-in forwards;
 }
 
-#mode-indicator {
-    color: white;
-    margin-bottom: 2rem;
-    transition: transform 0.2s ease-in-out;
-}
-
-#logo-img:active + #mode-indicator {
-    transform: scale(0.95);
-}
 
 /* The switch - the box around the slider */
 .switch {
@@ -850,13 +942,60 @@ input:checked + .slider:before {
 }
 
 #firmware-version-btn {
-    color: white;
     position: absolute;
-    margin: 1rem;
-    right: 0;
-    top: 0;
-    font-size: 1em;
-    text-decoration: underline;
+    top: calc(12px + env(safe-area-inset-top));
+    right: calc(12px + env(safe-area-inset-right));
+    width: 44px;
+    height: 44px;
+    padding: 10px;
+    border-radius: 50%;
+    background-color: rgb(0 0 0 / 22%);
+    z-index: 50;
+}
+
+#firmware-version-btn:hover {
+    background-color: #004d25;
+}
+
+#firmware-version-btn svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    fill: white;
+}
+
+#header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* Gallery | Printer */
+.mode-tabs {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    margin: 4px auto 16px;
+    border-radius: 999px;
+    background: rgb(0 0 0 / 22%);
+}
+
+.mode-tab {
+    font-size: 0.7rem;
+    padding: 10px 20px;
+    border-radius: 999px;
+    opacity: 0.75;
+}
+
+.mode-tab:hover {
+    background-color: rgb(255 255 255 / 8%);
+    opacity: 1;
+}
+
+.mode-tab.active {
+    background-color: #4caf50;
+    color: #111;
+    opacity: 1;
 }
 
 .popup-box {
@@ -1144,20 +1283,8 @@ input:checked + .slider:before {
 }
 
 #logo-img {
-    width: 80%;
-    flex: auto;
-    padding: 15% 10% 5%;
-    cursor: pointer;
-}
-
-#mode-name {
-    font-size: 1.5rem;
-    margin-bottom: 0.5rem;
-}
-
-#mode-switch-hint {
-    font-size: 0.6rem;
-    opacity: 0.8;
+    width: min(280px, 60vw);
+    margin: calc(8px + env(safe-area-inset-top)) auto 8px;
 }
 
 
@@ -1229,18 +1356,6 @@ input:checked + .slider:before {
     color: white;
     opacity: 0.5;
     font-size: 0.6rem;
-}
-
-.receive-box {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    color: white;
-}
-
-.receive-text {
-    margin-top: 1rem;
-    font-size: 0.8rem;
 }
 
 #print-status-text {
@@ -1358,7 +1473,7 @@ input:checked + .slider:before {
 
 .gallery-toolbar {
     width: 100%;
-    max-width: 800px;
+    max-width: 1200px;
     padding: 0 20px;
     box-sizing: border-box;
 }
@@ -1366,9 +1481,22 @@ input:checked + .slider:before {
 .toolbar-row {
     display: flex;
     flex-wrap: wrap;
-    justify-content: center;
+    justify-content: space-between;
     align-items: center;
     gap: 8px;
+}
+
+.toolbar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+}
+
+.photo-count {
+    color: white;
+    font-size: 0.65rem;
 }
 
 .tool-btn {
@@ -1492,9 +1620,14 @@ input:checked + .slider:before {
     stroke-width: 2;
 }
 
-.gallery-image:hover .photo-fav,
 .gallery-image.favorite .photo-fav {
     opacity: 1;
+}
+
+@media (hover: hover) {
+    .gallery-image:hover .photo-fav {
+        opacity: 1;
+    }
 }
 
 .gallery-image.favorite .photo-fav svg {
@@ -1502,15 +1635,22 @@ input:checked + .slider:before {
     stroke: #ffd54f;
 }
 
-/* Touch screens have no hover: keep the star reachable */
+/* Touch screens have no hover: keep the star in view, and big enough to tap */
 @media (hover: none) {
     .gallery-image .photo-fav {
         opacity: 0.8;
+        width: 34px;
+        height: 34px;
+        padding: 6px;
+    }
+
+    .gallery-image.favorite .photo-fav {
+        opacity: 1;
     }
 }
 
 #gallery.selecting .photo-fav,
-#gallery.selecting .photo-save {
+#gallery.selecting .photo-new {
     visibility: hidden;
 }
 
@@ -1519,7 +1659,7 @@ input:checked + .slider:before {
     position: absolute;
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
-    border-radius: 5px;
+    border-radius: 8px;
     z-index: 2;
 }
 
@@ -1553,8 +1693,15 @@ input:checked + .slider:before {
 }
 
 .image-container.viewer img.popup-image {
+    max-width: min(90vw, calc(100vw - 140px));
     max-height: 70vh;
     max-height: 70dvh; /* only what shows between the browser bars */
+}
+
+@media (hover: none), (max-width: 600px) {
+    .image-container.viewer img.popup-image {
+        max-width: 94vw;
+    }
 }
 
 .viewer-toolbar {
@@ -1579,6 +1726,51 @@ input:checked + .slider:before {
 }
 
 /* --- Dialogs --- */
+
+/* uiAlert / uiConfirm: above every other dialog, the photo viewer included */
+.ui-dialog-overlay {
+    z-index: 1100;
+}
+
+.ui-dialog {
+    max-width: 400px;
+    text-align: center;
+}
+
+.ui-dialog h2 {
+    margin-top: 0;
+}
+
+.ui-dialog-message {
+    margin: 0;
+    color: white;
+    font-size: 0.75rem;
+    line-height: 1.7;
+    white-space: pre-line;
+}
+
+.ui-dialog-buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 1.5rem;
+}
+
+.popup-container .ui-dialog-buttons button {
+    flex: 1;
+    margin-top: 0;
+    padding: 12px;
+    font-size: 0.8rem;
+}
+
+/* The answer, bright like the active mode tab; red when it deletes */
+.popup-container #ui-dialog-ok:not(.red) {
+    background-color: #4caf50;
+    color: #111;
+}
+
+.popup-container #ui-dialog-ok:not(.red):hover {
+    background-color: #43a047;
+}
 
 .popup-container button.small-btn,
 .small-btn {
@@ -1857,7 +2049,8 @@ textarea.gb-input {
 
 /* --- Printer page --- */
 
-#printer-status {
+#printer-status,
+.status-pill {
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -1876,10 +2069,18 @@ textarea.gb-input {
     flex: none;
 }
 
-#printer-status[data-state="ready"] .status-dot { background: #69f0ae; }
-#printer-status[data-state="busy"] .status-dot { background: #ffd54f; }
+#printer-status[data-state="ready"] .status-dot,
+.status-pill[data-state="ready"] .status-dot { background: #69f0ae; }
+#printer-status[data-state="busy"] .status-dot,
+.status-pill[data-state="busy"] .status-dot { background: #ffd54f; animation: live-blink 1s steps(1) infinite; }
 #printer-status[data-state="error"] .status-dot,
-#printer-status[data-state="off"] .status-dot { background: #ff8a80; }
+#printer-status[data-state="off"] .status-dot,
+.status-pill[data-state="off"] .status-dot { background: #ff8a80; }
+
+#adapter-status {
+    font-size: 0.6rem;
+    margin: 0 auto 12px;
+}
 
 .print-start,
 .print-editor {

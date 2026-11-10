@@ -645,8 +645,8 @@ function queueRow(item) {
     return row;
 }
 
-function clearPrintQueue() {
-    if (printQueue.length > 1 && !confirm("Remove everything from the print list?")) return;
+async function clearPrintQueue() {
+    if (printQueue.length > 1 && !(await uiConfirm("Remove everything from the print list?", { confirmText: "Remove All", danger: true }))) return;
     printQueue = [];
     selectedQueueId = null;
     renderPrintQueue();
@@ -803,7 +803,7 @@ async function handleFileInput(e) {
             addQueueItem(canvas, shortName(file.name), "image");
         } catch (err) {
             console.error("Could not open", file.name, err);
-            alert(`Could not open ${file.name}`);
+            await uiAlert(`${file.name} is not a picture this browser can open.`, "Could Not Open");
         }
     }
 }

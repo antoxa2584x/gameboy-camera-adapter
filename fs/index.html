@@ -21,7 +21,7 @@
     <script defer src="js/printer.js"></script>
 </head>
 <body>
-<button id="firmware-version-btn" onclick="showFirmwarePopup()">Settings</button>
+<button id="firmware-version-btn" onclick="showFirmwarePopup()" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.47.47 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.48.48 0 0 0-.12-.61zM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2z"/></svg></button>
 
 <!-- Firmware Update Dialog -->
 <div id="fw-popup" class="popup-overlay hidden">
@@ -66,6 +66,7 @@
                     <option value="files">Separate files</option>
                 </select>
             </div>
+            <p id="save-all-note" class="settings-hint hidden">With separate files, iPhone and iPad ask about each photo.</p>
         </section>
 
         <!-- Adapter settings are stored on the adapter; saving restarts it -->
@@ -221,28 +222,38 @@
         <div id="update-alert" class="hidden" onclick="showUpdateInstructions()" style="cursor: pointer;">
             🔔 Update available: <span id="latest-version"></span>
         </div>
-        <img src="https://rgaming.com.ua/camera_adapter/assets/logo.webp" alt="logo" id="logo-img">
-        <div id="mode-indicator">
-            <div id="mode-name">Gallery</div>
-            <div id="mode-switch-hint">(Click the logo to switch mode)</div>
+        <img src="https://rgaming.com.ua/camera_adapter/assets/logo.webp" alt="Game Boy Camera Adapter" id="logo-img">
+        <div class="mode-tabs" role="tablist" aria-label="Mode">
+            <button type="button" role="tab" class="mode-tab active" data-mode="scanner" aria-selected="true" onclick="setMode('scanner')">Gallery</button>
+            <button type="button" role="tab" class="mode-tab" data-mode="printer" aria-selected="false" onclick="setMode('printer')">Printer</button>
         </div>
     </div>
 
     <!-- Mode Containers -->
     <div id="scanner-mode" class="mode-block">
+        <div id="adapter-status" class="status-pill" data-state="connecting" role="status" aria-live="polite">
+            <span class="status-dot"></span><span id="adapter-status-text">Connecting…</span>
+        </div>
         <div class="color-selector-container hidden">
+            <div class="palette-head">
+                <span class="palette-label">Palette</span>
+                <span id="palette-name" class="palette-name">Grayscale</span>
+                <button id="palette-edit-btn" class="link-btn hidden" onclick="editActivePalette()">Edit</button>
+            </div>
             <div id="color-selector" class="flex-row"></div>
-            <button id="palette-edit-btn" class="link-btn hidden" onclick="editActivePalette()">Edit palette</button>
         </div>
         <div id="gallery-toolbar" class="gallery-toolbar hidden">
             <div id="toolbar-main" class="toolbar-row">
-                <button class="tool-btn" onclick="setSelectMode(true)">Select</button>
-                <button id="save_all_btn" class="tool-btn hidden" onclick="saveAllPictures()">Save All</button>
-                <select id="gallery-sort" class="gb-select tool-select" aria-label="Sort photos">
-                    <option value="oldest">Oldest first</option>
-                    <option value="newest">Newest first</option>
-                    <option value="favorites">Favorites first</option>
-                </select>
+                <span id="photo-count" class="photo-count"></span>
+                <div class="toolbar-actions">
+                    <button class="tool-btn" onclick="setSelectMode(true)">Select</button>
+                    <button id="save_all_btn" class="tool-btn hidden" onclick="saveAllPictures()">Save All</button>
+                    <select id="gallery-sort" class="gb-select tool-select" aria-label="Sort photos">
+                        <option value="oldest">Oldest first</option>
+                        <option value="newest">Newest first</option>
+                        <option value="favorites">Favorites first</option>
+                    </select>
+                </div>
             </div>
             <div id="toolbar-select" class="selection-bar hidden">
                 <div class="selection-head">
@@ -455,14 +466,6 @@
     </div>
 </div>
 
-<!-- Photo Receive Overlay (shown while the Game Boy is transferring a photo, like in the mobile app) -->
-<div id="receive-overlay" class="popup-overlay hidden">
-    <div class="receive-box">
-        <div class="loader-spinner"></div>
-        <div class="receive-text">Printing…</div>
-    </div>
-</div>
-
 <!-- Print Progress Overlay -->
 <div id="print-overlay" class="popup-overlay hidden">
     <div class="popup-container popup-box popup-box--progress">
@@ -473,6 +476,18 @@
             <button class="darkgreen" onclick="resumePrintJob()">Resume</button>
         </div>
         <button id="print-cancel-btn" class="red hidden" onclick="cancelPrintJob()">Cancel</button>
+    </div>
+</div>
+
+<!-- In-page alert / confirm (uiAlert, uiConfirm in script.js), in place of the browser's -->
+<div id="ui-dialog" class="popup-overlay ui-dialog-overlay hidden" role="alertdialog" aria-modal="true" aria-labelledby="ui-dialog-title" aria-describedby="ui-dialog-message">
+    <div class="popup-container popup-box ui-dialog">
+        <h2 id="ui-dialog-title" class="hidden"></h2>
+        <p id="ui-dialog-message" class="ui-dialog-message"></p>
+        <div class="ui-dialog-buttons">
+            <button id="ui-dialog-cancel" class="darkgreen hidden">Cancel</button>
+            <button id="ui-dialog-ok">OK</button>
+        </div>
     </div>
 </div>
 

@@ -113,7 +113,7 @@ function flushPendingPrint() {
     if (!pendingPrint) return null;
     const image = stackImages(pendingPrint.parts);
     pendingPrint = null;
-    return addPhoto(image);
+    return addPhoto(image, true);
 }
 
 async function get_camera_image() {
@@ -169,7 +169,7 @@ async function get_camera_image() {
                 idx += len;
 
                 const tiles = processed_data.slice(current_image_start, ptr);
-                const record = addPhoto(decodeTilePixels(tiles, CAMERA_WIDTH));
+                const record = addPhoto(decodeTilePixels(tiles, CAMERA_WIDTH), true);
                 buffer_start = ptr;
                 // "Transfer REC" starts with a frame that looks like a plain Transfer
                 rememberTransferPhoto(record, tiles);
@@ -207,14 +207,15 @@ async function get_camera_image() {
 // file. That is what lets the palette, the frame and the rotation change after
 // the fact, and it is what IndexedDB stores so the gallery survives a reload.
 
-let photos = []; // { id, created, width, height, pixels, favorite, rotation, flip }
+let photos = []; // { id, created, width, height, pixels, favorite, rotation, flip, fresh }
 let photoSeq = 0;
 
 function newPhotoId() {
     return Date.now() * 100 + (photoSeq++ % 100);
 }
 
-function addPhoto(image) {
+// `fresh`: just received from the Game Boy, badged NEW until it is opened
+function addPhoto(image, fresh = false) {
     if (!image || !image.width || !image.height) return null;
     const record = {
         id: newPhotoId(),
@@ -224,7 +225,8 @@ function addPhoto(image) {
         pixels: image.pixels,
         favorite: false,
         rotation: 0,
-        flip: false
+        flip: false,
+        fresh: fresh
     };
     insertPhoto(record);
     storePhoto(record);
@@ -245,6 +247,7 @@ function removePhotos(records) {
     photos = photos.filter(r => !ids.has(r.id));
     records.forEach(r => r.el && r.el.remove());
     deleteStoredPhotos(Array.from(ids));
+    arrangeGallery();
     updateButtonStates();
     updateSelectionBar();
 }
@@ -314,7 +317,8 @@ function storePhoto(record) {
         shades: packShades(record.pixels),
         favorite: record.favorite,
         rotation: record.rotation,
-        flip: record.flip
+        flip: record.flip,
+        fresh: !!record.fresh
     }));
 }
 
@@ -339,7 +343,8 @@ async function restoreGallery() {
             pixels: unpackShades(s.shades, s.width * s.height),
             favorite: !!s.favorite,
             rotation: s.rotation || 0,
-            flip: !!s.flip
+            flip: !!s.flip,
+            fresh: !!s.fresh
         };
         photos.push(record);
         createPhotoTile(record);
@@ -559,6 +564,19 @@ const BUILTIN_PALETTES = [
     { id: "game-boy-color-usa-eur", colors: [[240, 240, 240], [134, 200, 100], [58, 96, 132], [30, 30, 30]] }
 ];
 const GRAYSCALE = BUILTIN_PALETTES[0].colors;
+const PALETTE_NAMES = {
+    "grayscale": "Grayscale",
+    "game-boy": "Game Boy",
+    "super-game-boy": "Super Game Boy",
+    "game-boy-color-jpn": "GBC Japan",
+    "game-boy-color-usa-gold": "GBC Gold",
+    "game-boy-color-usa-eur": "GBC USA/EU"
+};
+
+function paletteName(palette) {
+    if (!palette) return "";
+    return (palette.slot !== undefined) ? `Custom ${palette.slot + 1}` : (PALETTE_NAMES[palette.id] || palette.id);
+}
 const PALETTE_KEY = "selectedColorScheme";
 // Palettes made before they moved to the adapter; uploaded once there is room
 const CUSTOM_PALETTES_KEY = "customPalettes";
@@ -683,23 +701,27 @@ function renderPaletteSelector() {
         circle.className = "color-circle" + (palette.id === activePaletteId ? " active" : "");
         circle.style.background = paletteGradient(palette.colors);
         circle.dataset.scheme = palette.id;
-        circle.setAttribute("aria-label", palette.id.startsWith("custom") ? "Custom palette" : palette.id.replace(/-/g, " ") + " palette");
+        circle.setAttribute("aria-label", paletteName(palette) + " palette");
+        circle.title = paletteName(palette);
         circle.addEventListener("click", () => selectPalette(palette.id));
         container.appendChild(circle);
     });
     const add = document.createElement("button");
     add.type = "button";
-    add.className = "color-circle color-circle--add";
-    add.textContent = "+";
-    add.setAttribute("aria-label", "New palette");
+    add.className = "palette-new";
+    add.textContent = customPalettes.length ? `+ New ${customPalettes.length}/${paletteSlots}` : "+ New";
+    add.setAttribute("aria-label", `New palette, ${customPalettes.length} of ${paletteSlots} custom slots used`);
     add.addEventListener("click", () => {
         if (freePaletteSlot() < 0) {
-            alert(`The adapter keeps up to ${paletteSlots} custom palettes. Edit or delete one to make room.`);
+            uiAlert(`The adapter keeps up to ${paletteSlots} custom palettes. Edit or delete one to make room.`, "Palettes Full");
             return;
         }
         openPaletteEditor(null);
     });
     container.appendChild(add);
+
+    const name = document.getElementById("palette-name");
+    if (name) name.textContent = paletteName(findPalette(activePaletteId) || BUILTIN_PALETTES[0]);
 
     const edit = document.getElementById("palette-edit-btn");
     if (edit) edit.classList.toggle("hidden", !activePaletteId.startsWith("custom") || !findPalette(activePaletteId));
@@ -794,12 +816,12 @@ async function savePaletteFromEditor() {
     const existing = editingPaletteId ? customPalettes.find(p => p.id === editingPaletteId) : null;
     const slot = existing ? existing.slot : freePaletteSlot();
     if (slot < 0) {
-        alert(`The adapter keeps up to ${paletteSlots} custom palettes. Edit or delete one to make room.`);
+        uiAlert(`The adapter keeps up to ${paletteSlots} custom palettes. Edit or delete one to make room.`, "Palettes Full");
         return;
     }
     const data = await paletteRequest(`/set_palette?slot=${slot}&colors=${paletteCode(paletteEditorColors())}`);
     if (!data || data.result !== "ok") {
-        alert("Could not save the palette on the adapter. Reconnect it and try again.");
+        uiAlert("Could not save the palette on the adapter. Reconnect it and try again.", "Not Saved");
         return;
     }
     closePaletteEditor();
@@ -808,10 +830,10 @@ async function savePaletteFromEditor() {
 
 async function deletePaletteFromEditor() {
     const existing = editingPaletteId ? customPalettes.find(p => p.id === editingPaletteId) : null;
-    if (!existing || !confirm("Delete this palette?")) return;
+    if (!existing || !(await uiConfirm("Delete this palette?", { confirmText: "Delete", danger: true }))) return;
     const data = await paletteRequest(`/delete_palette?slot=${existing.slot}`);
     if (!data || data.result !== "ok") {
-        alert("Could not delete the palette on the adapter. Reconnect it and try again.");
+        uiAlert("Could not delete the palette on the adapter. Reconnect it and try again.", "Not Deleted");
         return;
     }
     closePaletteEditor();
@@ -851,23 +873,60 @@ function createPhotoTile(record) {
         togglePhotoFavorite(record);
     });
 
-    const save = document.createElement("button");
-    save.type = "button";
-    save.className = "photo-save";
-    save.textContent = "SAVE";
-    save.addEventListener("click", (e) => {
-        e.stopPropagation(); // Prevent opening popup when clicking SAVE
-        downloadImage(record);
-    });
+    const badge = document.createElement("span");
+    badge.className = "photo-new";
+    badge.textContent = "NEW";
 
     div.addEventListener("click", () => {
+        if (div.longPressed) { // the press already selected it
+            div.longPressed = false;
+            return;
+        }
         if (selectMode) togglePhotoSelected(record);
         else showPopupWithUpscaledImage(record);
     });
+    addLongPress(div, record);
 
     div.appendChild(img);
+    div.appendChild(badge);
     div.appendChild(fav);
-    div.appendChild(save);
+}
+
+// Touch and hold a photo to start selecting, as in a phone's photo app
+const LONG_PRESS_MS = 450;
+const LONG_PRESS_SLOP_PX = 10;
+
+function addLongPress(div, record) {
+    let timer = null;
+    let start = null;
+    const cancel = () => {
+        clearTimeout(timer);
+        timer = null;
+    };
+    div.addEventListener("touchstart", (e) => {
+        cancel();
+        div.longPressed = false;
+        if (e.touches.length !== 1) return;
+        start = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        timer = setTimeout(() => {
+            timer = null;
+            div.longPressed = true;
+            if (navigator.vibrate) navigator.vibrate(15);
+            if (!selectMode) setSelectMode(true);
+            if (!record.selected) togglePhotoSelected(record);
+        }, LONG_PRESS_MS);
+    }, { passive: true });
+    div.addEventListener("touchmove", (e) => {
+        if (!timer || !start) return;
+        const t = e.touches[0];
+        if (Math.hypot(t.clientX - start.x, t.clientY - start.y) > LONG_PRESS_SLOP_PX) cancel();
+    }, { passive: true });
+    div.addEventListener("touchend", cancel);
+    div.addEventListener("touchcancel", cancel);
+    // No system menu on top of the selection
+    div.addEventListener("contextmenu", (e) => {
+        if (timer || div.longPressed) e.preventDefault();
+    });
 }
 
 function renderPhotoTile(record, colors = activeSchemeColors()) {
@@ -876,6 +935,7 @@ function renderPhotoTile(record, colors = activeSchemeColors()) {
     record.el.querySelector("img").src = tileCanvas.toDataURL();
     record.el.classList.toggle("favorite", !!record.favorite);
     record.el.classList.toggle("selected", !!record.selected);
+    record.el.classList.toggle("fresh", !!record.fresh);
 }
 
 function renderAllTiles() {
@@ -900,10 +960,82 @@ function sortedPhotos() {
     return list;
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function dayStart(time) {
+    const d = new Date(time);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+// "Today", "Yesterday", "Oct 22", or "Oct 22, 2025" for another year. English
+// on purpose: the pixel font only has ASCII.
+function dayLabel(time) {
+    const days = Math.round((dayStart(Date.now()) - dayStart(time)) / 86400000);
+    if (days === 0) return "Today";
+    if (days === 1) return "Yesterday";
+    const d = new Date(time);
+    const label = `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+    return (d.getFullYear() === new Date().getFullYear()) ? label : `${label}, ${d.getFullYear()}`;
+}
+
+function timeLabel(time) {
+    const d = new Date(time);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+const galleryHeaders = new Map(); // group key -> header element, reused across arranges
+let pendingTile = null;           // "Receiving..." stand-in while the Game Boy is sending
+
+function galleryHeader(key, label, count) {
+    let el = galleryHeaders.get(key);
+    if (!el) {
+        el = document.createElement("div");
+        el.className = "gallery-group";
+        el.innerHTML = '<span class="gallery-group-label"></span><span class="gallery-group-count"></span>';
+        galleryHeaders.set(key, el);
+    }
+    el.firstChild.textContent = label;
+    el.lastChild.textContent = count ? String(count) : "";
+    return el;
+}
+
+function photoGroup(record, mode) {
+    if (mode === "favorites") return record.favorite ? { key: "fav", label: "Favorites" } : { key: "other", label: "Other photos" };
+    return { key: String(dayStart(record.created)), label: dayLabel(record.created) };
+}
+
 function arrangeGallery() {
     if (!gallery) return;
-    sortedPhotos().forEach((record, i) => {
-        if (gallery.children[i] !== record.el) gallery.insertBefore(record.el, gallery.children[i] || null);
+    const mode = getGallerySort();
+    const groups = []; // { key, label, items }, in display order
+    sortedPhotos().forEach((record) => {
+        const { key, label } = photoGroup(record, mode);
+        let group = groups[groups.length - 1];
+        if (!group || group.key !== key) groups.push(group = { key, label, items: [] });
+        group.items.push(record.el);
+    });
+    if (pendingTile) {
+        // Where the photo will land: today, first when newest come first
+        const { key, label } = photoGroup({ created: Date.now(), favorite: false }, mode);
+        const first = mode === "newest";
+        let group = first ? groups[0] : groups[groups.length - 1];
+        if (!group || group.key !== key) {
+            group = { key, label, items: [] };
+            if (first) groups.unshift(group); else groups.push(group);
+        }
+        if (first) group.items.unshift(pendingTile); else group.items.push(pendingTile);
+    }
+
+    const order = [];
+    groups.forEach((group) => {
+        order.push(galleryHeader(group.key, group.label, group.items.filter(el => el !== pendingTile).length));
+        order.push(...group.items);
+    });
+    // Drop headers of groups that emptied, then put everything in place
+    const keep = new Set(order);
+    Array.from(gallery.children).forEach((el) => { if (!keep.has(el)) el.remove(); });
+    order.forEach((el, i) => {
+        if (gallery.children[i] !== el) gallery.insertBefore(el, gallery.children[i] || null);
     });
 }
 
@@ -989,10 +1121,11 @@ function saveSelectedPhotos() {
     savePhotos(selectedPhotos());
 }
 
-function deleteSelectedPhotos() {
+async function deleteSelectedPhotos() {
     const selected = selectedPhotos();
     if (!selected.length) return;
-    if (!confirm(selected.length === 1 ? "Delete this photo?" : `Delete ${selected.length} photos?`)) return;
+    const question = selected.length === 1 ? "Delete this photo?" : `Delete ${selected.length} photos?`;
+    if (!(await uiConfirm(question, { confirmText: "Delete", danger: true }))) return;
     removePhotos(selected);
     if (!photos.length) setSelectMode(false);
 }
@@ -1037,7 +1170,7 @@ function showPopupWithUpscaledImage(record) {
     // Create overlay
     const overlay = document.createElement("div");
     overlay.id = "image-popup-overlay";
-    overlay.classList.add("popup-overlay");
+    overlay.classList.add("popup-overlay", "viewer-overlay");
 
     const popup = document.createElement("div");
     popup.classList.add("image-container", "viewer");
@@ -1076,6 +1209,17 @@ function showPopupWithUpscaledImage(record) {
     nextButton.classList.add("popup-nav-button", "popup-nav-button--next");
     nextButton.setAttribute("aria-label", "Next photo");
 
+    // Arrows beside the photo; touch screens swipe instead
+    const stage = document.createElement("div");
+    stage.className = "viewer-stage";
+
+    // "3 / 8   Today 14:32"
+    const info = document.createElement("div");
+    info.className = "viewer-info";
+    const position = document.createElement("span");
+    const taken = document.createElement("span");
+    info.append(position, taken);
+
     const toolbar = document.createElement("div");
     toolbar.className = "viewer-toolbar";
     const tool = (text, label, onClick) => {
@@ -1102,9 +1246,16 @@ function showPopupWithUpscaledImage(record) {
         }
         const list = displayedPhotos();
         const index = list.indexOf(target);
-        prevButton.classList.toggle("hidden", index <= 0);
-        nextButton.classList.toggle("hidden", index < 0 || index >= list.length - 1);
+        prevButton.classList.toggle("nav-off", index <= 0);
+        nextButton.classList.toggle("nav-off", index < 0 || index >= list.length - 1);
         favButton.classList.toggle("active", !!target.favorite);
+        position.textContent = (index >= 0) ? `${index + 1} / ${list.length}` : "";
+        taken.textContent = `${dayLabel(target.created)} ${timeLabel(target.created)}`;
+        if (target.fresh) { // seen now
+            target.fresh = false;
+            renderPhotoTile(target);
+            storePhoto(target);
+        }
     };
 
     const step = (delta) => {
@@ -1142,8 +1293,8 @@ function showPopupWithUpscaledImage(record) {
         originalButton.classList.toggle("active", showOriginal);
         showImage(current);
     });
-    tool("DELETE", "Delete photo", () => {
-        if (!confirm("Delete this photo?")) return;
+    tool("DELETE", "Delete photo", async () => {
+        if (!(await uiConfirm("Delete this photo?", { confirmText: "Delete", danger: true }))) return;
         const list = displayedPhotos();
         const index = list.indexOf(current);
         const next = list[index + 1] || list[index - 1];
@@ -1153,8 +1304,14 @@ function showPopupWithUpscaledImage(record) {
     });
     tool("SAVE", "Save photo", () => downloadImage(current));
 
+    // The photo and its close button, which sits on the photo's corner
+    const photoBox = document.createElement("div");
+    photoBox.className = "viewer-photo";
+    photoBox.appendChild(upscaled);
+    stage.append(prevButton, photoBox, nextButton);
     showImage(record);
-    popup.appendChild(upscaled);
+    popup.appendChild(stage);
+    popup.appendChild(info);
 
     // Point iOS users at the long-press route, which lands straight in Photos
     if (isAppleMobile()) {
@@ -1169,6 +1326,7 @@ function showPopupWithUpscaledImage(record) {
     const closeButton = document.createElement("button");
     closeButton.textContent = "X";
     closeButton.classList.add("popup-close-button");
+    closeButton.setAttribute("aria-label", "Close");
 
     const onKey = (e) => {
         if (e.key === "ArrowLeft") step(-1);
@@ -1184,7 +1342,6 @@ function showPopupWithUpscaledImage(record) {
     };
 
     closeButton.onclick = closePopup;
-    popup.appendChild(closeButton);
 
     // Horizontal swipe on touch screens; mostly-vertical drags are left to scrolling
     let touchStart = null;
@@ -1200,9 +1357,8 @@ function showPopupWithUpscaledImage(record) {
     });
 
     document.addEventListener("keydown", onKey);
+    photoBox.appendChild(closeButton);
     overlay.appendChild(popup);
-    overlay.appendChild(prevButton);
-    overlay.appendChild(nextButton);
     document.body.appendChild(overlay);
 }
 
@@ -1212,10 +1368,12 @@ function updateButtonStates() {
     const toolbar = document.getElementById('gallery-toolbar');
     const saveAll = document.getElementById('save_all_btn');
     const description = document.getElementById('description');
+    const countLabel = document.getElementById('photo-count');
+    if (countLabel) countLabel.textContent = `${count} photo${count === 1 ? "" : "s"}`;
 
     // The live view needs the palette picker too, and stands in for the empty-gallery hint
     const showTools = count > 0 || liveViewOpen();
-    if (description) description.classList.toggle('hidden', showTools);
+    if (description) description.classList.toggle('hidden', showTools || !!pendingTile);
     if (colors) colors.classList.toggle('hidden', !showTools);
     if (toolbar) toolbar.classList.toggle('hidden', count === 0);
     // One file per photo was hopeless on iOS (a save prompt each); it is a single ZIP now
@@ -1283,8 +1441,6 @@ const SAVE_ALL_MODES = ["zip", "files"];
 const SAVE_ALL_MODE_KEY = "saveAllMode";
 
 function getSaveAllMode() {
-    // A download per photo means a save prompt per photo on iOS
-    if (isAppleMobile()) return "zip";
     const select = document.getElementById("saveAllMode");
     const raw = select ? select.value : readStored(SAVE_ALL_MODE_KEY);
     return SAVE_ALL_MODES.includes(raw) ? raw : "zip";
@@ -1292,8 +1448,9 @@ function getSaveAllMode() {
 
 function setupSaveAllModeSelector() {
     const select = document.getElementById("saveAllMode");
-    const block = document.getElementById("save-all-mode-block");
-    if (block && isAppleMobile()) block.classList.add("hidden");
+    // Separate files mean a save prompt per photo on iPhone and iPad: say so there
+    const note = document.getElementById("save-all-note");
+    if (note) note.classList.toggle("hidden", !isAppleMobile());
     if (!select) return;
     const stored = readStored(SAVE_ALL_MODE_KEY);
     select.value = SAVE_ALL_MODES.includes(stored) ? stored : "zip";
@@ -1563,15 +1720,49 @@ function saveContactSheet(records) {
 // auto fetch images
 var fetch_skip = false;
 
-// Receive loader overlay (like the mobile app): shown while the Game Boy
-// is transferring a photo to the adapter, hidden once it lands in the gallery.
-let receiveOverlayVisible = false;
+// While the Game Boy is sending a photo, a "Receiving..." tile holds its place
+// in the gallery; it goes once the finished photo has landed.
+function setReceiving(on) {
+    if (on === !!pendingTile) return;
+    if (on) {
+        pendingTile = document.createElement("div");
+        pendingTile.className = "gallery-image gallery-image--pending";
+        pendingTile.innerHTML = '<div class="loader-spinner"></div><span>Receiving…</span>';
+    } else {
+        pendingTile.remove();
+        pendingTile = null;
+    }
+    arrangeGallery();
+    updateButtonStates();
+    updateAdapterStatus();
+}
 
-function setReceiveOverlay(visible) {
-    if (visible === receiveOverlayVisible) return;
-    receiveOverlayVisible = visible;
-    const overlay = document.getElementById("receive-overlay");
-    if (overlay) overlay.classList.toggle("hidden", !visible);
+// Gallery status line: whether the adapter answers, and what it is doing
+let adapterOnline = null; // null until the first poll settles it
+
+function setAdapterOnline(online) {
+    if (adapterOnline === online) return;
+    adapterOnline = online;
+    updateAdapterStatus();
+}
+
+function updateAdapterStatus() {
+    const box = document.getElementById("adapter-status");
+    const text = document.getElementById("adapter-status-text");
+    if (!box || !text) return;
+    let state = "connecting", label = "Connecting…";
+    if (adapterOnline === false) {
+        state = "off";
+        label = "Adapter not connected";
+    } else if (pendingTile) {
+        state = "busy";
+        label = "Receiving a photo…";
+    } else if (adapterOnline) {
+        state = "ready";
+        label = "Ready - print from your Game Boy";
+    }
+    box.dataset.state = state;
+    text.textContent = label;
 }
 
 async function is_receiving() {
@@ -1587,7 +1778,7 @@ async function is_receiving() {
 
 async function periodic_fetch() {
     if (typeof currentMode !== 'undefined' && currentMode === "printer") {
-        setReceiveOverlay(false);
+        setReceiving(false);
         return;
     }
     if (fetch_skip) return;
@@ -1598,9 +1789,10 @@ async function periodic_fetch() {
         // loader off -- the live view itself shows what is arriving
         const live = liveStreaming();
         const receiving = live ? false : await is_receiving();
-        if (receiving) setReceiveOverlay(true);
+        if (receiving) setReceiving(true);
 
         const fetch_ok = await get_camera_image();
+        setAdapterOnline(true);
 
         // A long print whose next part never came is a photo of its own
         if (!fetch_ok && !receiving && pendingPrint && (Date.now() - pendingPrint.time) > PENDING_PRINT_MS) {
@@ -1608,7 +1800,7 @@ async function periodic_fetch() {
         }
 
         // Hide the loader only after the finished photo has been fetched/rendered
-        if (!receiving || liveStreaming()) setReceiveOverlay(false);
+        if (!receiving || liveStreaming()) setReceiving(false);
 
         // Drain queued photos back to back ("Print all", "Transfer all", live view),
         // and poll fast while a transfer is in progress so it shows up promptly
@@ -1616,7 +1808,8 @@ async function periodic_fetch() {
         setTimeout(periodic_fetch, next_interval);
     } catch (err) {
         console.error("Fetch error:", err);
-        setReceiveOverlay(false);
+        setAdapterOnline(false);
+        setReceiving(false);
         setTimeout(periodic_fetch, 2000);
     } finally {
         fetch_skip = false;
@@ -1843,8 +2036,8 @@ function saveLiveMovie() {
     saveAnimationVideo(live.count, live.getFrame, "video", () => { liveUnsaved = false; });
 }
 
-function closeLiveView() {
-    if (liveUnsaved && liveFrames.length > 1 && !confirm("Discard this recording?")) return;
+async function closeLiveView() {
+    if (liveUnsaved && liveFrames.length > 1 && !(await uiConfirm("Discard this recording? Save it as a GIF or video first to keep it.", { confirmText: "Discard", danger: true }))) return;
     clearTimeout(liveIdleTimer);
     liveFrames = [];
     liveIndex = null;
@@ -2417,7 +2610,7 @@ function closeUpdateInstructions() {
 
 function startUpdate() {
     if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-        alert("⚠️ Update is only available on macOS or Windows.");
+        uiAlert("Update mode needs a Mac or Windows PC: the adapter shows up there as a USB drive.", "Not Available");
         return;
     }
 
@@ -2434,7 +2627,7 @@ function isAppleMobile() {
            (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 }
 
-function setLedColor() {
+async function setLedColor() {
     const hex = document.getElementById("ledColorPicker").value;
     const useRGB = !document.getElementById("colorMode").checked; // the switch swaps red and green
     const mobileMode = document.getElementById("mobileMode").value;
@@ -2443,23 +2636,21 @@ function setLedColor() {
     const b = parseInt(hex.substr(5, 2), 16);
 
     if (mobileMode == "1" && isAppleMobile()) {
-        const proceed = confirm(
-            "Android mode is meant for use with the Android app.\n\n" +
-            "Continue?"
-        );
+        const proceed = await uiConfirm("Android mode is meant for use with the Android app.", { confirmText: "Continue" });
         if (!proceed) return;
     }
 
     fetch(`/set_color?r=${r}&g=${g}&b=${b}&use_rgb=${useRGB}&mode=${mobileMode}`, { cache: "no-store" })
-        .then(() => {
-            alert("Settings saved. The device will now reboot.");
+        .then(async () => {
+            await uiAlert("The adapter restarts now. The page reloads once you tap OK.", "Settings Saved");
             window.location.reload();
         })
         .catch((err) => {
             console.error("Failed to save settings:", err);
-            alert(
-                "Could not reach the adapter, settings were NOT saved.\n\n" +
-                "Reconnect the adapter and reload this page, then try again."
+            uiAlert(
+                "Could not reach the adapter, so nothing was saved.\n\n" +
+                "Reconnect the adapter and reload this page, then try again.",
+                "Not Saved"
             );
         });
 }
@@ -2528,6 +2719,100 @@ function showMessage(html) {
     updateGeneralPopup(html, true);
 }
 
+// In-page alert() / confirm(), styled like the other dialogs. They return a
+// Promise: uiConfirm resolves true for the confirm button, false for Cancel,
+// Escape or a tap outside the box.
+let uiDialogDone = null; // resolves the dialog that is open
+
+function uiDialog({ message = "", title = "", confirmText = "OK", cancelText = null, danger = false }) {
+    const overlay = document.getElementById("ui-dialog");
+    if (!overlay) return Promise.resolve(cancelText ? false : true);
+    if (uiDialogDone) uiDialogDone(false); // only one at a time
+
+    const titleEl = document.getElementById("ui-dialog-title");
+    const ok = document.getElementById("ui-dialog-ok");
+    const cancel = document.getElementById("ui-dialog-cancel");
+    titleEl.textContent = title;
+    titleEl.classList.toggle("hidden", !title);
+    document.getElementById("ui-dialog-message").textContent = message;
+    ok.textContent = confirmText;
+    ok.classList.toggle("red", danger);
+    cancel.textContent = cancelText || "";
+    cancel.classList.toggle("hidden", !cancelText);
+
+    const returnFocus = document.activeElement;
+    overlay.classList.remove("hidden");
+    ok.focus();
+
+    return new Promise((resolve) => {
+        // Capture phase, so the photo viewer or live view behind it do not
+        // also act on Escape and the arrow keys
+        const onKey = (e) => {
+            e.stopImmediatePropagation();
+            if (e.key === "Escape") {
+                e.preventDefault();
+                finish(!cancelText);
+            } else if (e.key === "Enter") {
+                e.preventDefault();
+                finish(true);
+            }
+        };
+        const onBackdrop = (e) => {
+            if (e.target === overlay) finish(!cancelText);
+        };
+        const finish = (result) => {
+            uiDialogDone = null;
+            document.removeEventListener("keydown", onKey, true);
+            overlay.removeEventListener("click", onBackdrop);
+            ok.onclick = cancel.onclick = null;
+            overlay.classList.add("hidden");
+            if (returnFocus && returnFocus.focus) returnFocus.focus();
+            resolve(result);
+        };
+        uiDialogDone = finish;
+        ok.onclick = () => finish(true);
+        cancel.onclick = () => finish(false);
+        overlay.addEventListener("click", onBackdrop);
+        document.addEventListener("keydown", onKey, true);
+    });
+}
+
+function uiAlert(message, title = "") {
+    return uiDialog({ message, title });
+}
+
+function uiConfirm(message, { title = "", confirmText = "OK", danger = false } = {}) {
+    return uiDialog({ message, title, confirmText, cancelText: "Cancel", danger });
+}
+
+// ---- Scroll lock ----
+// While any dialog or the photo viewer is open the page behind stays put. iOS
+// ignores overflow: hidden on the body for touch scrolling, so the body is pinned
+// with position: fixed at its scroll offset, and put back there on close.
+let scrollLockY = null;
+
+function updateScrollLock() {
+    const open = !!document.querySelector(".popup-overlay:not(.hidden)");
+    if (open && scrollLockY === null) {
+        scrollLockY = window.scrollY;
+        document.body.style.top = `-${scrollLockY}px`;
+        document.body.classList.add("scroll-locked");
+    } else if (!open && scrollLockY !== null) {
+        document.body.classList.remove("scroll-locked");
+        document.body.style.top = "";
+        window.scrollTo(0, scrollLockY);
+        scrollLockY = null;
+    }
+}
+
+// Dialogs open by dropping .hidden, the photo viewer by being added: watch both
+new MutationObserver(updateScrollLock).observe(document.body, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ["class"]
+});
+
 // ---- Modes ----
 
 let currentMode = "scanner";
@@ -2537,7 +2822,11 @@ function setMode(mode) {
     if (mode === currentMode || modeSwitching) return;
     const scanner = document.getElementById("scanner-mode");
     const printer = document.getElementById("printer-mode");
-    const modeName = document.getElementById("mode-name");
+    document.querySelectorAll(".mode-tab").forEach((tab) => {
+        const active = tab.dataset.mode === mode;
+        tab.classList.toggle("active", active);
+        tab.setAttribute("aria-selected", String(active));
+    });
 
     const switchMode = () => {
         modeSwitching = false;
@@ -2552,7 +2841,6 @@ function setMode(mode) {
             to.classList.remove("hidden");
             to.classList.add("fade-in");
         }
-        if (modeName) modeName.textContent = toPrinter ? "Printer" : "Gallery";
         currentMode = mode;
         if (toPrinter) {
             periodic_fetch();
@@ -2575,9 +2863,6 @@ function setMode(mode) {
     }
 }
 
-safeAddEventListener(document.getElementById("logo-img"), "click", () => {
-    setMode(currentMode === "scanner" ? "printer" : "scanner");
-});
 
 window.showFirmwarePopup = showFirmwarePopup;
 window.closeFirmwarePopup = closeFirmwarePopup;

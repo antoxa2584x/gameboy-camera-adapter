@@ -67,7 +67,7 @@ With [gb-photo](https://github.com/untoxa/gb-photo) the adapter also takes **Tra
 Photos stay in the gallery until you delete them, even after a reload. Tap **Select** to save several at once (one ZIP file), print them, join them into one tall picture, turn them into a GIF or video, or lay them out on a contact sheet. Open a photo to rotate, flip or favorite it. Pick a palette above the gallery, or tap **+** to make your own (up to 3, saved on the adapter) and share it as a code. **Settings → Photo Frame** keeps, removes or replaces the Game Boy Camera frame.
 
 #### 📤 Printer Mode
-Click the **Logo** in the web interface to switch, then pick what to print: a **Picture** from your device, or **Text or QR** for a label. The preview shows exactly what comes out of a real Game Boy Printer connected to the adapter. Choose a layout (Fit, Fill, Actual size, or Long for banners), set the darkness, and print. Add more pictures or labels to print several in a row, with copies; **More options** has shading styles, brightness and contrast. If the printer jams or runs out of paper, fix it and tap **Resume**.
+Open the **Printer** tab at the top of the page, then pick what to print: a **Picture** from your device, or **Text or QR** for a label. The preview shows exactly what comes out of a real Game Boy Printer connected to the adapter. Choose a layout (Fit, Fill, Actual size, or Long for banners), set the darkness, and print. Add more pictures or labels to print several in a row, with copies; **More options** has shading styles, brightness and contrast. If the printer jams or runs out of paper, fix it and tap **Resume**.
 
 ---
 
