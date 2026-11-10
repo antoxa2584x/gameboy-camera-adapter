@@ -9,6 +9,7 @@
   - Long prints sent in parts (Pokémon Pinball, Zelda DX and others) arrive as one photo
   - Rotate, flip and favorite photos, and sort by date or favorites
   - Save several photos as an animated **GIF** or a **video**
+  - Simpler **Settings**: photo, adapter and firmware options in their own sections, quick LED color choices
 - **Status LED:** fixed colors show what the adapter is doing: blue blink while receiving a photo, cyan for live view, orange while printing, purple during a firmware update, red blink when a print or update fails. Your LED color shows when idle.
 - **Printer:**
   - A simpler print page: pick a **Picture** or **Text or QR**, check the preview, print

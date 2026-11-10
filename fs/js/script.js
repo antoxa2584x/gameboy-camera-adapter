@@ -515,9 +515,9 @@ function onFrameChanged() {
     const note = document.getElementById("frame-note");
     if (note) {
         note.textContent = mode === "custom"
-            ? "Use a 160 x 144 picture: its 16 pixel border is the frame, the 128 x 112 middle is replaced by the photo. Colours become the 4 Game Boy shades."
+            ? "Pick a 160 x 144 picture. Its outer 16 pixels become the frame."
             : mode === "remove"
-                ? "Crops 160 x 144 camera prints to the 128 x 112 picture. Other sizes are left alone."
+                ? "Camera photos are cropped to the 128 x 112 picture."
                 : "Applies to Game Boy Camera photos.";
     }
     renderAllTiles();
@@ -2291,7 +2291,7 @@ async function fetchFirmwareVersion() {
             dynamicVersion = data.system.version;
             const versionText = document.getElementById("firmware-version-text");
             if (versionText) {
-                versionText.textContent = `Current firmware is v${dynamicVersion}`;
+                versionText.textContent = `Version ${dynamicVersion}`;
             }
             renderUpdateState();
         }
@@ -2305,7 +2305,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const versionText = document.getElementById("firmware-version-text");
 
     if (versionText) {
-        versionText.textContent = `Current firmware is v${dynamicVersion}`;
+        versionText.textContent = `Version ${dynamicVersion}`;
     }
 
     // Local initialization should be fast
@@ -2374,7 +2374,7 @@ function isAppleMobile() {
 
 function setLedColor() {
     const hex = document.getElementById("ledColorPicker").value;
-    const useRGB = document.getElementById("colorMode").checked;
+    const useRGB = !document.getElementById("colorMode").checked; // the switch swaps red and green
     const mobileMode = document.getElementById("mobileMode").value;
     const r = parseInt(hex.substr(1, 2), 16);
     const g = parseInt(hex.substr(3, 2), 16);
@@ -2403,11 +2403,29 @@ function setLedColor() {
 }
 
 function updatePreview() {
-    const color = document.getElementById("ledColorPicker").value;
-    document.getElementById("colorPreview").style.backgroundColor = color;
+    const color = document.getElementById("ledColorPicker").value.toLowerCase();
+    const idleDot = document.getElementById("led-idle-dot");
+    if (idleDot) idleDot.style.backgroundColor = color;
+    let preset = false;
+    document.querySelectorAll(".led-swatch").forEach(swatch => {
+        const match = swatch.dataset.color === color;
+        swatch.classList.toggle("active", match);
+        preset = preset || match;
+    });
+    // The "any color" circle shows a rainbow until it holds a color of its own
+    document.getElementById("colorPreview").style.backgroundColor = preset ? "transparent" : color;
+    const picker = document.querySelector(".led-color");
+    if (picker) picker.classList.toggle("active", !preset);
 }
 
 document.getElementById("ledColorPicker").addEventListener("input", updatePreview);
+document.querySelectorAll(".led-swatch").forEach(swatch => {
+    swatch.addEventListener("click", () => {
+        document.getElementById("ledColorPicker").value = swatch.dataset.color;
+        updatePreview();
+    });
+});
+updatePreview();
 
 function loadLedStatus() {
     fetch('/led_status', { cache: "no-store" })
@@ -2416,8 +2434,8 @@ function loadLedStatus() {
             const { r, g, b, use_rgb, mode } = data;
             const hex = "#" + [r, g, b].map(x => (x || 0).toString(16).padStart(2, '0')).join('');
             document.getElementById('ledColorPicker').value = hex;
-            document.getElementById('colorPreview').style.backgroundColor = hex;
-            document.getElementById('colorMode').checked = use_rgb === true;
+            updatePreview();
+            document.getElementById('colorMode').checked = use_rgb === false;
             if (mode !== undefined) {
                 document.getElementById('mobileMode').value = String(mode);
             }

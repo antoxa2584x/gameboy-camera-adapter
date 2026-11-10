@@ -25,102 +25,105 @@
 
 <!-- Firmware Update Dialog -->
 <div id="fw-popup" class="popup-overlay hidden">
-    <div class="popup-container popup-box">
-        <div class="flex-col-center">
-            <!-- Close Button -->
-            <button class="close-btn" onclick="closeFirmwarePopup()">X</button>
-            <p id="firmware-version-text">Current firmware is v2.4.0</p>
-            <!-- Color Picker + Button -->
-            <div class="settings-container">
-                <div class="led-color-row">
-                    <label class="led-color">
-                        <input type="color" id="ledColorPicker" value="#00ff00">
-                        <div id="colorPreview"></div>
-                    </label>
-                    <label class="led-color-label">Choose LED color</label>
-                </div>
-                <!-- Color Mode Selector -->
-                <div class="switch-row">
-                    <label class="switch">
-                        <input type="checkbox" id="colorMode" checked>
-                        <span class="slider round"></span>
-                    </label>
-                    <label for="colorMode" class="switch-label">If colors are not as expected, switch this</label>
-                </div>
+    <div class="popup-container popup-box settings-box">
+        <button class="close-btn" onclick="closeFirmwarePopup()">X</button>
+        <h2>Settings</h2>
 
-                <!-- Fixed status colors, set in firmware (led_status.c) -->
-                <div class="scale-block">
-                    <label class="switch-label">The LED shows your color when idle, and</label>
-                    <ul class="led-legend">
-                        <li><span class="led-dot" style="background:#0030ff"></span>Blue blink &mdash; receiving a photo</li>
-                        <li><span class="led-dot" style="background:#00c0c0"></span>Cyan blink &mdash; live view</li>
-                        <li><span class="led-dot" style="background:#ff6000"></span>Orange blink &mdash; printing</li>
-                        <li><span class="led-dot" style="background:#a000ff"></span>Purple &mdash; firmware update</li>
-                        <li><span class="led-dot" style="background:#ff0000"></span>Red blink &mdash; print or update failed</li>
-                    </ul>
-                </div>
-
-                <!-- Mobile Compatibility Selector -->
-                <div class="mobile-mode-block">
-                    <label class="switch-label">Mobile Compatibility</label>
-                    <select id="mobileMode" class="gb-select">
-                        <option value="1">Android + Mac/Win/Other</option>
-                        <option value="2">iOS + Mac/Win/Other</option>
-                    </select>
-                    <label class="mobile-mode-note">Note: Changing this will reboot the adapter.</label>
-                </div>
-
-                <button onclick="setLedColor()">Save Settings</button>
-            </div>
-
-            <!-- Saved photo scale. Browser-side only: applies to the next save,
-                 nothing is sent to the adapter and nothing reboots. -->
-            <div class="scale-block">
-                <label class="switch-label">Saved Photo Scale</label>
+        <!-- Photo settings live in this browser and apply right away -->
+        <section class="settings-section">
+            <h3 class="settings-heading">Saving photos</h3>
+            <div class="setting-row">
+                <label for="photoScale">Size</label>
                 <select id="photoScale" class="gb-select">
-                    <option value="1">None &mdash; 160 &times; 144</option>
-                    <option value="2">2x &mdash; 320 &times; 288</option>
-                    <option value="5">5x &mdash; 800 &times; 720</option>
-                    <option value="10" selected>10x &mdash; 1600 &times; 1440</option>
+                    <option value="1">Original &mdash; 160 x 144</option>
+                    <option value="2">2x &mdash; 320 x 288</option>
+                    <option value="5">5x &mdash; 800 x 720</option>
+                    <option value="10" selected>10x &mdash; 1600 x 1440</option>
                 </select>
-                <label class="scale-note">Applies immediately. No reboot needed.</label>
             </div>
-
-            <!-- Saved photo format. Browser-side only, same as the scale above. -->
-            <div class="scale-block">
-                <label class="switch-label">Saved Photo Format</label>
+            <div class="setting-row">
+                <label for="photoFormat">Format</label>
                 <select id="photoFormat" class="gb-select">
-                    <option value="jpeg" selected>JPEG &mdash; smaller, with EXIF tags</option>
-                    <option value="png">PNG &mdash; lossless, with EXIF tags</option>
+                    <option value="jpeg" selected>JPEG &mdash; smaller</option>
+                    <option value="png">PNG &mdash; best quality</option>
                 </select>
-                <label class="scale-note">Applies immediately. No reboot needed.</label>
             </div>
-
-            <!-- Frame around Game Boy Camera photos. Browser-side only. -->
-            <div class="scale-block">
-                <label class="switch-label">Photo Frame</label>
+            <div class="setting-row">
+                <label for="photoFrame">Frame</label>
                 <select id="photoFrame" class="gb-select">
-                    <option value="keep" selected>Keep as printed</option>
-                    <option value="remove">Remove frame - 128 x 112</option>
-                    <option value="custom">Custom frame</option>
+                    <option value="keep" selected>Keep</option>
+                    <option value="remove">Remove</option>
+                    <option value="custom">My own frame</option>
                 </select>
-                <input type="file" id="frame-file-input" accept="image/*" class="hidden" onchange="loadCustomFrame(this)">
-                <button id="frame-file-btn" class="darkgreen small-btn hidden" onclick="document.getElementById('frame-file-input').click()">Choose Frame Image</button>
-                <label id="frame-note" class="scale-note">Applies to Game Boy Camera photos.</label>
             </div>
-
-            <!-- How Save All hands over several photos. Browser-side only. -->
-            <div id="save-all-mode-block" class="scale-block">
-                <label class="switch-label">Save All As</label>
+            <input type="file" id="frame-file-input" accept="image/*" class="hidden" onchange="loadCustomFrame(this)">
+            <button id="frame-file-btn" class="darkgreen small-btn hidden" onclick="document.getElementById('frame-file-input').click()">Choose Frame Image</button>
+            <p id="frame-note" class="settings-hint">Applies to Game Boy Camera photos.</p>
+            <div id="save-all-mode-block" class="setting-row">
+                <label for="saveAllMode">Save All as</label>
                 <select id="saveAllMode" class="gb-select">
                     <option value="zip" selected>One ZIP file</option>
                     <option value="files">Separate files</option>
                 </select>
             </div>
-            <!-- Firmware Controls -->
-            <button class="red" onclick="closeFirmwarePopup(); showUpdateInstructions()">Firmware Update</button>
-            <label class="fw-update-hint">Check for and install a new Adapter Firmware</label>
-        </div>
+        </section>
+
+        <!-- Adapter settings are stored on the adapter; saving restarts it -->
+        <section class="settings-section">
+            <h3 class="settings-heading">Adapter</h3>
+            <div class="setting-row">
+                <span class="setting-label">LED color</span>
+                <div class="led-swatches">
+                    <button type="button" class="led-swatch" data-color="#00ff00" style="background:#00ff00" aria-label="Green"></button>
+                    <button type="button" class="led-swatch" data-color="#ffd000" style="background:#ffd000" aria-label="Yellow"></button>
+                    <button type="button" class="led-swatch" data-color="#ff40a0" style="background:#ff40a0" aria-label="Pink"></button>
+                    <button type="button" class="led-swatch" data-color="#ffffff" style="background:#ffffff" aria-label="White"></button>
+                    <label class="led-color" title="Any color">
+                        <input type="color" id="ledColorPicker" value="#00ff00" aria-label="Any color">
+                        <div id="colorPreview"></div>
+                    </label>
+                </div>
+            </div>
+            <div class="setting-row">
+                <label for="mobileMode">Used with</label>
+                <select id="mobileMode" class="gb-select">
+                    <option value="2">iPhone or computer</option>
+                    <option value="1">Android app</option>
+                </select>
+            </div>
+
+            <details class="settings-more">
+                <summary>What the LED colors mean</summary>
+                <ul class="led-legend">
+                    <li><span class="led-dot" id="led-idle-dot"></span>Your color &mdash; ready</li>
+                    <li><span class="led-dot" style="background:#0030ff"></span>Blue blink &mdash; receiving a photo</li>
+                    <li><span class="led-dot" style="background:#00c0c0"></span>Cyan blink &mdash; live view</li>
+                    <li><span class="led-dot" style="background:#ff6000"></span>Orange blink &mdash; printing</li>
+                    <li><span class="led-dot" style="background:#a000ff"></span>Purple &mdash; updating firmware</li>
+                    <li><span class="led-dot" style="background:#ff0000"></span>Red blink &mdash; print or update failed</li>
+                </ul>
+            </details>
+            <details class="settings-more">
+                <summary>LED shows the wrong color?</summary>
+                <div class="switch-row">
+                    <label class="switch">
+                        <input type="checkbox" id="colorMode">
+                        <span class="slider round"></span>
+                    </label>
+                    <label for="colorMode" class="switch-label">Swap red and green</label>
+                </div>
+            </details>
+
+            <button onclick="setLedColor()">Save &amp; Restart Adapter</button>
+        </section>
+
+        <section class="settings-section">
+            <h3 class="settings-heading">Firmware</h3>
+            <div class="setting-row">
+                <span id="firmware-version-text" class="setting-label">Version 2.4.0</span>
+                <button class="small-btn" onclick="closeFirmwarePopup(); showUpdateInstructions()">Check for Updates</button>
+            </div>
+        </section>
     </div>
 </div>
 
