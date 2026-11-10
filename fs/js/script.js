@@ -1636,6 +1636,7 @@ const LIVE_GIF_MAX_SCALE = 4;     // GIF frames are re-encoded per frame, so cap
 const LIVE_DEFAULT_DELAY_MS = 100;
 
 let liveFrames = [];              // { tiles: Uint8Array, time: ms }
+let liveIndex = null;             // frame on screen, null = follow the newest one
 let liveUnsaved = false;
 let liveIdleTimer = null;
 let lastTransferPhoto = null;     // { record, tiles, time } of the latest plain Transfer
@@ -1668,7 +1669,10 @@ function rememberTransferPhoto(record, tiles) {
 function addLiveFrame(tiles) {
     const now = Date.now();
     // A stream that starts after the last one stopped is a new recording
-    if (liveFrames.length > 0 && !liveStreaming()) liveFrames = [];
+    if (liveFrames.length > 0 && !liveStreaming()) {
+        liveFrames = [];
+        liveIndex = null;
+    }
     // The adapter can only tell a REC stream from a single Transfer once the second
     // frame arrives, so the first one landed in the gallery: move it over here.
     if (liveFrames.length === 0 && lastTransferPhoto && (now - lastTransferPhoto.time) < LIVE_FIRST_FRAME_MS) {
@@ -1678,7 +1682,11 @@ function addLiveFrame(tiles) {
     lastTransferPhoto = null;
 
     liveFrames.push({ tiles: tiles, time: now });
-    if (liveFrames.length > LIVE_MAX_FRAMES) liveFrames.splice(0, liveFrames.length - LIVE_MAX_FRAMES);
+    if (liveFrames.length > LIVE_MAX_FRAMES) {
+        const dropped = liveFrames.length - LIVE_MAX_FRAMES;
+        liveFrames.splice(0, dropped);
+        if (liveIndex !== null) liveIndex = Math.max(0, liveIndex - dropped);
+    }
     liveUnsaved = true;
 
     const view = document.getElementById("live-view");
@@ -1731,9 +1739,55 @@ function paintPixels(canvas, image, colors) {
 function redrawLiveView() {
     const liveCanvas = document.getElementById("live-canvas");
     if (!liveCanvas || liveFrames.length === 0) return;
-    const latest = liveFrames[liveFrames.length - 1];
-    paintPixels(liveCanvas, decodeTilePixels(latest.tiles, CAMERA_WIDTH), activeSchemeColors());
+    const frame = liveFrames[shownLiveIndex()];
+    paintPixels(liveCanvas, decodeTilePixels(frame.tiles, CAMERA_WIDTH), activeSchemeColors());
+    updateLiveNav();
 }
+
+function shownLiveIndex() {
+    const last = liveFrames.length - 1;
+    return (liveIndex === null) ? last : Math.min(liveIndex, last);
+}
+
+function updateLiveNav() {
+    const count = liveFrames.length;
+    const index = shownLiveIndex();
+    const scrub = document.getElementById("live-scrub");
+    if (scrub) {
+        scrub.max = String(Math.max(0, count - 1));
+        scrub.value = String(Math.max(0, index));
+        scrub.disabled = count < 2;
+    }
+    const prev = document.getElementById("live-prev");
+    if (prev) prev.disabled = index <= 0;
+    const next = document.getElementById("live-next");
+    if (next) next.disabled = index >= count - 1;
+    const pos = document.getElementById("live-pos");
+    if (pos) pos.textContent = count ? `FRAME ${index + 1} OF ${count}${(liveIndex === null && liveStreaming()) ? " - LIVE" : ""}` : "";
+}
+
+// Show frame `index`; the last frame means following the stream again
+function seekLiveFrame(index) {
+    if (liveFrames.length === 0) return;
+    const last = liveFrames.length - 1;
+    index = Math.max(0, Math.min(last, Number(index) || 0));
+    liveIndex = (index === last) ? null : index;
+    redrawLiveView();
+}
+
+function stepLiveFrame(delta) {
+    seekLiveFrame(shownLiveIndex() + delta);
+}
+
+// Left / right arrow keys step through the recording while no dialog is open
+document.addEventListener("keydown", (e) => {
+    if ((e.key !== "ArrowLeft" && e.key !== "ArrowRight") || !liveViewOpen() || liveFrames.length === 0) return;
+    if (document.querySelector(".popup-overlay:not(.hidden)")) return;
+    const tag = (e.target && e.target.tagName) || "";
+    if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+    e.preventDefault();
+    stepLiveFrame(e.key === "ArrowLeft" ? -1 : 1);
+});
 
 function updateLiveStatus() {
     const streaming = liveStreaming();
@@ -1749,12 +1803,19 @@ function updateLiveStatus() {
         const fps = (seconds > 0) ? ((count - 1) / seconds).toFixed(1) : "0.0";
         info.textContent = `${count} FRAME${count === 1 ? "" : "S"} / ${fps} FPS`;
     }
+    updateLiveNav();
 }
 
 // Copy the frame on screen into the gallery as an ordinary photo
 function saveLiveFrame() {
     if (liveFrames.length === 0) return;
-    addPhoto(decodeTilePixels(liveFrames[liveFrames.length - 1].tiles, CAMERA_WIDTH));
+    addPhoto(decodeTilePixels(liveFrames[shownLiveIndex()].tiles, CAMERA_WIDTH));
+    const button = document.getElementById("live-save-frame-btn");
+    if (button) {
+        button.textContent = "Saved";
+        clearTimeout(saveLiveFrame.timer);
+        saveLiveFrame.timer = setTimeout(() => { button.textContent = "Save Frame"; }, 1200);
+    }
 }
 
 // The recording with its real timing; the last frame holds for as long as the one before it
@@ -1786,6 +1847,7 @@ function closeLiveView() {
     if (liveUnsaved && liveFrames.length > 1 && !confirm("Discard this recording?")) return;
     clearTimeout(liveIdleTimer);
     liveFrames = [];
+    liveIndex = null;
     liveUnsaved = false;
     const view = document.getElementById("live-view");
     if (view) view.classList.add("hidden");

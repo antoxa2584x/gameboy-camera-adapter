@@ -267,10 +267,17 @@
                 <span id="live-info" class="live-info"></span>
             </div>
             <canvas id="live-canvas" width="128" height="112"></canvas>
+            <!-- Pick a frame of the recording; at the last one it follows the stream again -->
+            <div class="live-nav">
+                <button id="live-prev" class="darkgreen" onclick="stepLiveFrame(-1)" aria-label="Previous frame">&lt;</button>
+                <input type="range" id="live-scrub" class="live-scrub" min="0" max="0" value="0" step="1" aria-label="Frame" oninput="seekLiveFrame(this.value)">
+                <button id="live-next" class="darkgreen" onclick="stepLiveFrame(1)" aria-label="Next frame">&gt;</button>
+            </div>
+            <span id="live-pos" class="live-pos"></span>
             <div class="live-controls">
+                <button id="live-save-frame-btn" class="darkgreen" onclick="saveLiveFrame()">Save Frame</button>
                 <button class="darkgreen" onclick="saveLiveVideo()">Save GIF</button>
                 <button id="live-video-btn" class="darkgreen hidden" onclick="saveLiveMovie()">Save Video</button>
-                <button class="darkgreen" onclick="saveLiveFrame()">Add Frame</button>
                 <button onclick="closeLiveView()">Close</button>
             </div>
         </div>

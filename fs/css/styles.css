@@ -1312,6 +1312,36 @@ input:checked + .slider:before {
     border: 1px solid white;
 }
 
+.live-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 384px;
+}
+
+.live-nav button {
+    flex: none;
+    font-size: 0.8rem;
+    padding: 8px 12px;
+}
+
+.live-nav button:disabled {
+    background-color: #004d25;
+    opacity: 0.4;
+}
+
+.live-scrub {
+    flex: 1;
+    min-width: 0;
+    accent-color: #4caf50;
+}
+
+.live-pos {
+    font-size: 0.6rem;
+    opacity: 0.85;
+}
+
 .live-controls {
     display: flex;
     flex-wrap: wrap;
