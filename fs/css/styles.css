@@ -4,11 +4,6 @@ body {
     overscroll-behavior-y: none;
 }
 
-/* Keep the scrollbar's room when a dialog locks the page, so it does not jump */
-html {
-    scrollbar-gutter: stable;
-}
-
 body {
     font-family: 'Press Start 2P', cursive;
     /* Pixelated font */

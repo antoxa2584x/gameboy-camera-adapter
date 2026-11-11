@@ -2776,12 +2776,16 @@ let scrollLockY = null;
 function updateScrollLock() {
     const open = !!document.querySelector(".popup-overlay:not(.hidden)");
     if (open && scrollLockY === null) {
+        // The scrollbar goes with the scrolling: pad its width so the page does not shift
+        const scrollbar = window.innerWidth - document.documentElement.clientWidth;
         scrollLockY = window.scrollY;
         document.body.style.top = `-${scrollLockY}px`;
+        if (scrollbar > 0) document.body.style.paddingRight = `calc(env(safe-area-inset-right) + ${scrollbar}px)`;
         document.body.classList.add("scroll-locked");
     } else if (!open && scrollLockY !== null) {
         document.body.classList.remove("scroll-locked");
         document.body.style.top = "";
+        document.body.style.paddingRight = "";
         window.scrollTo(0, scrollLockY);
         scrollLockY = null;
     }
