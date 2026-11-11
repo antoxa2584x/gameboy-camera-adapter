@@ -50,7 +50,7 @@ function writeStored(key, value) {
     } catch (e) { /* storage unavailable */ }
 }
 
-const CURRENT_VERSION = "2.6.0"; // Fallback version
+const CURRENT_VERSION = "2.7.0"; // Fallback version
 let dynamicVersion = CURRENT_VERSION;
 
 function decode(is_compressed, sour, sour_size, sour_data_len, sour_ptr, dest, dest_ptr) {
