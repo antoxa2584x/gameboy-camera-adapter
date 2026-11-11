@@ -1,4 +1,4 @@
-## ✅ What's New (v2.5.0)
+## ✅ What's New (v2.6.0)
 
 - **Gallery:**
   - Photos stay in the gallery after a page reload or a firmware update
@@ -41,7 +41,7 @@ The Android app offers the same update from its main screen.
 
 ### From older firmware: USB drive
 
-1. **Download** `pico_gb_printer.2.5.0.uf2` from the [Latest Release](https://github.com/antoxa2584x/gameboy-camera-adapter/releases/latest)
+1. **Download** `pico_gb_printer.2.6.0.uf2` from the [Latest Release](https://github.com/antoxa2584x/gameboy-camera-adapter/releases/latest)
 2. Put the adapter in update mode, either:
    - **Settings → Firmware Update → Force Update Mode** in the web UI, or
    - hold the **button** inside the adapter's housing while plugging it into your PC or Mac
