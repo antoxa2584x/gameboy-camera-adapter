@@ -5,7 +5,8 @@
   - **Select** several photos to save, print, join, animate, delete, or turn into a contact sheet
   - **Save All** downloads one ZIP file, on iPhone and iPad too
   - Make up to 3 of your own **color palettes**, saved on the adapter so every browser and device sees them, and share them as a short code
-  - **Frame** setting: keep the Game Boy Camera frame, remove it, or use your own
+  - **Frame** setting: keep the Game Boy Camera frame or remove it
+  - Photo size, format, frame and Save All settings are kept on the adapter, shared by every browser and phone
   - Long prints sent in parts (Pokémon Pinball, Zelda DX and others) arrive as one photo
   - Rotate, flip and favorite photos, and sort by date or favorites
   - Save several photos as an animated **GIF** or a **video**

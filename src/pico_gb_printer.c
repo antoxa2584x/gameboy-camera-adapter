@@ -60,6 +60,21 @@ uint8_t mobile_compatibility = MODE_IOS;
 static uint8_t palettes[PALETTE_SLOTS][PALETTE_COLORS * 3];
 static uint8_t palette_used = 0; // bitmask of filled slots
 
+// How the web UI saves photos, kept here too so every browser and phone shares
+// one set. Stored as indexes into the name tables below.
+typedef struct {
+    uint8_t scale;    // 1, 2, 5 or 10
+    uint8_t format;   // ui_formats[]
+    uint8_t frame;    // ui_frames[]
+    uint8_t save_all; // ui_save_alls[]
+} ui_settings_t;
+static const char *const ui_formats[] = {"jpeg", "png"};
+static const char *const ui_frames[] = {"keep", "remove"};
+static const char *const ui_save_alls[] = {"zip", "files"};
+static const ui_settings_t ui_defaults = {10, 0, 0, 0};
+static ui_settings_t ui_settings = {10, 0, 0, 0};
+static bool ui_stored = false; // false until a browser has saved them once
+
 extern void setRGB(uint8_t r, uint8_t g, uint8_t b);
 
 // --- CDC line parser state ---
@@ -245,6 +260,8 @@ static inline uint8_t hex_nibble(char c);
 static bool palette_set(int slot, const char *colors);
 static bool palette_delete(int slot);
 static int palettes_json(char *out, size_t size, bool ok);
+static bool ui_settings_update(const char *const *keys, const char *const *values, int count);
+static int ui_settings_json(char *out, size_t size, bool ok);
 
 // Time for the last reply to reach the host before the new firmware is copied in
 #define FW_APPLY_DELAY_MS 1000
@@ -438,6 +455,27 @@ static void cdc_handle_line(const char* line) {
       else if (strcmp(req, "/delete_palette") == 0) ok = palette_delete(slot);
       char json[160];
       int n = palettes_json(json, sizeof(json) - 1, ok);
+      json[n++] = '\n';
+      cdc_send_bytes((const uint8_t*)json, (uint32_t)n, 2000);
+      return;
+    }
+
+    // Photo-saving settings, same as the web routes; every reply is the settings JSON line
+    if (strcmp(req, "/ui_settings") == 0 || strcmp(req, "/set_ui_settings") == 0) {
+      bool ok = true;
+      if (strcmp(req, "/set_ui_settings") == 0) {
+        static const char *const keys[] = {"scale", "format", "frame", "save_all"};
+        const char *values[4];
+        const char *found_keys[4];
+        int count = 0;
+        for (int i = 0; i < 4; i++) {
+          const char *value = qs ? query_value(qs, keys[i]) : NULL;
+          if (value) found_keys[count] = keys[i], values[count++] = value;
+        }
+        ok = count && ui_settings_update(found_keys, values, count);
+      }
+      char json[160];
+      int n = ui_settings_json(json, sizeof(json) - 1, ok);
       json[n++] = '\n';
       cdc_send_bytes((const uint8_t*)json, (uint32_t)n, 2000);
       return;
@@ -716,6 +754,8 @@ extern char __flash_binary_end;
 #define SETTINGS_PALETTE_MARKER 6   // 0x5C once palettes have been saved
 #define SETTINGS_PALETTE_USED   7   // palette_used bitmask
 #define SETTINGS_PALETTES       8   // palettes[][], PALETTE_SLOTS * PALETTE_COLORS * 3 bytes
+#define SETTINGS_UI_MARKER      44  // 0x5E once a browser has saved the photo settings
+#define SETTINGS_UI             45  // ui_settings_t, 4 bytes
 
 void save_color_to_flash(uint8_t r, uint8_t g, uint8_t b, bool rgb_mode, uint8_t mode) {
     // Never write over our own code/rodata, whatever the offset ends up being
@@ -733,6 +773,10 @@ void save_color_to_flash(uint8_t r, uint8_t g, uint8_t b, bool rgb_mode, uint8_t
     buffer[SETTINGS_PALETTE_MARKER] = 0x5C;
     buffer[SETTINGS_PALETTE_USED] = palette_used;
     memcpy(buffer + SETTINGS_PALETTES, palettes, sizeof(palettes));
+    if (ui_stored) {
+        buffer[SETTINGS_UI_MARKER] = 0x5E;
+        memcpy(buffer + SETTINGS_UI, &ui_settings, sizeof(ui_settings));
+    }
 
     uint32_t ints = save_and_disable_interrupts();
     flash_range_erase(FLASH_TARGET_OFFSET, FLASH_SECTOR_SIZE);
@@ -772,6 +816,64 @@ void load_color_from_flash() {
     } else {
         palette_used = 0;
     }
+
+    // Photo settings: anything out of range (an older layout) means defaults
+    ui_settings = ui_defaults;
+    ui_stored = false;
+    if (is_valid && flash_data[SETTINGS_UI_MARKER] == 0x5E) {
+        ui_settings_t stored;
+        memcpy(&stored, flash_data + SETTINGS_UI, sizeof(stored));
+        bool scale_ok = stored.scale == 1 || stored.scale == 2 || stored.scale == 5 || stored.scale == 10;
+        if (scale_ok && stored.format < LWIP_ARRAYSIZE(ui_formats) && stored.frame < LWIP_ARRAYSIZE(ui_frames) &&
+            stored.save_all < LWIP_ARRAYSIZE(ui_save_alls)) {
+            ui_settings = stored;
+            ui_stored = true;
+        }
+    }
+}
+
+// Index of `value` in `names`; the value may run on into "&..." (a raw query string)
+static int ui_name_index(const char *const *names, int count, const char *value) {
+    size_t len = 0;
+    while (value[len] && value[len] != '&' && value[len] != ' ') len++;
+    for (int i = 0; i < count; i++) {
+        if (strlen(names[i]) == len && strncmp(names[i], value, len) == 0) return i;
+    }
+    return -1;
+}
+
+// Apply key=value pairs (scale, format, frame, save_all) and save. All or
+// nothing: one bad value leaves the settings as they were.
+static bool ui_settings_update(const char *const *keys, const char *const *values, int count) {
+    ui_settings_t next = ui_settings;
+    for (int i = 0; i < count; i++) {
+        int index;
+        if (strcmp(keys[i], "scale") == 0) {
+            int scale = atoi(values[i]);
+            if (scale != 1 && scale != 2 && scale != 5 && scale != 10) return false;
+            next.scale = (uint8_t)scale;
+        } else if (strcmp(keys[i], "format") == 0) {
+            if ((index = ui_name_index(ui_formats, LWIP_ARRAYSIZE(ui_formats), values[i])) < 0) return false;
+            next.format = (uint8_t)index;
+        } else if (strcmp(keys[i], "frame") == 0) {
+            if ((index = ui_name_index(ui_frames, LWIP_ARRAYSIZE(ui_frames), values[i])) < 0) return false;
+            next.frame = (uint8_t)index;
+        } else if (strcmp(keys[i], "save_all") == 0) {
+            if ((index = ui_name_index(ui_save_alls, LWIP_ARRAYSIZE(ui_save_alls), values[i])) < 0) return false;
+            next.save_all = (uint8_t)index;
+        }
+    }
+    ui_settings = next;
+    ui_stored = true;
+    save_color_to_flash(base_r, base_g, base_b, use_rgb_mode, mobile_compatibility);
+    return true;
+}
+
+// {"result":"ok","stored":true,"scale":10,"format":"jpeg","frame":"keep","save_all":"zip"}
+static int ui_settings_json(char *out, size_t size, bool ok) {
+    return snprintf(out, size, "{\"result\":\"%s\",\"stored\":%s,\"scale\":%u,\"format\":\"%s\",\"frame\":\"%s\",\"save_all\":\"%s\"}",
+                    ok ? "ok" : "error", ui_stored ? "true" : "false", ui_settings.scale,
+                    ui_formats[ui_settings.format], ui_frames[ui_settings.frame], ui_save_alls[ui_settings.save_all]);
 }
 
 // Store four colors given as 24 hex digits, any separators ignored
@@ -873,6 +975,16 @@ static const char *cgi_delete_palette(int iIndex, int iNumParams, char *pcParam[
     }
     palette_op_ok = palette_delete(slot);
     return PALETTES_FILE;
+}
+
+// Photo settings: /ui_settings.json reads them, /set_ui_settings?scale=10&format=png
+// (any of scale, format, frame, save_all) changes them and replies with the same JSON
+#define UI_SETTINGS_FILE "/ui_settings.json"
+static bool ui_op_ok = true;
+
+static const char *cgi_set_ui_settings(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) {
+    ui_op_ok = (iNumParams > 0) && ui_settings_update((const char *const *)pcParam, (const char *const *)pcValue, iNumParams);
+    return UI_SETTINGS_FILE;
 }
 
 #define PIN_SCK    2  // CLK: from Pico to printer
@@ -1128,6 +1240,7 @@ static const tCGI cgi_handlers[] = {
     { "/print_chunk", cgi_print_chunk },
     { "/set_palette", cgi_set_palette },
     { "/delete_palette", cgi_delete_palette },
+    { "/set_ui_settings", cgi_set_ui_settings },
 };
 
 int fs_open_custom(struct fs_file *file, const char *name) {
@@ -1207,6 +1320,13 @@ int fs_open_custom(struct fs_file *file, const char *name) {
             : snprintf(file_buffer, sizeof(file_buffer), "{\"result\":\"error\",\"error\":\"%s\",\"received\":%lu}",
                        *fw_update_error() ? fw_update_error() : "request", (unsigned long)fw_update_received());
         file->index = file->len;
+        return 1;
+    } else if (!strcmp(name, UI_SETTINGS_FILE)) {
+        memset(file, 0, sizeof(struct fs_file));
+        file->data  = file_buffer;
+        file->len   = ui_settings_json((char *)file_buffer, sizeof(file_buffer), ui_op_ok);
+        file->index = file->len;
+        ui_op_ok = true; // a plain read after a failed change is not an error
         return 1;
     } else if (!strcmp(name, PALETTES_FILE)) {
         memset(file, 0, sizeof(struct fs_file));

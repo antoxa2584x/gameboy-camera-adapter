@@ -416,10 +416,8 @@ function padImages(images) {
 // A Game Boy Camera print is 160x144: the 128x112 picture inside a 16 pixel frame.
 
 const CAMERA_FRAME = { width: 160, height: 144, x: 16, y: 16, w: 128, h: 112 };
-const FRAME_MODES = ["keep", "remove", "custom"];
+const FRAME_MODES = ["keep", "remove"];
 const FRAME_MODE_KEY = "photoFrame";
-const CUSTOM_FRAME_KEY = "customFrame";
-let customFrame = null; // shades of a 160x144 frame
 let frameVersion = 0;   // bumped when the frame setting changes, for the caches
 
 function getFrameMode() {
@@ -432,17 +430,7 @@ function applyFrame(image) {
     const mode = getFrameMode();
     const F = CAMERA_FRAME;
     const framed = image.width === F.width && image.height === F.height;
-    const bare = image.width === F.w && image.height === F.h;
     if (mode === "remove" && framed) return cropShades(image, F.x, F.y, F.w, F.h);
-    if (mode === "custom" && customFrame && (framed || bare)) {
-        const pixels = customFrame.slice();
-        const ox = framed ? F.x : 0, oy = framed ? F.y : 0;
-        for (let y = 0; y < F.h; y++) {
-            const from = (oy + y) * image.width + ox;
-            pixels.set(image.pixels.subarray(from, from + F.w), (F.y + y) * F.width + F.x);
-        }
-        return { width: F.width, height: F.height, pixels };
-    }
     return image;
 }
 
@@ -454,82 +442,18 @@ function bytesToBase64(bytes) {
     return btoa(binary);
 }
 
-function base64ToBytes(text) {
-    const binary = atob(text);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return bytes;
-}
-
-function loadStoredFrame() {
-    const stored = readStored(CUSTOM_FRAME_KEY);
-    if (!stored) return;
-    try {
-        customFrame = unpackShades(base64ToBytes(stored), CAMERA_FRAME.width * CAMERA_FRAME.height);
-    } catch (e) {
-        customFrame = null;
-    }
-}
-
-// Any picture becomes a 160x144 frame in Game Boy shades; only its border is used
-async function loadCustomFrame(input) {
-    const file = input.files && input.files[0];
-    input.value = "";
-    if (!file) return;
-    let source;
-    try {
-        source = await loadImageFile(file);
-    } catch (e) {
-        showMessage("COULD NOT OPEN THE IMAGE");
-        return;
-    }
-    const F = CAMERA_FRAME;
-    const canvas = document.createElement("canvas");
-    canvas.width = F.width;
-    canvas.height = F.height;
-    const ctx = canvas.getContext("2d");
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(source, 0, 0, F.width, F.height);
-    const data = ctx.getImageData(0, 0, F.width, F.height).data;
-    const levels = detectGameBoyLevels(data);
-    const pixels = new Uint8Array(F.width * F.height);
-    for (let p = 0; p < pixels.length; p++) {
-        const i = p * 4;
-        const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-        if (levels) {
-            let nearest = 0;
-            for (let n = 1; n < 4; n++) if (Math.abs(gray - levels[n]) < Math.abs(gray - levels[nearest])) nearest = n;
-            pixels[p] = nearest;
-        } else {
-            pixels[p] = nearestShade(gray);
-        }
-    }
-    customFrame = pixels;
-    writeStored(CUSTOM_FRAME_KEY, bytesToBase64(packShades(pixels)));
-    const select = document.getElementById("photoFrame");
-    if (select) select.value = "custom";
-    writeStored(FRAME_MODE_KEY, "custom");
-    onFrameChanged();
-}
-
 function onFrameChanged() {
     frameVersion++;
-    const mode = getFrameMode();
-    const button = document.getElementById("frame-file-btn");
-    if (button) button.classList.toggle("hidden", mode !== "custom");
     const note = document.getElementById("frame-note");
     if (note) {
-        note.textContent = mode === "custom"
-            ? "Pick a 160 x 144 picture. Its outer 16 pixels become the frame."
-            : mode === "remove"
-                ? "Camera photos are cropped to the 128 x 112 picture."
-                : "Applies to Game Boy Camera photos.";
+        note.textContent = getFrameMode() === "remove"
+            ? "Camera photos are cropped to the 128 x 112 picture."
+            : "Applies to Game Boy Camera photos.";
     }
     renderAllTiles();
 }
 
 function setupFrameSelector() {
-    loadStoredFrame();
     const select = document.getElementById("photoFrame");
     if (!select) return;
     const stored = readStored(FRAME_MODE_KEY);
@@ -1455,6 +1379,63 @@ function setupSaveAllModeSelector() {
     const stored = readStored(SAVE_ALL_MODE_KEY);
     select.value = SAVE_ALL_MODES.includes(stored) ? stored : "zip";
     safeAddEventListener(select, "change", () => writeStored(SAVE_ALL_MODE_KEY, select.value));
+}
+
+// ---- Photo settings on the adapter ----
+// Size, format, frame and Save All are kept on the adapter, so every browser and
+// phone saves photos the same way. localStorage only caches them, so the page
+// starts with the last known values before the adapter answers.
+const ADAPTER_SETTINGS = [
+    { select: "photoScale", key: "scale", stored: PHOTO_SCALE_KEY },
+    { select: "photoFormat", key: "format", stored: PHOTO_FORMAT_KEY },
+    { select: "photoFrame", key: "frame", stored: FRAME_MODE_KEY, changed: () => onFrameChanged() },
+    { select: "saveAllMode", key: "save_all", stored: SAVE_ALL_MODE_KEY }
+];
+const SETTINGS_TIMEOUT_MS = 5000;
+
+async function adapterSettingsRequest(url) {
+    try {
+        const response = await fetchWithTimeout(url, SETTINGS_TIMEOUT_MS);
+        const data = response.ok ? await response.json() : null;
+        return (data && data.result === "ok") ? data : null;
+    } catch (e) {
+        console.error("Settings request failed:", e);
+        return null;
+    }
+}
+
+function settingsQuery(settings) {
+    return settings.map(s => `${s.key}=${encodeURIComponent(document.getElementById(s.select).value)}`).join("&");
+}
+
+// Show what the adapter has; the first time, this browser's choices become the adapter's
+async function loadAdapterSettings() {
+    const settings = ADAPTER_SETTINGS.filter(s => document.getElementById(s.select));
+    const data = await adapterSettingsRequest("/ui_settings.json");
+    if (!data) return;
+    if (!data.stored) {
+        await adapterSettingsRequest(`/set_ui_settings?${settingsQuery(settings)}`);
+        return;
+    }
+    settings.forEach((s) => {
+        const select = document.getElementById(s.select);
+        const value = String(data[s.key]);
+        if (select.value === value || !Array.from(select.options).some(o => o.value === value)) return;
+        select.value = value;
+        writeStored(s.stored, value);
+        if (s.changed) s.changed();
+    });
+}
+
+function setupAdapterSettings() {
+    ADAPTER_SETTINGS.forEach((s) => {
+        const select = document.getElementById(s.select);
+        safeAddEventListener(select, "change", async () => {
+            if (await adapterSettingsRequest(`/set_ui_settings?${settingsQuery([s])}`)) return;
+            uiAlert("Could not reach the adapter, so this setting was saved in this browser only.\n\nThe adapter's own setting comes back the next time the page loads with it connected.", "Not Saved");
+        });
+    });
+    loadAdapterSettings();
 }
 
 // The camera tags stamped into every saved photo, whatever the format.
@@ -2569,6 +2550,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setupPhotoFormatSelector();
     setupSaveAllModeSelector();
     setupFrameSelector();
+    setupAdapterSettings();
     setupGallerySort();
     updateSelectionBar();
     restoreGallery();
@@ -2895,6 +2877,5 @@ window.onPaletteCodeInput = onPaletteCodeInput;
 window.copyPaletteCode = copyPaletteCode;
 window.savePaletteFromEditor = savePaletteFromEditor;
 window.deletePaletteFromEditor = deletePaletteFromEditor;
-window.loadCustomFrame = loadCustomFrame;
 window.closeAnimatePopup = closeAnimatePopup;
 window.exportAnimation = exportAnimation;

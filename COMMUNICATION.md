@@ -112,6 +112,12 @@ Stores a palette in slot `N` (0-2), or in the first free slot without `slot`. `C
 ##### GET `/delete_palette?slot=N`
 Empties slot `N`. Replies with `/palettes.json`.
 
+##### GET `/ui_settings.json`
+How the web UI saves photos, kept on the adapter so every browser shares them: `{"result":"ok","stored":true,"scale":10,"format":"jpeg","frame":"keep","save_all":"zip"}`. `stored` is `false` until a browser has saved them once (the values are then the defaults).
+
+##### GET `/set_ui_settings?scale=N&format=F&frame=M&save_all=S`
+Changes any of them: `scale` `1`, `2`, `5` or `10`; `format` `jpeg` or `png`; `frame` `keep` or `remove`; `save_all` `zip` or `files`. Saves to flash, no reboot. Replies with `/ui_settings.json`; `"result":"error"` (and nothing changed) if a value is not one of these.
+
 ##### GET `/reset`
 Resets the internal data buffers and protocol state.
 
@@ -162,6 +168,8 @@ The mobile app sends HTTP-style GET lines over the serial port:
 | `GET /palettes` | `{"result":"ok","slots":3,"palettes":[...]}\n` | Custom palettes (see `/palettes.json`). |
 | `GET /set_palette?slot=N&colors=CODE` | palettes JSON line | Store a palette (no slot: first free one). |
 | `GET /delete_palette?slot=N` | palettes JSON line | Empty a palette slot. |
+| `GET /ui_settings` | `{"result":"ok","stored":..,"scale":..,...}\n` | Photo settings (see `/ui_settings.json`). |
+| `GET /set_ui_settings?scale=..&format=..&frame=..&save_all=..` | settings JSON line | Change photo settings. |
 | `GET /print_chunk?data=HEX` | `PRINT_QUEUED\n` or `PRINT_ERR\n` | Buffer one hex-encoded printer packet (same queue as the Web API). `PRINT_ERR` means the packet was malformed or the queue is full. |
 | `GET /print_chunk?done=1` | `{"printer":N}\n` | Send all buffered packets to the printer over the Link Cable, then report the printer status byte. With an empty queue, sends a single `STATUS` packet (used for polling). The response is sent only after the burst completes (can take several seconds). |
 | `GET /printer_status` | `{"printer":N}\n` | Return the last cached printer status without touching the Link Cable. |
