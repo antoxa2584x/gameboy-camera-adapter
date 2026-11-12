@@ -30,6 +30,51 @@
     <td align="center"><b>🎞️ Animations</b><br>GIF or video from your photos</td>
     <td align="center"><b>🗂️ Contact Sheets</b><br>All your photos on one page</td>
   </tr>
+  <tr>
+    <td align="center"><b>🌈 Themes</b><br>Green, blue, yellow, red or clear purple</td>
+    <td align="center"><b>⚡ One-Click Updates</b><br>New firmware from the web UI or the app</td>
+  </tr>
+</table>
+</div>
+
+### 🖥️ Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/gallery.png" width="800" alt="Gallery with the Game Boy palette">
+  <br><i>The gallery, painted with the Game Boy palette.</i>
+</p>
+
+<div align="center">
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/viewer.png" width="400" alt="Photo viewer"><br><i>Photo viewer: rotate, flip, favorite, save</i></td>
+    <td align="center"><img src="docs/screenshots/select.png" width="400" alt="Selecting photos"><br><i>Select photos to save, print, join or animate</i></td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <img src="docs/screenshots/mobile-gallery.png" width="200" alt="Gallery on a phone">
+      <img src="docs/screenshots/mobile-viewer.png" width="200" alt="Photo viewer on a phone">
+      <br><i>On a phone, with the blue theme</i>
+    </td>
+  </tr>
+</table>
+</div>
+
+#### 🖨️ Printer tab
+
+<div align="center">
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/printer-start.png" width="400" alt="Printer tab start screen"><br><i>Pick a picture, or text and a QR code</i></td>
+    <td align="center"><img src="docs/screenshots/printer-picture.png" width="400" alt="Printing a picture"><br><i>Any image, with layout, darkness and shading</i></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/printer-text.png" width="400" alt="Text and QR code dialog"><br><i>Text labels with an optional QR code</i></td>
+    <td align="center"><img src="docs/screenshots/printer-label.png" width="400" alt="A label in the print list"><br><i>Labels print as long as they need</i></td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2"><img src="docs/screenshots/printer-gallery.png" width="400" alt="Gallery photos in the print list"><br><i>Gallery photos sent to the printer, with copies</i></td>
+  </tr>
 </table>
 </div>
 
@@ -64,7 +109,7 @@ Acts as a virtual **Game Boy Printer**. Simply select "Print" on your Game Boy, 
 
 With [gb-photo](https://github.com/untoxa/gb-photo) the adapter also takes **Transfer** / **Transfer all** (fast raw transfers of the camera roll) and **Print all**. **Transfer REC** opens a live view in the web UI that you can save as an animated GIF or video, or grab single frames from.
 
-Photos stay in the gallery until you delete them, even after a reload. Tap **Select** to save several at once (one ZIP file), print them, join them into one tall picture, turn them into a GIF or video, or lay them out on a contact sheet. Open a photo to rotate, flip or favorite it. Pick a palette above the gallery, or tap **+** to make your own (up to 3, saved on the adapter) and share it as a code. **Settings → Frame** keeps or removes the Game Boy Camera frame. Photo size, format, frame and Save All are kept on the adapter, so every browser and phone uses the same ones. **Settings → Theme** colors the page after a Game Boy Camera: green, blue, yellow, red or clear purple.
+Long prints sent in parts (Pokémon Pinball, Zelda DX and others) arrive as one photo. Photos stay in the gallery until you delete them, even after a reload or a firmware update. Tap **Select** (or touch and hold a photo on a phone) to save several at once (one ZIP file), print them, join them into one tall picture, turn them into a GIF or video, or lay them out on a contact sheet. Open a photo to rotate, flip or favorite it. Pick a palette above the gallery, or tap **+** to make your own (up to 3, saved on the adapter) and share it as a code. **Settings → Frame** keeps or removes the Game Boy Camera frame. Photo size, format, frame and Save All are kept on the adapter, so every browser and phone uses the same ones. **Settings → Theme** colors the page after a Game Boy Camera: green, blue, yellow, red or clear purple.
 
 #### 📤 Printer Mode
 Open the **Printer** tab at the top of the page, then pick what to print: a **Picture** from your device, or **Text or QR** for a label. The preview shows exactly what comes out of a real Game Boy Printer connected to the adapter. Choose a layout (Fit, Fill, Actual size, or Long for banners), set the darkness, and print. Add more pictures or labels to print several in a row, with copies; **More options** has shading styles, brightness and contrast. If the printer jams or runs out of paper, fix it and tap **Resume**.
@@ -78,7 +123,7 @@ Open the **Printer** tab at the top of the page, then pick what to print: a **Pi
 </p>
 
 #### 💡 Hardware Tips
-*   Uses **GPIO 8** for the Status LED.
+*   Uses **GPIO 8** for the Status LED. It blinks blue while a photo comes in, shows cyan for the live view, orange while printing and purple during a firmware update, and blinks red when a print or update fails. When idle it shows your LED color (**Settings**).
 *   Uses **GPIO 9** for the Action Button.
 *   Requires a **5V to 3.3V level shifter** for safe operation with the Game Boy's 5V logic.
 
