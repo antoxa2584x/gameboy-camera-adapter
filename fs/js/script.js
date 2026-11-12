@@ -1381,15 +1381,43 @@ function setupSaveAllModeSelector() {
     safeAddEventListener(select, "change", () => writeStored(SAVE_ALL_MODE_KEY, select.value));
 }
 
+// Page colors after the Game Boy Camera shells; the browser bar follows the background
+const UI_THEMES = { green: "#266d3f", blue: "#24528a", yellow: "#8a6a0c", red: "#8e2626", purple: "#5b4687" };
+const UI_THEME_KEY = "uiTheme";
+
+function applyTheme() {
+    const select = document.getElementById("uiTheme");
+    const raw = select ? select.value : readStored(UI_THEME_KEY);
+    const theme = UI_THEMES[raw] ? raw : "green";
+    if (theme === "green") delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = theme;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", UI_THEMES[theme]);
+}
+
+function setupThemeSelector() {
+    const select = document.getElementById("uiTheme");
+    if (!select) return;
+    const stored = readStored(UI_THEME_KEY);
+    select.value = UI_THEMES[stored] ? stored : "green";
+    applyTheme();
+    safeAddEventListener(select, "change", () => {
+        writeStored(UI_THEME_KEY, select.value);
+        applyTheme();
+    });
+}
+
 // ---- Photo settings on the adapter ----
-// Size, format, frame and Save All are kept on the adapter, so every browser and
-// phone saves photos the same way. localStorage only caches them, so the page
-// starts with the last known values before the adapter answers.
+// Size, format, frame, Save All and the theme are kept on the adapter, so every
+// browser and phone saves photos the same way and looks the same. localStorage
+// only caches them, so the page starts with the last known values before the
+// adapter answers.
 const ADAPTER_SETTINGS = [
     { select: "photoScale", key: "scale", stored: PHOTO_SCALE_KEY },
     { select: "photoFormat", key: "format", stored: PHOTO_FORMAT_KEY },
     { select: "photoFrame", key: "frame", stored: FRAME_MODE_KEY, changed: () => onFrameChanged() },
-    { select: "saveAllMode", key: "save_all", stored: SAVE_ALL_MODE_KEY }
+    { select: "saveAllMode", key: "save_all", stored: SAVE_ALL_MODE_KEY },
+    { select: "uiTheme", key: "theme", stored: UI_THEME_KEY, changed: () => applyTheme() }
 ];
 const SETTINGS_TIMEOUT_MS = 5000;
 
@@ -2550,6 +2578,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setupPhotoFormatSelector();
     setupSaveAllModeSelector();
     setupFrameSelector();
+    setupThemeSelector();
     setupAdapterSettings();
     setupGallerySort();
     updateSelectionBar();

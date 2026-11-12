@@ -14,6 +14,8 @@
     <link rel="apple-touch-icon" sizes="192x192" href="img/web-app-manifest-192x192.png">
     <link rel="manifest" href="img/site.webmanifest">
     <link rel="stylesheet" href="css/styles.css">
+    <!-- The last known theme before the first paint; the adapter's arrives later -->
+    <script>try { var t = localStorage.getItem("uiTheme"); if (t && t !== "green") document.documentElement.dataset.theme = t; } catch (e) {}</script>
     <script defer src="js/piexifjs.js"></script>
     <script defer src="js/zip.js"></script>
     <script defer src="js/qr.js"></script>
@@ -64,6 +66,22 @@
                 </select>
             </div>
             <p id="save-all-note" class="settings-hint hidden">With separate files, iPhone and iPad ask about each photo.</p>
+        </section>
+
+        <!-- The page colors, kept on the adapter like the photo settings -->
+        <section class="settings-section">
+            <h3 class="settings-heading">Look</h3>
+            <div class="setting-row">
+                <label for="uiTheme">Theme</label>
+                <select id="uiTheme" class="gb-select">
+                    <option value="green" selected>Green</option>
+                    <option value="blue">Blue</option>
+                    <option value="yellow">Yellow</option>
+                    <option value="red">Red</option>
+                    <option value="purple">Clear Purple</option>
+                </select>
+            </div>
+            <p class="settings-hint">After the Game Boy Camera colors.</p>
         </section>
 
         <!-- Adapter settings are stored on the adapter; saving restarts it -->

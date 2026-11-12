@@ -1,3 +1,93 @@
+/* UI color themes, after the Game Boy Camera shells. Green is the default;
+   the others are picked in Settings and set as <html data-theme="..."> */
+:root {
+    --gb-bg: #266d3f;
+    --gb-light: #a1d99b;
+    --gb-mid: #00823c;
+    --gb-dark: #004d25;
+    --gb-darker: #003d1d;
+    --gb-deep: #0f391e;
+    --gb-panel: #1e4a2b;
+    --gb-raised: #1e5a34;
+    --gb-accent: #4caf50;
+    --gb-accent-hover: #43a047;
+    --gb-accent-shadow: #2e7d32;
+    --gb-bright: #69f0ae;
+    --gb-glow: rgba(76, 175, 80, 0.5);
+}
+
+:root[data-theme="blue"] {
+    --gb-bg: #24528a;
+    --gb-light: #a6c8f0;
+    --gb-mid: #1565c0;
+    --gb-dark: #0d3266;
+    --gb-darker: #0a2852;
+    --gb-deep: #0b2140;
+    --gb-panel: #1b3b63;
+    --gb-raised: #1f4a7c;
+    --gb-accent: #42a5f5;
+    --gb-accent-hover: #1e88e5;
+    --gb-accent-shadow: #1565c0;
+    --gb-bright: #80d8ff;
+    --gb-glow: rgba(66, 165, 245, 0.5);
+}
+
+:root[data-theme="yellow"] {
+    --gb-bg: #8a6a0c;
+    --gb-light: #f7e08a;
+    --gb-mid: #a87f00;
+    --gb-dark: #5a4300;
+    --gb-darker: #483600;
+    --gb-deep: #382a00;
+    --gb-panel: #574510;
+    --gb-raised: #6c5612;
+    --gb-accent: #fdd835;
+    --gb-accent-hover: #fbc02d;
+    --gb-accent-shadow: #c49000;
+    --gb-bright: #ffff8d;
+    --gb-glow: rgba(253, 216, 53, 0.5);
+}
+
+:root[data-theme="red"] {
+    --gb-bg: #8e2626;
+    --gb-light: #f4a6a6;
+    --gb-mid: #b0241c;
+    --gb-dark: #5c1212;
+    --gb-darker: #4a0d0d;
+    --gb-deep: #3a0a0a;
+    --gb-panel: #5a1c1c;
+    --gb-raised: #6e2222;
+    --gb-accent: #ff7961;
+    --gb-accent-hover: #f4511e;
+    --gb-accent-shadow: #bf360c;
+    --gb-bright: #ffab91;
+    --gb-glow: rgba(255, 121, 97, 0.5);
+}
+
+/* Atomic purple: see-through plastic, so the darks are partly clear */
+:root[data-theme="purple"] {
+    --gb-bg: #5b4687;
+    --gb-light: #d4c2f5;
+    --gb-mid: #6c45b0;
+    --gb-dark: rgb(44 24 88 / 72%);
+    --gb-darker: rgb(34 18 70 / 82%);
+    --gb-deep: #24163f;
+    --gb-panel: rgb(52 32 96 / 85%);
+    --gb-raised: rgb(70 46 122 / 90%);
+    --gb-accent: #b39ddb;
+    --gb-accent-hover: #9575cd;
+    --gb-accent-shadow: #5e35b1;
+    --gb-bright: #e1bee7;
+    --gb-glow: rgba(179, 157, 219, 0.55);
+}
+
+:root[data-theme="purple"] body {
+    background-image:
+        radial-gradient(circle at 20% 15%, rgb(255 255 255 / 12%), transparent 45%),
+        radial-gradient(circle at 85% 80%, rgb(20 8 50 / 35%), transparent 55%);
+    background-attachment: fixed;
+}
+
 /* No rubber-band past the ends on iOS: the bounce slid the page under the fixed footer */
 html,
 body {
@@ -8,7 +98,7 @@ body {
     font-family: 'Press Start 2P', cursive;
     /* Pixelated font */
     text-align: center;
-    background-color: #266d3f;
+    background-color: var(--gb-bg);
     /* Mint green background */
     margin: 0;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
@@ -64,24 +154,24 @@ button {
 }
 
 button:disabled {
-    background-color: #a1d99b;
+    background-color: var(--gb-light);
     /* Lighter green for disabled state */
     cursor: not-allowed;
 }
 
 button:active {
-    background-color: #00823c;
+    background-color: var(--gb-mid);
     /* Darker green for active state */
 }
 
 button:hover {
-    background-color: #004d25;
+    background-color: var(--gb-dark);
     /* Darker green for active state */
 }
 
 .popup-container button {
     width: 100%;
-    background-color: #266d3f;
+    background-color: var(--gb-bg);
     color: white;
     border: none;
     border-radius: 8px;
@@ -95,7 +185,7 @@ button:hover {
 
 /* Hover effect for all popup buttons */
 .popup-container button:hover {
-    background-color: #00823c;
+    background-color: var(--gb-mid);
 }
 
 /* Special style for red Update button */
@@ -109,11 +199,11 @@ button:hover {
 
 /* Special style for dark_green Update button */
 button.darkgreen {
-    background-color: #004d25;
+    background-color: var(--gb-dark);
 }
 
 button.darkgreen:hover {
-    background-color: #003d1d;
+    background-color: var(--gb-darker);
 }
 
 .popup-container .close-btn {
@@ -144,7 +234,7 @@ button.darkgreen:hover {
 h1 {
     font-size: 1.5rem;
     /* Adjusted size to fit the retro style */
-    color: #004d25;
+    color: var(--gb-dark);
     /* Darker green for the header text */
     margin-top: 20px;
     max-width: 90%;
@@ -155,7 +245,7 @@ h1 {
 p {
     font-size: 1.1em;
     /* Adjusted size to fit the retro style */
-    color: #004d25;
+    color: var(--gb-dark);
     /* Darker green for the paragraph text */
     max-width: 90%;
     margin-left: auto;
@@ -189,7 +279,7 @@ p {
     min-width: 0;
     padding: 0;
     background-color: rgb(0 0 0 / 28%);
-    border: 1px solid #004d25;
+    border: 1px solid var(--gb-dark);
     border-radius: 8px;
     overflow: hidden;
     box-sizing: border-box;
@@ -205,7 +295,7 @@ p {
 @media (hover: hover) {
     .gallery-image:hover {
         transform: scale(1.03);
-        box-shadow: 0 0 15px rgba(76, 175, 80, 0.5);
+        box-shadow: 0 0 15px var(--gb-glow);
         z-index: 10;
     }
 }
@@ -249,7 +339,7 @@ p {
     gap: 10px;
     color: white;
     font-size: 0.55rem;
-    border: 1px dashed #4caf50;
+    border: 1px dashed var(--gb-accent);
     cursor: default;
 }
 
@@ -282,7 +372,7 @@ p {
     width: 100%;
     max-width: 160px;
     height: 8px;
-    background: #004d25;
+    background: var(--gb-dark);
     border-radius: 4px;
     outline: none;
     margin: 0;
@@ -294,7 +384,7 @@ p {
     appearance: none;
     width: 18px;
     height: 18px;
-    background: #4caf50;
+    background: var(--gb-accent);
     cursor: pointer;
     border-radius: 50%;
     border: 2px solid white;
@@ -303,7 +393,7 @@ p {
 .gb-range::-moz-range-thumb {
     width: 18px;
     height: 18px;
-    background: #4caf50;
+    background: var(--gb-accent);
     cursor: pointer;
     border-radius: 50%;
     border: 2px solid white;
@@ -318,7 +408,7 @@ footer {
        than the screen, and iOS then let the whole page be dragged around, far
        past the footer */
     box-sizing: border-box;
-    background-color: #004d25;
+    background-color: var(--gb-dark);
     color: white;
     padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
     text-align: center;
@@ -583,7 +673,7 @@ footer .links {
 }
 
 .popup-nav-button:hover {
-    background-color: #004d25;
+    background-color: var(--gb-dark);
 }
 
 .popup-nav-button.nav-off {
@@ -660,7 +750,7 @@ footer .links {
 }
 
 .palette-label {
-    color: #a1d99b;
+    color: var(--gb-light);
 }
 
 .palette-head .link-btn {
@@ -673,7 +763,7 @@ footer .links {
     padding: 0 14px;
     border-radius: 20px;
     border: 2px dashed white;
-    background: #004d25;
+    background: var(--gb-dark);
     font-size: 0.55rem;
     flex: none;
 }
@@ -699,7 +789,7 @@ footer .links {
 }
 
 .color-circle--add {
-    background: #004d25;
+    background: var(--gb-dark);
     color: white;
     font-size: 1rem;
     line-height: 1;
@@ -707,12 +797,12 @@ footer .links {
 
 .color-circle:hover {
     transform: scale(1.2);
-    box-shadow: 0 0 15px rgba(76, 175, 80, 0.5);
+    box-shadow: 0 0 15px var(--gb-glow);
 }
 
 .color-circle.active {
     transform: scale(1.2);
-    box-shadow: 0 0 15px rgba(76, 175, 80, 0.5);
+    box-shadow: 0 0 15px var(--gb-glow);
 }
 
 /* Popup Animation */
@@ -782,17 +872,17 @@ footer .links {
     width: 18px;
     left: 4px;
     bottom: 4px;
-    background-color: #004d25;
+    background-color: var(--gb-dark);
     -webkit-transition: .4s;
     transition: .4s;
 }
 
 input:checked + .slider {
-    background-color: #266d3f;
+    background-color: var(--gb-bg);
 }
 
 input:checked + .slider:hover {
-    background-color: #0f391e;
+    background-color: var(--gb-deep);
 }
 
 input:focus + .slider {
@@ -827,7 +917,7 @@ input:checked + .slider:before {
     flex-direction: column;
     justify-content: center;
     align-items: flex-start;
-    background: #004d25;
+    background: var(--gb-dark);
     flex-wrap: nowrap;
     align-content: center;
 }
@@ -887,7 +977,7 @@ input:checked + .slider:before {
 
 .download-link {
     display: inline-block;
-    background-color: #004d25;
+    background-color: var(--gb-dark);
     color: white;
     padding: 10px;
     text-decoration: none;
@@ -949,7 +1039,7 @@ input:checked + .slider:before {
 }
 
 #firmware-version-btn:hover {
-    background-color: #004d25;
+    background-color: var(--gb-dark);
 }
 
 #firmware-version-btn svg {
@@ -988,14 +1078,14 @@ input:checked + .slider:before {
 }
 
 .mode-tab.active {
-    background-color: #4caf50;
+    background-color: var(--gb-accent);
     color: #111;
     opacity: 1;
 }
 
 .popup-box {
     position: relative;
-    background: #266d3f;
+    background: var(--gb-bg);
     padding: 2rem;
     border-radius: 10px;
     color: white;
@@ -1064,9 +1154,9 @@ input:checked + .slider:before {
 .gb-select {
     padding: 0.5rem;
     border-radius: 5px;
-    background: #1e4a2b;
+    background: var(--gb-panel);
     color: white;
-    border: 1px solid #4caf50;
+    border: 1px solid var(--gb-accent);
 }
 
 .mobile-mode-note {
@@ -1096,14 +1186,14 @@ input:checked + .slider:before {
     gap: 0.75rem;
     padding: 1rem;
     margin-top: 1rem;
-    background: #004d25;
+    background: var(--gb-dark);
     border-radius: 10px;
 }
 
 .settings-heading {
     margin: 0;
     font-size: 0.8rem;
-    color: #a1d99b;
+    color: var(--gb-light);
     text-align: left;
 }
 
@@ -1195,7 +1285,7 @@ input:checked + .slider:before {
 .popup-container button.led-swatch.active,
 .led-color.active {
     border-color: white;
-    outline: 2px solid #004d25;
+    outline: 2px solid var(--gb-dark);
     outline-offset: -4px;
 }
 
@@ -1371,7 +1461,7 @@ input:checked + .slider:before {
     padding: 16px;
     box-sizing: border-box;
     background-color: rgb(0 0 0 / 28%);
-    border: 1px solid #004d25;
+    border: 1px solid var(--gb-dark);
     border-radius: 5px;
     color: white;
 }
@@ -1437,14 +1527,14 @@ input:checked + .slider:before {
 }
 
 .live-nav button:disabled {
-    background-color: #004d25;
+    background-color: var(--gb-dark);
     opacity: 0.4;
 }
 
 .live-scrub {
     flex: 1;
     min-width: 0;
-    accent-color: #4caf50;
+    accent-color: var(--gb-accent);
 }
 
 .live-pos {
@@ -1497,12 +1587,12 @@ input:checked + .slider:before {
 .tool-btn {
     font-size: 0.65rem;
     padding: 9px 12px;
-    background-color: #004d25;
+    background-color: var(--gb-dark);
     line-height: 1.2;
 }
 
 .tool-btn:disabled {
-    background-color: #004d25;
+    background-color: var(--gb-dark);
     opacity: 0.4;
 }
 
@@ -1515,7 +1605,7 @@ input:checked + .slider:before {
 }
 
 .tool-btn--done {
-    background-color: #4caf50;
+    background-color: var(--gb-accent);
 }
 
 .tool-select {
@@ -1539,7 +1629,7 @@ input:checked + .slider:before {
     gap: 8px;
     padding: 10px;
     border-radius: 10px;
-    background-color: #1e5a34;
+    background-color: var(--gb-raised);
     box-shadow: 0 4px 12px rgb(0 0 0 / 30%);
 }
 
@@ -1716,7 +1806,7 @@ input:checked + .slider:before {
 }
 
 .viewer-btn.active {
-    background-color: #4caf50;
+    background-color: var(--gb-accent);
     color: #111;
 }
 
@@ -1759,12 +1849,12 @@ input:checked + .slider:before {
 
 /* The answer, bright like the active mode tab; red when it deletes */
 .popup-container #ui-dialog-ok:not(.red) {
-    background-color: #4caf50;
+    background-color: var(--gb-accent);
     color: #111;
 }
 
 .popup-container #ui-dialog-ok:not(.red):hover {
-    background-color: #43a047;
+    background-color: var(--gb-accent-hover);
 }
 
 .popup-container button.small-btn,
@@ -1780,9 +1870,9 @@ input:checked + .slider:before {
     font-size: 0.7rem;
     padding: 0.6rem;
     border-radius: 5px;
-    background: #1e4a2b;
+    background: var(--gb-panel);
     color: white;
-    border: 1px solid #4caf50;
+    border: 1px solid var(--gb-accent);
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
@@ -1899,7 +1989,7 @@ textarea.gb-input {
     align-items: center;
     gap: 8px;
     padding: 6px;
-    border: 1px solid #004d25;
+    border: 1px solid var(--gb-dark);
     border-radius: 5px;
     background-color: rgb(0 0 0 / 20%);
     cursor: pointer;
@@ -2065,7 +2155,7 @@ textarea.gb-input {
 }
 
 #printer-status[data-state="ready"] .status-dot,
-.status-pill[data-state="ready"] .status-dot { background: #69f0ae; }
+.status-pill[data-state="ready"] .status-dot { background: var(--gb-bright); }
 #printer-status[data-state="busy"] .status-dot,
 .status-pill[data-state="busy"] .status-dot { background: #ffd54f; animation: live-blink 1s steps(1) infinite; }
 #printer-status[data-state="error"] .status-dot,
@@ -2107,7 +2197,7 @@ textarea.gb-input {
     padding: 20px 10px;
     border: 2px solid rgb(255 255 255 / 25%);
     border-radius: 12px;
-    background: #004d25;
+    background: var(--gb-dark);
     color: white;
     cursor: pointer;
     font-family: inherit;
@@ -2115,8 +2205,8 @@ textarea.gb-input {
 }
 
 .print-choice:hover {
-    border-color: #69f0ae;
-    background: #003d1d;
+    border-color: var(--gb-bright);
+    background: var(--gb-darker);
 }
 
 .print-choice-icon svg {
@@ -2206,7 +2296,7 @@ textarea.gb-input {
     width: 100%;
     max-width: 340px;
     box-sizing: border-box;
-    background: #004d25;
+    background: var(--gb-dark);
     border-radius: 10px;
 }
 
@@ -2217,7 +2307,7 @@ textarea.gb-input {
 }
 
 .segmented button.active {
-    background-color: #4caf50;
+    background-color: var(--gb-accent);
 }
 
 .control-actions,
@@ -2242,7 +2332,7 @@ textarea.gb-input {
 }
 
 .pill-btn:hover {
-    background: #004d25;
+    background: var(--gb-dark);
 }
 
 .range-ends {
@@ -2286,17 +2376,17 @@ textarea.gb-input {
     padding: 16px;
     font-size: 1rem;
     border-radius: 10px;
-    background-color: #4caf50;
-    box-shadow: 0 4px 0 #2e7d32;
+    background-color: var(--gb-accent);
+    box-shadow: 0 4px 0 var(--gb-accent-shadow);
 }
 
 .print-button:hover {
-    background-color: #43a047;
+    background-color: var(--gb-accent-hover);
 }
 
 .print-button:active {
     transform: translateY(2px);
-    box-shadow: 0 2px 0 #2e7d32;
+    box-shadow: 0 2px 0 var(--gb-accent-shadow);
 }
 
 /* Text dialog */

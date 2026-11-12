@@ -67,12 +67,14 @@ typedef struct {
     uint8_t format;   // ui_formats[]
     uint8_t frame;    // ui_frames[]
     uint8_t save_all; // ui_save_alls[]
+    uint8_t theme;    // ui_themes[], the web UI colors
 } ui_settings_t;
 static const char *const ui_formats[] = {"jpeg", "png"};
 static const char *const ui_frames[] = {"keep", "remove"};
 static const char *const ui_save_alls[] = {"zip", "files"};
-static const ui_settings_t ui_defaults = {10, 0, 0, 0};
-static ui_settings_t ui_settings = {10, 0, 0, 0};
+static const char *const ui_themes[] = {"green", "blue", "yellow", "red", "purple"};
+static const ui_settings_t ui_defaults = {10, 0, 0, 0, 0};
+static ui_settings_t ui_settings = {10, 0, 0, 0, 0};
 static bool ui_stored = false; // false until a browser has saved them once
 
 extern void setRGB(uint8_t r, uint8_t g, uint8_t b);
@@ -464,11 +466,11 @@ static void cdc_handle_line(const char* line) {
     if (strcmp(req, "/ui_settings") == 0 || strcmp(req, "/set_ui_settings") == 0) {
       bool ok = true;
       if (strcmp(req, "/set_ui_settings") == 0) {
-        static const char *const keys[] = {"scale", "format", "frame", "save_all"};
-        const char *values[4];
-        const char *found_keys[4];
+        static const char *const keys[] = {"scale", "format", "frame", "save_all", "theme"};
+        const char *values[5];
+        const char *found_keys[5];
         int count = 0;
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
           const char *value = qs ? query_value(qs, keys[i]) : NULL;
           if (value) found_keys[count] = keys[i], values[count++] = value;
         }
@@ -755,7 +757,7 @@ extern char __flash_binary_end;
 #define SETTINGS_PALETTE_USED   7   // palette_used bitmask
 #define SETTINGS_PALETTES       8   // palettes[][], PALETTE_SLOTS * PALETTE_COLORS * 3 bytes
 #define SETTINGS_UI_MARKER      44  // 0x5E once a browser has saved the photo settings
-#define SETTINGS_UI             45  // ui_settings_t, 4 bytes
+#define SETTINGS_UI             45  // ui_settings_t, 5 bytes (older firmware wrote 4: theme reads 0, green)
 
 void save_color_to_flash(uint8_t r, uint8_t g, uint8_t b, bool rgb_mode, uint8_t mode) {
     // Never write over our own code/rodata, whatever the offset ends up being
@@ -825,7 +827,7 @@ void load_color_from_flash() {
         memcpy(&stored, flash_data + SETTINGS_UI, sizeof(stored));
         bool scale_ok = stored.scale == 1 || stored.scale == 2 || stored.scale == 5 || stored.scale == 10;
         if (scale_ok && stored.format < LWIP_ARRAYSIZE(ui_formats) && stored.frame < LWIP_ARRAYSIZE(ui_frames) &&
-            stored.save_all < LWIP_ARRAYSIZE(ui_save_alls)) {
+            stored.save_all < LWIP_ARRAYSIZE(ui_save_alls) && stored.theme < LWIP_ARRAYSIZE(ui_themes)) {
             ui_settings = stored;
             ui_stored = true;
         }
@@ -842,7 +844,7 @@ static int ui_name_index(const char *const *names, int count, const char *value)
     return -1;
 }
 
-// Apply key=value pairs (scale, format, frame, save_all) and save. All or
+// Apply key=value pairs (scale, format, frame, save_all, theme) and save. All or
 // nothing: one bad value leaves the settings as they were.
 static bool ui_settings_update(const char *const *keys, const char *const *values, int count) {
     ui_settings_t next = ui_settings;
@@ -861,6 +863,9 @@ static bool ui_settings_update(const char *const *keys, const char *const *value
         } else if (strcmp(keys[i], "save_all") == 0) {
             if ((index = ui_name_index(ui_save_alls, LWIP_ARRAYSIZE(ui_save_alls), values[i])) < 0) return false;
             next.save_all = (uint8_t)index;
+        } else if (strcmp(keys[i], "theme") == 0) {
+            if ((index = ui_name_index(ui_themes, LWIP_ARRAYSIZE(ui_themes), values[i])) < 0) return false;
+            next.theme = (uint8_t)index;
         }
     }
     ui_settings = next;
@@ -869,11 +874,11 @@ static bool ui_settings_update(const char *const *keys, const char *const *value
     return true;
 }
 
-// {"result":"ok","stored":true,"scale":10,"format":"jpeg","frame":"keep","save_all":"zip"}
+// {"result":"ok","stored":true,"scale":10,"format":"jpeg","frame":"keep","save_all":"zip","theme":"green"}
 static int ui_settings_json(char *out, size_t size, bool ok) {
-    return snprintf(out, size, "{\"result\":\"%s\",\"stored\":%s,\"scale\":%u,\"format\":\"%s\",\"frame\":\"%s\",\"save_all\":\"%s\"}",
+    return snprintf(out, size, "{\"result\":\"%s\",\"stored\":%s,\"scale\":%u,\"format\":\"%s\",\"frame\":\"%s\",\"save_all\":\"%s\",\"theme\":\"%s\"}",
                     ok ? "ok" : "error", ui_stored ? "true" : "false", ui_settings.scale,
-                    ui_formats[ui_settings.format], ui_frames[ui_settings.frame], ui_save_alls[ui_settings.save_all]);
+                    ui_formats[ui_settings.format], ui_frames[ui_settings.frame], ui_save_alls[ui_settings.save_all], ui_themes[ui_settings.theme]);
 }
 
 // Store four colors given as 24 hex digits, any separators ignored
@@ -978,7 +983,7 @@ static const char *cgi_delete_palette(int iIndex, int iNumParams, char *pcParam[
 }
 
 // Photo settings: /ui_settings.json reads them, /set_ui_settings?scale=10&format=png
-// (any of scale, format, frame, save_all) changes them and replies with the same JSON
+// (any of scale, format, frame, save_all, theme) changes them and replies with the same JSON
 #define UI_SETTINGS_FILE "/ui_settings.json"
 static bool ui_op_ok = true;
 
